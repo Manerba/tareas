@@ -40,7 +40,7 @@ class WidgetDashboard {
             container.innerHTML = `
                 <div class="kpi-error">
                     <span class="kpi-error-icon">⚠️</span>
-                    <span class="kpi-error-text">Fehler beim Laden der Daten</span>
+                    <span class="kpi-error-text">${t('common.loadError')}</span>
                 </div>
             `;
         }

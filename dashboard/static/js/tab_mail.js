@@ -25,7 +25,7 @@ async function loadMailConfig() {
 async function loadMailTemplates() {
     try {
         const resp = await fetch('/api/admin/mail/templates');
-        if (!resp.ok) throw new Error('Fehler beim Laden');
+        if (!resp.ok) throw new Error(t('common.loadError'));
         const data = await resp.json();
         mailTemplates = data.templates || [];
     } catch (e) {
@@ -68,7 +68,7 @@ function renderMailConfigSection(hasConfig) {
 
     let encSelect = '<select id="mailEncryption">';
     for (const opt of encOptions) {
-        const label = opt === 'none' ? 'Keine' : opt === 'starttls' ? 'STARTTLS' : 'SSL/TLS';
+        const label = opt === 'none' ? t('mailAdmin.encNone') : opt === 'starttls' ? 'STARTTLS' : 'SSL/TLS';
         const sel = (c.encryption || 'starttls') === opt ? 'selected' : '';
         encSelect += `<option value="${opt}" ${sel}>${label}</option>`;
     }
@@ -76,67 +76,67 @@ function renderMailConfigSection(hasConfig) {
 
     let html = `
         <div class="mail-section">
-            <h3>SMTP-Server Konfiguration</h3>
+            <h3>${t('mailAdmin.smtpTitle')}</h3>
             <div class="mail-form">
                 <div class="mail-form-row">
                     <div class="mail-form-field">
-                        <label>SMTP-Server</label>
+                        <label>${t('mailAdmin.smtpServer')}</label>
                         <input type="text" id="mailSmtpServer" value="${escapeAttr(c.smtp_server || '')}"
                                placeholder="smtp.example.com">
                     </div>
                     <div class="mail-form-field" style="max-width:120px">
-                        <label>Port</label>
+                        <label>${t('mailAdmin.port')}</label>
                         <input type="number" id="mailSmtpPort" value="${c.smtp_port || 587}">
                     </div>
                     <div class="mail-form-field" style="max-width:140px">
-                        <label>Verschluesselung</label>
+                        <label>${t('mailAdmin.encryption')}</label>
                         ${encSelect}
                     </div>
                 </div>
                 <div class="mail-form-row">
                     <div class="mail-form-field" style="max-width:100px">
-                        <label>Auth</label>
+                        <label>${t('mailAdmin.auth')}</label>
                         <label class="mail-checkbox">
                             <input type="checkbox" id="mailAuthEnabled" ${c.auth_enabled !== 0 ? 'checked' : ''}>
-                            Aktiv
+                            ${t('mailAdmin.active')}
                         </label>
                     </div>
                     <div class="mail-form-field">
-                        <label>Benutzername</label>
+                        <label>${t('auth.username')}</label>
                         <input type="text" id="mailUsername" value="${escapeAttr(c.username || '')}"
                                placeholder="user@example.com">
                     </div>
                     <div class="mail-form-field">
-                        <label>Passwort</label>
+                        <label>${t('auth.password')}</label>
                         <input type="password" id="mailPassword"
                                value="${hasConfig ? '********' : ''}"
-                               placeholder="Passwort..." autocomplete="new-password">
+                               placeholder="${t('auth.password')}..." autocomplete="new-password">
                     </div>
                 </div>
                 <div class="mail-form-row">
                     <div class="mail-form-field">
-                        <label>Absender-Adresse</label>
+                        <label>${t('mailAdmin.fromAddress')}</label>
                         <input type="email" id="mailFromAddress" value="${escapeAttr(c.from_address || '')}"
                                placeholder="noreply@example.com">
                     </div>
                     <div class="mail-form-field">
-                        <label>Absender-Name</label>
+                        <label>${t('mailAdmin.fromName')}</label>
                         <input type="text" id="mailFromName" value="${escapeAttr(c.from_name || 'Tareas')}"
                                placeholder="Tareas">
                     </div>
                 </div>
                 <div class="mail-form-actions">
-                    <button class="action-btn primary" onclick="saveMailConfig()">Verbindung testen &amp; Speichern</button>
-                    ${hasConfig ? '<button class="action-btn danger" onclick="deleteMailConfig()">Loeschen</button>' : ''}
+                    <button class="action-btn primary" onclick="saveMailConfig()">${t('mailAdmin.testAndSave')}</button>
+                    ${hasConfig ? `<button class="action-btn danger" onclick="deleteMailConfig()">${t('common.delete')}</button>` : ''}
                 </div>
             </div>`;
 
     if (hasConfig) {
-        const enc = c.encryption === 'ssl' ? 'SSL/TLS' : c.encryption === 'starttls' ? 'STARTTLS' : 'Keine';
+        const enc = c.encryption === 'ssl' ? 'SSL/TLS' : c.encryption === 'starttls' ? 'STARTTLS' : t('mailAdmin.encNone');
         html += `
             <div class="mail-status-info">
-                <strong>Aktive Konfiguration:</strong>
-                ${escapeHtml(c.smtp_server)}:${c.smtp_port} | ${enc} | Von: ${escapeHtml(c.from_name)} &lt;${escapeHtml(c.from_address)}&gt;
+                <strong>${t('mailAdmin.activeConfig')}</strong>
+                ${escapeHtml(c.smtp_server)}:${c.smtp_port} | ${enc} | ${t('mailAdmin.fromName')}: ${escapeHtml(c.from_name)} &lt;${escapeHtml(c.from_address)}&gt;
             </div>`;
     }
 
@@ -147,15 +147,15 @@ function renderMailConfigSection(hasConfig) {
 function renderTestMailSection() {
     return `
         <div class="mail-section">
-            <h3>Testmail</h3>
+            <h3>${t('mailAdmin.testTitle')}</h3>
             <div class="mail-form">
                 <div class="mail-form-row">
                     <div class="mail-form-field">
-                        <label>Empfaenger</label>
+                        <label>${t('mailAdmin.recipient')}</label>
                         <input type="email" id="mailTestRecipient" placeholder="empfaenger@example.com">
                     </div>
                     <div class="mail-form-field" style="max-width:200px;justify-content:flex-end">
-                        <button class="action-btn primary" onclick="sendTestMail()">Testmail senden</button>
+                        <button class="action-btn primary" onclick="sendTestMail()">${t('mailAdmin.sendTest')}</button>
                     </div>
                 </div>
             </div>
@@ -164,12 +164,12 @@ function renderTestMailSection() {
 
 function renderTemplatesSection() {
     const eventLabels = {
-        'task_assigned': 'Aufgabe zugewiesen',
-        'status_change': 'Status geaendert',
-        'deadline_reached': 'Faelligkeit erreicht',
-        'deadline_warning': 'Faelligkeits-Vorwarnung',
-        'invite': 'Einladungsmail',
-        'test': 'Testmail',
+        'task_assigned': t('mailAdmin.event.task_assigned'),
+        'status_change': t('mailAdmin.event.status_change'),
+        'deadline_reached': t('mailAdmin.event.deadline_reached'),
+        'deadline_warning': t('mailAdmin.event.deadline_warning'),
+        'invite': t('mailAdmin.event.invite'),
+        'test': t('mailAdmin.event.test'),
     };
 
     const placeholderHints = {
@@ -178,11 +178,11 @@ function renderTemplatesSection() {
         'deadline_reached': '{recipient_name}, {task_name}, {app_url}',
         'deadline_warning': '{recipient_name}, {task_name}, {days_before}, {deadline}, {app_url}',
         'invite': '{recipient_name}, {username}, {app_url}',
-        'test': '(keine Platzhalter)',
+        'test': t('mailAdmin.noPlaceholders'),
     };
 
-    let html = '<div class="mail-section"><h3>Mail-Vorlagen</h3>';
-    html += '<div class="mail-status-info" style="margin-bottom: 16px;">Der Platzhalter <code>{app_url}</code> wird automatisch aus der Server-Adresse unter <strong>Allgemein</strong> abgeleitet.</div>';
+    let html = `<div class="mail-section"><h3>${t('mailAdmin.templates')}</h3>`;
+    html += `<div class="mail-status-info" style="margin-bottom: 16px;">${t('mailAdmin.templateAppUrlHint')}</div>`;
 
     for (const tmpl of mailTemplates) {
         const label = eventLabels[tmpl.event_type] || tmpl.event_type;
@@ -192,23 +192,23 @@ function renderTemplatesSection() {
             <div class="mail-template-section" data-event-type="${tmpl.event_type}">
                 <div class="mail-template-header">
                     <strong>${escapeHtml(label)}</strong>
-                    <span class="mail-placeholder-hint">Platzhalter: ${escapeHtml(hint)}</span>
+                    <span class="mail-placeholder-hint">${t('mailAdmin.placeholder')}: ${escapeHtml(hint)}</span>
                 </div>
                 <div class="mail-form">
                     <div class="mail-form-row">
                         <div class="mail-form-field">
-                            <label>Betreff</label>
+                            <label>${t('mailAdmin.subject')}</label>
                             <input type="text" id="tmplSubject_${tmpl.event_type}" value="${escapeAttr(tmpl.subject)}">
                         </div>
                     </div>
                     <div class="mail-form-row">
                         <div class="mail-form-field">
-                            <label>Text</label>
+                            <label>${t('mailAdmin.body')}</label>
                             <textarea id="tmplBody_${tmpl.event_type}" rows="5">${escapeHtml(tmpl.body_text)}</textarea>
                         </div>
                     </div>
                     <div class="mail-form-actions">
-                        <button class="action-btn primary" onclick="saveMailTemplate('${tmpl.event_type}')">Speichern</button>
+                        <button class="action-btn primary" onclick="saveMailTemplate('${tmpl.event_type}')">${t('common.save')}</button>
                     </div>
                 </div>
             </div>`;
@@ -235,14 +235,14 @@ async function saveMailConfig() {
     const from_name = document.getElementById('mailFromName')?.value?.trim() || 'Tareas';
 
     if (!smtp_server || !from_address) {
-        showNotification('Bitte Server und Absender-Adresse ausfuellen', 'error');
+        showNotification(t('mailAdmin.fillRequired'), 'error');
         return;
     }
 
     await saveConfigToAPI({
         endpoint: '/api/admin/mail/config',
         data: { smtp_server, smtp_port, encryption, auth_enabled, username, password, from_address, from_name },
-        successMessage: 'Mail-Konfiguration gespeichert (Verbindung OK)',
+        successMessage: t('mailAdmin.saved'),
         onSuccess: async () => {
             await loadMailConfig();
             renderMailTab();
@@ -253,8 +253,8 @@ async function saveMailConfig() {
 async function deleteMailConfig() {
     await deleteConfigFromAPI({
         endpoint: '/api/admin/mail/config',
-        confirmMessage: 'Mail-Konfiguration wirklich loeschen?',
-        successMessage: 'Mail-Konfiguration geloescht',
+        confirmMessage: t('mailAdmin.deleteConfirm'),
+        successMessage: t('mailAdmin.deleted'),
         onSuccess: () => {
             mailConfig = null;
             renderMailTab();
@@ -269,7 +269,7 @@ async function deleteMailConfig() {
 async function sendTestMail() {
     const to_email = document.getElementById('mailTestRecipient')?.value?.trim();
     if (!to_email) {
-        showNotification('Bitte Empfaenger-Adresse eingeben', 'error');
+        showNotification(t('mailAdmin.recipientRequired'), 'error');
         return;
     }
 
@@ -282,10 +282,10 @@ async function sendTestMail() {
 
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Senden');
+            throw new Error(data.detail || t('mailAdmin.sendError'));
         }
 
-        showNotification(`Testmail an ${to_email} gesendet`, 'success');
+        showNotification(t('mailAdmin.testSent', { email: to_email }), 'success');
     } catch (error) {
         showNotification(error.message, 'error');
     }
@@ -300,7 +300,7 @@ async function saveMailTemplate(eventType) {
     const body_text = document.getElementById(`tmplBody_${eventType}`)?.value || '';
 
     if (!subject.trim()) {
-        showNotification('Betreff darf nicht leer sein', 'error');
+        showNotification(t('mailAdmin.subjectRequired'), 'error');
         return;
     }
 
@@ -313,10 +313,10 @@ async function saveMailTemplate(eventType) {
 
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Speichern');
+            throw new Error(data.detail || t('common.saveError'));
         }
 
-        showNotification('Vorlage gespeichert', 'success');
+        showNotification(t('mailAdmin.templateSaved'), 'success');
     } catch (error) {
         showNotification(error.message, 'error');
     }

@@ -35,14 +35,14 @@ class FileBrowser {
                 <div class="fb-header">
                     <div class="fb-breadcrumb" id="fb-breadcrumb-${this.taskId}"></div>
                     <div class="fb-actions">
-                        <button class="fb-view-toggle" id="fb-toggle-${this.taskId}" title="Ansicht wechseln">
+                        <button class="fb-view-toggle" id="fb-toggle-${this.taskId}" title="${t('files.toggleView')}">
                             ${this.viewMode === 'tree' ? this._iconGrid() : this._iconTree()}
                         </button>
-                        <button class="fb-action-btn" id="fb-upload-${this.taskId}" title="Hochladen">
-                            ${this._iconUpload()} Hochladen
+                        <button class="fb-action-btn" id="fb-upload-${this.taskId}" title="${t('files.upload')}">
+                            ${this._iconUpload()} ${t('files.upload')}
                         </button>
-                        <button class="fb-action-btn" id="fb-mkdir-${this.taskId}" title="Neuer Ordner">
-                            ${this._iconNewFolder()} Ordner
+                        <button class="fb-action-btn" id="fb-mkdir-${this.taskId}" title="${t('files.folder')}">
+                            ${this._iconNewFolder()} ${t('files.folder')}
                         </button>
                     </div>
                 </div>
@@ -177,7 +177,7 @@ class FileBrowser {
             const resp = await fetch(`/api/tasks/${this.taskId}/files?path=${encodeURIComponent(path)}`);
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Fehler beim Laden');
+                throw new Error(err.detail || t('common.loadError'));
             }
             const data = await resp.json();
             this.items = data.items || [];
@@ -207,7 +207,7 @@ class FileBrowser {
         if (!bc) return;
 
         const parts = this.currentPath ? this.currentPath.split('/').filter(Boolean) : [];
-        let html = `<span class="fb-bc-item fb-bc-root" data-path="">${this._iconFolder()} Dateien</span>`;
+        let html = `<span class="fb-bc-item fb-bc-root" data-path="">${this._iconFolder()} ${t('files.title')}</span>`;
 
         let accumulated = '';
         parts.forEach((part, i) => {
@@ -233,7 +233,7 @@ class FileBrowser {
         if (!content) return;
 
         if (this.items.length === 0) {
-            content.innerHTML = '<div class="fb-empty">Keine Dateien vorhanden</div>';
+            content.innerHTML = `<div class="fb-empty">${t('files.empty')}</div>`;
             return;
         }
 
@@ -243,7 +243,7 @@ class FileBrowser {
             const sizeStr = item.type === 'directory' ? '' : this._formatSize(item.size);
             const isEditable = item.type === 'file' && typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(item.name);
             const editIcon = isEditable
-                ? `<div class="fb-grid-edit" data-edit-path="${escapeAttr(this.currentPath ? this.currentPath + '/' + item.name : item.name)}" title="Im Editor oeffnen">${this._iconEdit()}</div>`
+                ? `<div class="fb-grid-edit" data-edit-path="${escapeAttr(this.currentPath ? this.currentPath + '/' + item.name : item.name)}" title="${t('files.openInEditor')}">${this._iconEdit()}</div>`
                 : '';
             html += `
                 <div class="fb-grid-item ${item.type === 'directory' ? 'fb-grid-dir' : 'fb-grid-file'}"
@@ -271,7 +271,7 @@ class FileBrowser {
 
         const items = this.treeCache[this.currentPath] || this.items;
         if (items.length === 0) {
-            content.innerHTML = '<div class="fb-empty">Keine Dateien vorhanden</div>';
+            content.innerHTML = `<div class="fb-empty">${t('files.empty')}</div>`;
             return;
         }
 
@@ -343,7 +343,7 @@ class FileBrowser {
         const toggle = document.getElementById(`fb-toggle-${this.taskId}`);
         if (toggle) {
             toggle.innerHTML = this.viewMode === 'tree' ? this._iconGrid() : this._iconTree();
-            toggle.title = this.viewMode === 'tree' ? 'Zur Grid-Ansicht' : 'Zur Baumansicht';
+            toggle.title = this.viewMode === 'tree' ? t('files.gridView') : t('files.treeView');
         }
         if (this.viewMode === 'tree') {
             this.treeCache[this.currentPath] = this.items;
@@ -393,21 +393,21 @@ class FileBrowser {
         let html = '<div class="fb-ctx-menu">';
         if (type === 'file') {
             if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name)) {
-                html += `<div class="fb-ctx-item" data-action="edit" data-path="${escapeAttr(fullPath)}">Im Editor oeffnen</div>`;
+                html += `<div class="fb-ctx-item" data-action="edit" data-path="${escapeAttr(fullPath)}">${t('files.openInEditor')}</div>`;
             }
             if (this._isImageFile(name)) {
-                html += `<div class="fb-ctx-item" data-action="view" data-path="${escapeAttr(fullPath)}">Anzeigen</div>`;
+                html += `<div class="fb-ctx-item" data-action="view" data-path="${escapeAttr(fullPath)}">${t('files.view')}</div>`;
             }
-            html += `<div class="fb-ctx-item" data-action="download" data-path="${escapeAttr(fullPath)}">Herunterladen</div>`;
+            html += `<div class="fb-ctx-item" data-action="download" data-path="${escapeAttr(fullPath)}">${t('files.download')}</div>`;
             if (nextcloudLink) {
-                html += `<div class="fb-ctx-item" data-action="nextcloud" data-url="${escapeAttr(nextcloudLink)}">In Nextcloud oeffnen</div>`;
+                html += `<div class="fb-ctx-item" data-action="nextcloud" data-url="${escapeAttr(nextcloudLink)}">${t('files.openInNc')}</div>`;
             }
         } else {
-            html += `<div class="fb-ctx-item" data-action="open" data-path="${escapeAttr(fullPath)}">Oeffnen</div>`;
+            html += `<div class="fb-ctx-item" data-action="open" data-path="${escapeAttr(fullPath)}">${t('files.open')}</div>`;
         }
         html += `<div class="fb-ctx-sep"></div>`;
-        html += `<div class="fb-ctx-item" data-action="rename" data-path="${escapeAttr(fullPath)}" data-name="${escapeAttr(name)}">Umbenennen</div>`;
-        html += `<div class="fb-ctx-item fb-ctx-danger" data-action="delete" data-path="${escapeAttr(fullPath)}" data-type="${escapeAttr(type)}">Loeschen</div>`;
+        html += `<div class="fb-ctx-item" data-action="rename" data-path="${escapeAttr(fullPath)}" data-name="${escapeAttr(name)}">${t('files.rename')}</div>`;
+        html += `<div class="fb-ctx-item fb-ctx-danger" data-action="delete" data-path="${escapeAttr(fullPath)}" data-type="${escapeAttr(type)}">${t('files.delete')}</div>`;
         html += '</div>';
 
         const menu = document.createElement('div');
@@ -531,12 +531,12 @@ class FileBrowser {
                 );
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
-                    throw new Error(err.detail || 'Upload fehlgeschlagen');
+                    throw new Error(err.detail || t('files.uploadFailed'));
                 }
                 done++;
                 if (progressFill) progressFill.style.width = `${(done / total) * 100}%`;
             } catch (error) {
-                showNotification(`Fehler bei "${file.name}": ${error.message}`, 'error');
+                showNotification(t('files.uploadError', { name: file.name, error: error.message }), 'error');
             }
         }
 
@@ -545,13 +545,13 @@ class FileBrowser {
         }
 
         if (done > 0) {
-            showNotification(`${done} Datei(en) hochgeladen`, 'success');
+            showNotification(t('files.uploaded', { count: done }), 'success');
             this.loadDirectory(this.currentPath);
         }
     }
 
     async onMkdirClick() {
-        const name = prompt('Neuer Ordnername:');
+        const name = prompt(t('files.newFolderPrompt'));
         if (!name || !name.trim()) return;
 
         try {
@@ -565,9 +565,9 @@ class FileBrowser {
             );
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Fehler');
+                throw new Error(err.detail || t('common.error'));
             }
-            showNotification(`Ordner "${name.trim()}" erstellt`, 'success');
+            showNotification(t('files.folderCreated', { name: name.trim() }), 'success');
             this.loadDirectory(this.currentPath);
         } catch (error) {
             showNotification(error.message, 'error');
@@ -576,9 +576,9 @@ class FileBrowser {
 
     async deleteItem(path, type) {
         this._closeContextMenu();
-        const typeLabel = type === 'directory' ? 'Ordner (inkl. Inhalt)' : 'Datei';
+        const typeLabel = type === 'directory' ? t('files.folderWithContent') : t('files.file');
         const name = path.split('/').pop();
-        if (!await msgbox('cancel/yes', 'warning', `${typeLabel} "${name}" wirklich loeschen?`)) return;
+        if (!await msgbox('cancel/yes', 'warning', t('files.deleteConfirm', { type: typeLabel, name: name }))) return;
 
         try {
             const resp = await fetch(
@@ -587,9 +587,9 @@ class FileBrowser {
             );
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Fehler');
+                throw new Error(err.detail || t('common.error'));
             }
-            showNotification('Geloescht', 'success');
+            showNotification(t('files.deleted'), 'success');
             this.loadDirectory(this.currentPath);
         } catch (error) {
             showNotification(error.message, 'error');
@@ -598,7 +598,7 @@ class FileBrowser {
 
     async renameItem(path, oldName) {
         this._closeContextMenu();
-        const newName = prompt('Neuer Name:', oldName);
+        const newName = prompt(t('files.renamePrompt'), oldName);
         if (!newName || !newName.trim() || newName.trim() === oldName) return;
 
         // Ziel-Pfad berechnen: gleicher Ordner, neuer Name
@@ -613,9 +613,9 @@ class FileBrowser {
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Fehler');
+                throw new Error(err.detail || t('common.error'));
             }
-            showNotification('Umbenannt', 'success');
+            showNotification(t('files.renamed'), 'success');
             this.loadDirectory(this.currentPath);
         } catch (error) {
             showNotification(error.message, 'error');

@@ -24,21 +24,28 @@
                     <div class="settings-menu">
                         <div class="settings-item" id="changePasswordBtn">
                             <span class="settings-icon">&#x1F511;</span>
-                            <span class="settings-label">Passwort aendern</span>
+                            <span class="settings-label" data-i18n="password.change">Passwort aendern</span>
                         </div>
                         <div class="settings-item settings-danger" id="logoutBtn">
                             <span class="settings-icon">&#x2192;</span>
-                            <span class="settings-label">Abmelden</span>
+                            <span class="settings-label" data-i18n="auth.logout">Abmelden</span>
                         </div>
                         <div class="settings-divider"></div>
                         <div class="settings-item" id="mailPrefsBtn">
                             <span class="settings-icon">&#x2709;</span>
-                            <span class="settings-label">Mail-Benachrichtigungen</span>
+                            <span class="settings-label" data-i18n="settings.mailNotifications">Mail-Benachrichtigungen</span>
                         </div>
                         <div class="settings-divider"></div>
+                        <div class="settings-item" id="langToggle">
+                            <span class="settings-icon">&#x1F310;</span>
+                            <span class="settings-label" data-i18n="settings.language">Sprache</span>
+                            <span class="settings-value" id="langStatus">DE</span>
+                            <span class="settings-expand" id="langExpandIcon">&#x25BE;</span>
+                        </div>
+                        <div class="settings-sub" id="langSubMenu" style="display:none"></div>
                         <div class="settings-item" id="themeToggle">
                             <span class="settings-icon">&#x263E;</span>
-                            <span class="settings-label">Dark Mode</span>
+                            <span class="settings-label" data-i18n="settings.darkMode">Dark Mode</span>
                             <span class="settings-value" id="themeStatus">Aus</span>
                         </div>
                     </div>
@@ -49,7 +56,7 @@
 
     <!-- Tabs -->
     <nav class="tabs main-tabs">
-        <a class="tab" href="/aufgaben" data-tab="aufgaben">Aufgaben</a>
+        <a class="tab" href="/aufgaben" data-tab="aufgaben" data-i18n="nav.aufgaben">Aufgaben</a>
     </nav>
 
     <!-- Filter Bar (fuer zukuenftige Tabs) -->
@@ -63,6 +70,7 @@
     </main>
 
     <!-- JavaScript -->
+    <script src="/static/js/i18n.js"></script>
     <script src="/static/js/expandable_table.js"></script>
     <script src="/static/js/kpi_grid.js"></script>
     <script src="/static/js/wysiwyg_editor.js"></script>

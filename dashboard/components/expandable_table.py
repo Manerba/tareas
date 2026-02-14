@@ -41,9 +41,10 @@ class Column:
     truncate: int = 0  # Text nach X Zeichen abschneiden (0 = nicht)
     tooltip_field: str = ""  # Feld für Tooltip (wenn truncate)
     info: str = ""  # Info-Text für Spaltenüberschrift (Tooltip bei Hover)
+    i18n_key: str = ""  # i18n-Schlüssel für Übersetzung (leer = label direkt verwenden)
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "label": self.label,
             "field": self.field,
             "width": self.width,
@@ -56,6 +57,9 @@ class Column:
             "tooltipField": self.tooltip_field or self.field,
             "info": self.info,
         }
+        if self.i18n_key:
+            d["i18nKey"] = self.i18n_key
+        return d
 
 
 @dataclass

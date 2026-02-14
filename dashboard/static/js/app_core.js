@@ -88,6 +88,13 @@ function initEventListeners() {
         mailPrefsBtn.addEventListener('click', openMailPreferencesModal);
     }
 
+    // Language Submenu
+    const langToggle = document.getElementById('langToggle');
+    if (langToggle) {
+        langToggle.addEventListener('click', toggleLangMenu);
+        buildLangMenu();
+    }
+
     // Tabs
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function(e) {
@@ -154,22 +161,22 @@ function openPasswordChangeModal() {
     toggleSettingsDropdown(false);
 
     createModal({
-        title: 'Passwort aendern',
+        title: t('password.change'),
         body: `
             <div class="modal-field">
-                <label>Altes Passwort</label>
+                <label>${t('password.old')}</label>
                 <input type="password" id="pwdOld" autocomplete="current-password">
             </div>
             <div class="modal-field">
-                <label>Neues Passwort</label>
+                <label>${t('password.new')}</label>
                 <input type="password" id="pwdNew" autocomplete="new-password">
             </div>
             <div class="modal-field">
-                <label>Neues Passwort bestaetigen</label>
+                <label>${t('password.confirm')}</label>
                 <input type="password" id="pwdConfirm" autocomplete="new-password">
             </div>`,
-        footer: '<button class="action-btn" onclick="closeModal()">Abbrechen</button>' +
-                '<button class="action-btn primary" id="pwdSaveBtn">Aendern</button>',
+        footer: `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>` +
+                `<button class="action-btn primary" id="pwdSaveBtn">${t('common.change')}</button>`,
         onOpen: () => {
             document.getElementById('pwdOld').focus();
 
@@ -179,15 +186,15 @@ function openPasswordChangeModal() {
                 const confirmPwd = document.getElementById('pwdConfirm').value;
 
                 if (!oldPwd || !newPwd) {
-                    showNotification('Bitte alle Felder ausfuellen', 'error');
+                    showNotification(t('password.fillAll'), 'error');
                     return;
                 }
                 if (newPwd !== confirmPwd) {
-                    showNotification('Neue Passwoerter stimmen nicht ueberein', 'error');
+                    showNotification(t('password.mismatch'), 'error');
                     return;
                 }
                 if (newPwd.length < 4) {
-                    showNotification('Passwort muss mindestens 4 Zeichen haben', 'error');
+                    showNotification(t('password.minLength'), 'error');
                     return;
                 }
 
@@ -200,10 +207,10 @@ function openPasswordChangeModal() {
 
                     if (!resp.ok) {
                         const data = await resp.json().catch(() => ({}));
-                        throw new Error(data.detail || 'Fehler');
+                        throw new Error(data.detail || t('common.error'));
                     }
 
-                    showNotification('Passwort geaendert', 'success');
+                    showNotification(t('password.changed'), 'success');
                     closeModal();
                 } catch (error) {
                     showNotification(error.message, 'error');
@@ -222,6 +229,7 @@ function initTheme() {
     const savedTheme = ['light', 'dark'].includes(raw) ? raw : 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     updateThemeButton(savedTheme);
+    initLangStatus();
 }
 
 function toggleTheme() {
@@ -246,7 +254,46 @@ function updateThemeButton(theme) {
         }
     }
     if (themeStatus) {
-        themeStatus.textContent = theme === 'dark' ? 'An' : 'Aus';
+        themeStatus.textContent = theme === 'dark' ? t('common.on') : t('common.off');
+    }
+}
+
+// ========================================
+// Language Handling
+// ========================================
+
+function toggleLangMenu() {
+    const sub = document.getElementById('langSubMenu');
+    const icon = document.getElementById('langExpandIcon');
+    if (!sub) return;
+    const isOpen = sub.style.display !== 'none';
+    sub.style.display = isOpen ? 'none' : 'block';
+    if (icon) icon.classList.toggle('open', !isOpen);
+}
+
+function buildLangMenu() {
+    const sub = document.getElementById('langSubMenu');
+    if (!sub) return;
+    const langs = getAvailableLangs();
+    const current = getLang();
+    sub.innerHTML = langs.map(l => {
+        const active = l.code === current ? ' active' : '';
+        const check = l.code === current ? '\u2713' : '';
+        return `<div class="settings-sub-item${active}" data-lang="${l.code}">
+            <span class="lang-check">${check}</span>
+            <span>${l.label}</span>
+        </div>`;
+    }).join('');
+    sub.addEventListener('click', (e) => {
+        const item = e.target.closest('[data-lang]');
+        if (item) setLang(item.dataset.lang);
+    });
+}
+
+function initLangStatus() {
+    const langStatus = document.getElementById('langStatus');
+    if (langStatus) {
+        langStatus.textContent = getLang().toUpperCase();
     }
 }
 
@@ -273,13 +320,13 @@ function toggleSettingsDropdown(forceState = null) {
 }
 
 async function restartDashboard() {
-    if (!confirm('Dashboard wirklich neu starten?')) {
+    if (!confirm(t('restart.confirm'))) {
         return;
     }
 
     const restartBtn = document.getElementById('restartBtn');
     if (restartBtn) {
-        restartBtn.innerHTML = '<span class="settings-icon">\u231B</span><span class="settings-label">Wird neugestartet...</span>';
+        restartBtn.innerHTML = `<span class="settings-icon">\u231B</span><span class="settings-label">${t('restart.restarting')}</span>`;
         restartBtn.style.pointerEvents = 'none';
     }
 
@@ -554,25 +601,25 @@ async function openMailPreferencesModal() {
     toggleSettingsDropdown(false);
 
     const overlay = createModal({
-        title: 'Mail-Benachrichtigungen',
+        title: t('mail.prefs.title'),
         maxWidth: '500px',
         body: '<div class="table-loading"><div class="spinner"></div></div>',
-        footer: '<button class="action-btn" onclick="closeModal()">Abbrechen</button>' +
-                '<button class="action-btn primary" id="mailPrefsSaveBtn" disabled>Speichern</button>',
+        footer: `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>` +
+                `<button class="action-btn primary" id="mailPrefsSaveBtn" disabled>${t('common.save')}</button>`,
     });
 
     // Prefs laden
     try {
         const resp = await fetch('/api/user/mail/preferences');
-        if (!resp.ok) throw new Error('Fehler beim Laden');
+        if (!resp.ok) throw new Error(t('common.loadError'));
         const data = await resp.json();
         const prefs = data.preferences || [];
 
         const eventLabels = {
-            'task_assigned': 'Aufgabe zugewiesen',
-            'status_change': 'Status geaendert',
-            'deadline_reached': 'Faelligkeit erreicht',
-            'deadline_warning': 'Faelligkeits-Vorwarnung',
+            'task_assigned': t('mail.event.task_assigned'),
+            'status_change': t('mail.event.status_change'),
+            'deadline_reached': t('mail.event.deadline_reached'),
+            'deadline_warning': t('mail.event.deadline_warning'),
         };
 
         let html = '<div class="mail-prefs-list">';
@@ -589,7 +636,7 @@ async function openMailPreferencesModal() {
             if (pref.event_type === 'deadline_warning') {
                 html += `<div class="mail-pref-days">
                     <input type="number" id="mailPrefDays_${pref.event_type}" value="${pref.days_before}" min="1" max="30">
-                    <span>Tage vorher</span>
+                    <span>${t('mail.prefs.daysBefore')}</span>
                 </div>`;
             }
 
@@ -622,10 +669,10 @@ async function openMailPreferencesModal() {
 
                 if (!resp.ok) {
                     const data = await resp.json().catch(() => ({}));
-                    throw new Error(data.detail || 'Fehler beim Speichern');
+                    throw new Error(data.detail || t('common.saveError'));
                 }
 
-                showNotification('Mail-Einstellungen gespeichert', 'success');
+                showNotification(t('mail.prefs.saved'), 'success');
                 closeModal();
             } catch (error) {
                 showNotification(error.message, 'error');
@@ -633,7 +680,7 @@ async function openMailPreferencesModal() {
         });
     } catch (error) {
         const modalBody = overlay.querySelector('.modal-body');
-        modalBody.innerHTML = '<p style="color:var(--color-bearish)">Fehler beim Laden der Einstellungen</p>';
+        modalBody.innerHTML = `<p style="color:var(--color-bearish)">${t('mail.prefs.loadError')}</p>`;
     }
 }
 
@@ -664,7 +711,7 @@ function createModal(config) {
     const maxWidthStyle = config.maxWidth ? ` style="max-width:${config.maxWidth}"` : '';
     const cssClass = config.cssClass ? ` ${config.cssClass}` : '';
     const footer = config.footer !== undefined ? config.footer :
-        '<button class="action-btn" onclick="closeModal()">Abbrechen</button>';
+        `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>`;
 
     overlay.innerHTML = `
         <div class="modal-content${cssClass}"${maxWidthStyle}>
@@ -743,7 +790,7 @@ async function initTabGeneric(config) {
 async function loadConfigFromAPI(endpoint) {
     try {
         const resp = await fetch(endpoint);
-        if (!resp.ok) throw new Error('Fehler beim Laden');
+        if (!resp.ok) throw new Error(t('common.loadError'));
         const data = await resp.json();
         return data.config !== undefined ? data.config : data;
     } catch (e) {
@@ -770,7 +817,7 @@ async function saveConfigToAPI(config) {
 
         if (!resp.ok) {
             const errData = await resp.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Fehler beim Speichern');
+            throw new Error(errData.detail || t('common.saveError'));
         }
 
         showNotification(config.successMessage, 'success');
@@ -798,7 +845,7 @@ async function deleteConfigFromAPI(config) {
         const resp = await fetch(config.endpoint, { method: 'DELETE' });
         if (!resp.ok) {
             const errData = await resp.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Fehler beim Loeschen');
+            throw new Error(errData.detail || t('common.deleteError'));
         }
 
         showNotification(config.successMessage, 'success');
@@ -828,11 +875,11 @@ async function msgbox(buttons, type, message) {
 
         let buttonsHtml = '';
         if (buttons === 'ok') {
-            buttonsHtml = `<button class="action-btn msgbox-btn-primary" data-action="confirm">Ok</button>`;
+            buttonsHtml = `<button class="action-btn msgbox-btn-primary" data-action="confirm">${t('common.ok')}</button>`;
         } else {
             buttonsHtml = `
-                <button class="action-btn" data-action="cancel">Abbrechen</button>
-                <button class="action-btn msgbox-btn-primary" data-action="confirm">Ja</button>`;
+                <button class="action-btn" data-action="cancel">${t('common.cancel')}</button>
+                <button class="action-btn msgbox-btn-primary" data-action="confirm">${t('common.yes')}</button>`;
         }
 
         overlay.innerHTML = `

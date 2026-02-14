@@ -19,22 +19,29 @@
                     <div class="settings-menu">
                         <div class="settings-item" id="changePasswordBtn">
                             <span class="settings-icon">&#x1F511;</span>
-                            <span class="settings-label">Passwort aendern</span>
+                            <span class="settings-label" data-i18n="password.change">Passwort aendern</span>
                         </div>
                         <div class="settings-item settings-danger" id="logoutBtn">
                             <span class="settings-icon">&#x2192;</span>
-                            <span class="settings-label">Abmelden</span>
+                            <span class="settings-label" data-i18n="auth.logout">Abmelden</span>
                         </div>
                         <div class="settings-divider"></div>
+                        <div class="settings-item" id="langToggle">
+                            <span class="settings-icon">&#x1F310;</span>
+                            <span class="settings-label" data-i18n="settings.language">Sprache</span>
+                            <span class="settings-value" id="langStatus">DE</span>
+                            <span class="settings-expand" id="langExpandIcon">&#x25BE;</span>
+                        </div>
+                        <div class="settings-sub" id="langSubMenu" style="display:none"></div>
                         <div class="settings-item" id="themeToggle">
                             <span class="settings-icon">&#x263E;</span>
-                            <span class="settings-label">Dark Mode</span>
+                            <span class="settings-label" data-i18n="settings.darkMode">Dark Mode</span>
                             <span class="settings-value" id="themeStatus">Aus</span>
                         </div>
                         <div class="settings-divider"></div>
                         <div class="settings-item settings-danger" id="restartBtn">
                             <span class="settings-icon">&#x21BB;</span>
-                            <span class="settings-label">Restart Dashboard</span>
+                            <span class="settings-label" data-i18n="settings.restart">Restart Dashboard</span>
                         </div>
                     </div>
                 </nav>
@@ -44,13 +51,13 @@
 
     <!-- Tabs -->
     <nav class="tabs main-tabs">
-        <a class="tab active" href="#" data-tab="allgemein">Allgemein</a>
-        <a class="tab" href="#" data-tab="benutzer">Benutzerverwaltung</a>
-        <a class="tab" href="#" data-tab="ldap">LDAP</a>
-        <a class="tab" href="#" data-tab="nextcloud">Nextcloud</a>
-        <a class="tab" href="#" data-tab="onlyoffice">ONLYOFFICE</a>
-        <a class="tab" href="#" data-tab="mail">Mail</a>
-        <a class="tab" href="#" data-tab="tls">TLS</a>
+        <a class="tab active" href="#" data-tab="allgemein" data-i18n="nav.allgemein">Allgemein</a>
+        <a class="tab" href="#" data-tab="benutzer" data-i18n="nav.benutzer">Benutzerverwaltung</a>
+        <a class="tab" href="#" data-tab="ldap" data-i18n="nav.ldap">LDAP</a>
+        <a class="tab" href="#" data-tab="nextcloud" data-i18n="nav.nextcloud">Nextcloud</a>
+        <a class="tab" href="#" data-tab="onlyoffice" data-i18n="nav.onlyoffice">ONLYOFFICE</a>
+        <a class="tab" href="#" data-tab="mail" data-i18n="nav.mail">Mail</a>
+        <a class="tab" href="#" data-tab="tls" data-i18n="nav.tls">TLS</a>
     </nav>
 
     <!-- Filter Bar -->
@@ -64,6 +71,7 @@
     </main>
 
     <!-- JavaScript -->
+    <script src="/static/js/i18n.js"></script>
     <script src="/static/js/expandable_table.js"></script>
     <script src="/static/js/app_core.js"></script>
     <script src="/static/js/tab_allgemein.js"></script>

@@ -10,23 +10,24 @@
 <body>
     <div class="login-container">
         <div class="login-title">Tareas</div>
-        <div class="login-subtitle">Bitte anmelden</div>
+        <div class="login-subtitle" data-i18n="auth.pleaseLogin">Bitte anmelden</div>
 
         <div class="login-error" id="loginError"></div>
 
         <div class="login-field">
-            <label>Benutzername</label>
+            <label data-i18n="auth.username">Benutzername</label>
             <input type="text" id="loginUsername" autocomplete="username" autofocus>
         </div>
 
         <div class="login-field">
-            <label>Passwort</label>
+            <label data-i18n="auth.password">Passwort</label>
             <input type="password" id="loginPassword" autocomplete="current-password">
         </div>
 
-        <button class="login-btn" id="loginBtn">Anmelden</button>
+        <button class="login-btn" id="loginBtn" data-i18n="auth.login">Anmelden</button>
     </div>
 
+    <script src="/static/js/i18n.js"></script>
     <script>
         // Theme laden
         const savedTheme = localStorage.getItem('dashboard-theme') || 'light';
@@ -52,12 +53,12 @@
             const password = passwordInput.value;
 
             if (!username || !password) {
-                showError('Bitte Benutzername und Passwort eingeben');
+                showError(t('auth.enterCredentials'));
                 return;
             }
 
             loginBtn.disabled = true;
-            loginBtn.textContent = 'Wird angemeldet...';
+            loginBtn.textContent = t('auth.loggingIn');
             errorDiv.style.display = 'none';
 
             try {
@@ -71,17 +72,17 @@
                     const data = await resp.json().catch(() => ({}));
                     if (resp.status === 429) {
                         const retryAfter = parseInt(resp.headers.get('Retry-After') || '10', 10);
-                        startCountdown(retryAfter, data.detail || 'Zu viele Fehlversuche');
+                        startCountdown(retryAfter, data.detail || t('auth.enterCredentials'));
                         return;
                     }
-                    throw new Error(data.detail || 'Anmeldung fehlgeschlagen');
+                    throw new Error(data.detail || t('auth.loginFailed'));
                 }
 
                 window.location.href = '/aufgaben';
             } catch (error) {
                 showError(error.message);
                 loginBtn.disabled = false;
-                loginBtn.textContent = 'Anmelden';
+                loginBtn.textContent = t('auth.login');
             }
         }
 
@@ -91,7 +92,7 @@
             passwordInput.disabled = true;
             showError(msg);
             let remaining = seconds;
-            loginBtn.textContent = `Gesperrt (${remaining}s)`;
+            loginBtn.textContent = t('auth.locked', { remaining });
             const iv = setInterval(() => {
                 remaining--;
                 if (remaining <= 0) {
@@ -99,10 +100,10 @@
                     loginBtn.disabled = false;
                     usernameInput.disabled = false;
                     passwordInput.disabled = false;
-                    loginBtn.textContent = 'Anmelden';
+                    loginBtn.textContent = t('auth.login');
                     errorDiv.style.display = 'none';
                 } else {
-                    loginBtn.textContent = `Gesperrt (${remaining}s)`;
+                    loginBtn.textContent = t('auth.locked', { remaining });
                 }
             }, 1000);
         }

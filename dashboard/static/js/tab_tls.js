@@ -58,22 +58,22 @@ function renderTlsTab() {
 function renderTlsStatusSection(hasConfig, isActive) {
     const protocol = isActive ? 'HTTPS' : 'HTTP';
     const statusClass = isActive ? 'ldap-status-connected' : '';
-    const statusText = isActive ? 'Aktiv' : 'Inaktiv';
+    const statusText = isActive ? t('tls.active') : t('tls.inactive');
 
     let html = `
         <div class="ldap-section">
-            <h3>TLS-Status</h3>
+            <h3>${t('tls.statusTitle')}</h3>
             <div class="ldap-status-info ${statusClass}">
-                <strong>Status:</strong> ${statusText}<br>
-                <strong>Protokoll:</strong> ${protocol}<br>`;
+                <strong>${t('tls.status')}</strong> ${statusText}<br>
+                <strong>${t('tls.protocol')}</strong> ${protocol}<br>`;
 
     if (hasConfig) {
         html += `
-                <strong>Zertifikat:</strong> ${escapeHtml(tlsConfig.cert_path)}<br>
-                <strong>Key:</strong> ${escapeHtml(tlsConfig.key_path)}<br>
-                <strong>Konfiguriert am:</strong> ${escapeHtml(tlsConfig.created_at || '')}`;
+                <strong>${t('tls.cert')}</strong> ${escapeHtml(tlsConfig.cert_path)}<br>
+                <strong>${t('tls.key')}</strong> ${escapeHtml(tlsConfig.key_path)}<br>
+                <strong>${t('tls.configuredAt')}</strong> ${escapeHtml(tlsConfig.created_at || '')}`;
     } else {
-        html += `<strong>Hinweis:</strong> Kein TLS konfiguriert - Verbindungen sind unverschluesselt`;
+        html += `<strong>${t('tls.noTlsHint')}</strong>`;
     }
 
     html += `
@@ -87,11 +87,9 @@ function renderTlsVerifySection() {
 
     return `
         <div class="ldap-section">
-            <h3>Zertifikatsvalidierung</h3>
+            <h3>${t('tls.verifyTitle')}</h3>
             <div class="ldap-status-info" style="opacity: 0.9; margin-bottom: 12px;">
-                Aktiviert die Pruefung des TLS-Zertifikats fuer ausgehende Verbindungen.
-                Das Zertifikat des Zielservers muss im System-Trust-Store vorhanden sein
-                (<code>/usr/local/share/ca-certificates/</code> + <code>update-ca-certificates</code>).
+                ${t('tls.verifyHint')}
             </div>
             <div class="ldap-form">
                 <div class="ldap-form-row">
@@ -123,7 +121,7 @@ function renderTlsVerifySection() {
                     </div>
                 </div>
                 <div class="ldap-form-actions">
-                    <button class="action-btn primary" onclick="saveTlsVerifyConfig()">Speichern</button>
+                    <button class="action-btn primary" onclick="saveTlsVerifyConfig()">${t('common.save')}</button>
                 </div>
             </div>
         </div>`;
@@ -134,18 +132,18 @@ function renderTlsConfigSection(hasConfig, isActive) {
 
     let html = `
         <div class="ldap-section">
-            <h3>TLS-Konfiguration</h3>
+            <h3>${t('tls.configTitle')}</h3>
             <div class="ldap-form">
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Zertifikat-Pfad (.pem/.crt)</label>
+                        <label>${t('tls.certPath')}</label>
                         <input type="text" id="tlsCertPath" value="${escapeAttr(c.cert_path || '')}"
                                placeholder="/etc/ssl/certs/tareas.pem">
                     </div>
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Key-Pfad (.pem/.key)</label>
+                        <label>${t('tls.keyPath')}</label>
                         <input type="text" id="tlsKeyPath" value="${escapeAttr(c.key_path || '')}"
                                placeholder="/etc/ssl/private/tareas-key.pem">
                     </div>
@@ -154,14 +152,14 @@ function renderTlsConfigSection(hasConfig, isActive) {
                     <div class="ldap-form-field">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                             <input type="checkbox" id="tlsEnabled" ${isActive ? 'checked' : ''}>
-                            TLS aktivieren (Services muessen neu gestartet werden)
+                            ${t('tls.enableCheckbox')}
                         </label>
                     </div>
                 </div>
                 <div class="ldap-form-actions">
-                    <button class="action-btn" onclick="validateTlsFiles()">Dateien pruefen</button>
-                    <button class="action-btn primary" onclick="saveTlsConfig()">Speichern &amp; Neustart</button>
-                    ${hasConfig ? '<button class="action-btn danger" onclick="deleteTlsConfig()">Loeschen</button>' : ''}
+                    <button class="action-btn" onclick="validateTlsFiles()">${t('tls.validateFiles')}</button>
+                    <button class="action-btn primary" onclick="saveTlsConfig()">${t('tls.saveAndRestart')}</button>
+                    ${hasConfig ? `<button class="action-btn danger" onclick="deleteTlsConfig()">${t('common.delete')}</button>` : ''}
                 </div>
             </div>
             <div id="tlsValidationResult"></div>
@@ -173,27 +171,27 @@ function renderTlsConfigSection(hasConfig, isActive) {
 function renderTlsGuideSection() {
     return `
         <div class="ldap-section">
-            <h3>Anleitung</h3>
+            <h3>${t('tls.guide')}</h3>
             <div class="ldap-status-info" style="opacity: 0.9;">
-                <strong>Selbst-signiertes Zertifikat erstellen:</strong>
+                <strong>${t('tls.selfSigned')}</strong>
                 <pre style="margin: 8px 0; padding: 8px; background: var(--bg-secondary); border-radius: 4px; overflow-x: auto; font-size: 12px;">openssl req -x509 -newkey rsa:4096 -nodes \\
   -keyout /etc/ssl/private/tareas-key.pem \\
   -out /etc/ssl/certs/tareas.pem \\
   -days 365 -subj "/CN=example.com"</pre>
             </div>
             <div class="ldap-status-info" style="margin-top: 8px; opacity: 0.9;">
-                <strong>Let's Encrypt (oeffentliche Domain):</strong>
+                <strong>${t('tls.letsEncrypt')}</strong>
                 <pre style="margin: 8px 0; padding: 8px; background: var(--bg-secondary); border-radius: 4px; overflow-x: auto; font-size: 12px;">apt install certbot
 certbot certonly --standalone -d meine-domain.de
 # Zertifikat: /etc/letsencrypt/live/meine-domain.de/fullchain.pem
 # Key: /etc/letsencrypt/live/meine-domain.de/privkey.pem</pre>
             </div>
             <div class="ldap-status-info" style="margin-top: 8px; opacity: 0.9;">
-                <strong>Troubleshooting:</strong><br>
-                &bull; Browser-Warnung bei selbst-signierten Zertifikaten ist normal<br>
-                &bull; Dateien muessen fuer den Service-User lesbar sein<br>
-                &bull; Nach Aenderungen: Services neu starten<br>
-                &bull; Bei Problemen: TLS deaktivieren und Services neu starten
+                <strong>${t('tls.troubleshooting')}</strong><br>
+                &bull; ${t('tls.trouble1')}<br>
+                &bull; ${t('tls.trouble2')}<br>
+                &bull; ${t('tls.trouble3')}<br>
+                &bull; ${t('tls.trouble4')}
             </div>
         </div>`;
 }
@@ -208,7 +206,7 @@ async function validateTlsFiles() {
     const resultDiv = document.getElementById('tlsValidationResult');
 
     if (!cert_path || !key_path) {
-        showNotification('Bitte beide Pfade angeben', 'error');
+        showNotification(t('tls.pathsRequired'), 'error');
         return;
     }
 
@@ -223,9 +221,9 @@ async function validateTlsFiles() {
 
         if (data.valid) {
             if (resultDiv) {
-                resultDiv.innerHTML = `<div class="ldap-status-info ldap-status-connected" style="margin-top: 12px;">Zertifikat und Key sind gueltig</div>`;
+                resultDiv.innerHTML = `<div class="ldap-status-info ldap-status-connected" style="margin-top: 12px;">${t('tls.valid')}</div>`;
             }
-            showNotification('Zertifikat und Key sind gueltig', 'success');
+            showNotification(t('tls.valid'), 'success');
         } else {
             if (resultDiv) {
                 resultDiv.innerHTML = `<div class="ldap-status-info" style="margin-top: 12px; color: var(--danger);">${escapeHtml(data.error)}</div>`;
@@ -233,7 +231,7 @@ async function validateTlsFiles() {
             showNotification(data.error, 'error');
         }
     } catch (error) {
-        showNotification('Fehler bei der Validierung', 'error');
+        showNotification(t('tls.validateError'), 'error');
     }
 }
 
@@ -243,17 +241,17 @@ async function saveTlsConfig() {
     const enabled = document.getElementById('tlsEnabled')?.checked ? 1 : 0;
 
     if (!cert_path || !key_path) {
-        showNotification('Bitte beide Pfade angeben', 'error');
+        showNotification(t('tls.pathsRequired'), 'error');
         return;
     }
 
-    const action = enabled ? 'TLS aktivieren und Services neu starten?' : 'TLS-Konfiguration speichern und Services neu starten?';
+    const action = enabled ? t('tls.enableConfirm') : t('tls.saveConfirm');
     if (!await msgbox('cancel/yes', 'warning', action)) return;
 
     await saveConfigToAPI({
         endpoint: '/api/admin/tls/config',
         data: { cert_path, key_path, enabled },
-        successMessage: 'TLS-Konfiguration gespeichert, Services werden neu gestartet...',
+        successMessage: t('tls.saved'),
         onSuccess: async () => {
             await fetch('/api/dashboard/restart', { method: 'POST' });
         },
@@ -263,8 +261,8 @@ async function saveTlsConfig() {
 async function deleteTlsConfig() {
     await deleteConfigFromAPI({
         endpoint: '/api/admin/tls/config',
-        confirmMessage: 'TLS-Konfiguration wirklich loeschen? Services werden auf HTTP zurueckgesetzt.',
-        successMessage: 'TLS-Konfiguration geloescht, Services werden neu gestartet...',
+        confirmMessage: t('tls.deleteConfirm'),
+        successMessage: t('tls.deleted'),
         onSuccess: async () => {
             tlsConfig = null;
             renderTlsTab();
@@ -282,7 +280,7 @@ async function saveTlsVerifyConfig() {
     await saveConfigToAPI({
         endpoint: '/api/admin/tls/verify',
         data: { verify_nextcloud, verify_onlyoffice, verify_smtp, verify_ldap },
-        successMessage: 'Zertifikatsvalidierung gespeichert',
+        successMessage: t('tls.verifySaved'),
         onSuccess: () => {
             tlsVerifyConfig = { verify_nextcloud: !!verify_nextcloud, verify_onlyoffice: !!verify_onlyoffice,
                                 verify_smtp: !!verify_smtp, verify_ldap: !!verify_ldap };

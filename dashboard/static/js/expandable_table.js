@@ -172,8 +172,8 @@ class ExpandableTable {
 
             this.applyFiltersAndRender();
         } catch (error) {
-            console.error('Fehler beim Laden der Daten:', error);
-            this.showError('Fehler beim Laden der Daten');
+            console.error(t('table.loadError'), error);
+            this.showError(t('table.loadError'));
         }
     }
 
@@ -255,13 +255,13 @@ class ExpandableTable {
         html += `<button class="pagination-btn ${current === 1 ? 'disabled' : ''}"
                          onclick="tables['${tableId}'].goToPage(1)"
                          ${current === 1 ? 'disabled' : ''}
-                         title="Erste Seite">&laquo;</button>`;
+                         title="${t('table.firstPage')}">&laquo;</button>`;
 
         // Vorherige Seite
         html += `<button class="pagination-btn ${current === 1 ? 'disabled' : ''}"
                          onclick="tables['${tableId}'].goToPage(${current - 1})"
                          ${current === 1 ? 'disabled' : ''}
-                         title="Vorherige Seite">&lt;</button>`;
+                         title="${t('table.prevPage')}">&lt;</button>`;
 
         // Seiten-Buttons
         html += '<div class="pagination-pages">';
@@ -286,13 +286,13 @@ class ExpandableTable {
         html += `<button class="pagination-btn ${current === total ? 'disabled' : ''}"
                          onclick="tables['${tableId}'].goToPage(${current + 1})"
                          ${current === total ? 'disabled' : ''}
-                         title="Nächste Seite">&gt;</button>`;
+                         title="${t('table.nextPage')}">&gt;</button>`;
 
         // Letzte Seite
         html += `<button class="pagination-btn ${current === total ? 'disabled' : ''}"
                          onclick="tables['${tableId}'].goToPage(${total})"
                          ${current === total ? 'disabled' : ''}
-                         title="Letzte Seite">&raquo;</button>`;
+                         title="${t('table.lastPage')}">&raquo;</button>`;
 
         html += '</div>';  // .pagination-nav
 
@@ -302,7 +302,7 @@ class ExpandableTable {
 
         // Rechte Seite: Page-Size Dropdown
         html += '<div class="pagination-page-size">';
-        html += '<label>Pro Seite:</label>';
+        html += `<label>${t('table.perPage')}</label>`;
         html += `<select onchange="tables['${tableId}'].setPageSize(parseInt(this.value))">`;
 
         this.pagination.options.forEach(size => {
@@ -521,7 +521,7 @@ class ExpandableTable {
         }
 
         if (this.filteredData.length === 0) {
-            let html = '<div class="table-no-data">Keine Daten gefunden</div>';
+            let html = `<div class="table-no-data">${t('table.noData')}</div>`;
             // Pagination trotzdem anzeigen wenn aktiviert
             if (this.pagination.enabled) {
                 html += this.renderPagination();
@@ -569,9 +569,12 @@ class ExpandableTable {
             // Info-Tooltip als data-Attribut
             const infoAttr = hasInfo ? `data-info="${escapeAttr(col.info)}"` : '';
 
+            // i18n: Spaltenüberschrift übersetzen wenn Key vorhanden
+            const label = (col.i18nKey && typeof t === 'function') ? t(col.i18nKey) : col.label;
+
             html += `
                 <span class="header-cell ${sortableClass} ${infoClass}" ${clickHandler} ${infoAttr}>
-                    ${this.escapeHtml(col.label)}${hasInfo ? '<span class="info-indicator">ⓘ</span>' : ''} ${col.sortable ? sortIcon : ''}
+                    ${this.escapeHtml(label)}${hasInfo ? '<span class="info-indicator">ⓘ</span>' : ''} ${col.sortable ? sortIcon : ''}
                 </span>
             `;
         });
@@ -682,7 +685,7 @@ class ExpandableTable {
         if (this.config.detailTextField && row[this.config.detailTextField]) {
             let text = row[this.config.detailTextField];
             if (text.length > this.config.detailTextMaxLength) {
-                text = text.substring(0, this.config.detailTextMaxLength) + '\n\n[... gekürzt]';
+                text = text.substring(0, this.config.detailTextMaxLength) + '\n\n' + t('table.truncated');
             }
 
             html += `<div class="detail-section">`;

@@ -44,27 +44,27 @@ function renderOoConfigSection(hasConfig) {
     const c = ooConfig || {};
     let html = `
         <div class="ldap-section">
-            <h3>ONLYOFFICE Document Server</h3>
+            <h3>${t('ooAdmin.title')}</h3>
             <div class="ldap-form">
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Server-URL</label>
+                        <label>${t('ooAdmin.serverUrl')}</label>
                         <input type="text" id="ooServerUrl" value="${escapeAttr(c.server_url || '')}"
                                placeholder="http://localhost:8090">
                     </div>
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>JWT Secret</label>
+                        <label>${t('ooAdmin.jwtSecret')}</label>
                         <input type="password" id="ooJwtSecret"
                                value=""
-                               placeholder="${hasConfig ? 'Unveraendert (leer lassen)' : 'JWT Secret vom Docker-Setup'}" autocomplete="new-password">
+                               placeholder="${hasConfig ? t('ooAdmin.jwtPlaceholderExisting') : t('ooAdmin.jwtPlaceholderNew')}" autocomplete="new-password">
                     </div>
                 </div>
                 <div class="ldap-form-actions">
-                    <button class="action-btn primary" onclick="saveOoConfig()">Speichern</button>
-                    <button class="action-btn" onclick="testOoConnection()">Verbindung testen</button>
-                    ${hasConfig ? '<button class="action-btn danger" onclick="deleteOoConfig()">Loeschen</button>' : ''}
+                    <button class="action-btn primary" onclick="saveOoConfig()">${t('common.save')}</button>
+                    <button class="action-btn" onclick="testOoConnection()">${t('ooAdmin.testConnection')}</button>
+                    ${hasConfig ? `<button class="action-btn danger" onclick="deleteOoConfig()">${t('common.delete')}</button>` : ''}
                 </div>
             </div>`;
 
@@ -72,8 +72,8 @@ function renderOoConfigSection(hasConfig) {
     if (hasConfig) {
         html += `
             <div class="ldap-status-info">
-                <strong>Aktive Konfiguration:</strong>
-                ${escapeHtml(c.server_url)} | JWT: konfiguriert
+                <strong>${t('ooAdmin.activeConfig')}</strong>
+                ${escapeHtml(c.server_url)} | ${t('ooAdmin.jwtConfigured')}
             </div>`;
     }
 
@@ -81,8 +81,7 @@ function renderOoConfigSection(hasConfig) {
     html += `
         <div class="ldap-status-info" style="margin-top: 12px; opacity: 0.8;">
             <strong>Setup:</strong>
-            Docker-Container starten mit <code>scripts/onlyoffice-setup.sh</code>.
-            Das Script gibt die URL und das JWT Secret aus.
+            ${t('ooAdmin.setupHint')}
         </div>`;
 
     html += '</div>';
@@ -98,13 +97,13 @@ async function saveOoConfig() {
     const jwt_secret_input = document.getElementById('ooJwtSecret')?.value?.trim();
 
     if (!server_url) {
-        showNotification('Bitte Server-URL angeben', 'error');
+        showNotification(t('ooAdmin.urlRequired'), 'error');
         return;
     }
 
     // Neukonfiguration: Secret ist Pflicht. Aenderung: leer = unveraendert
     if (!ooConfig && !jwt_secret_input) {
-        showNotification('Bitte JWT Secret angeben', 'error');
+        showNotification(t('ooAdmin.jwtRequired'), 'error');
         return;
     }
 
@@ -113,7 +112,7 @@ async function saveOoConfig() {
     await saveConfigToAPI({
         endpoint: '/api/admin/onlyoffice/config',
         data: { server_url, jwt_secret },
-        successMessage: 'ONLYOFFICE-Konfiguration gespeichert',
+        successMessage: t('ooAdmin.saved'),
         onSuccess: async () => {
             await loadOoConfig();
             renderOnlyOfficeTab();
@@ -126,10 +125,10 @@ async function testOoConnection() {
         const resp = await fetch('/api/admin/onlyoffice/test');
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Verbindungstest fehlgeschlagen');
+            throw new Error(data.detail || t('ooAdmin.testFailed'));
         }
 
-        showNotification('ONLYOFFICE Document Server ist erreichbar', 'success');
+        showNotification(t('ooAdmin.testSuccess'), 'success');
     } catch (error) {
         showNotification(error.message, 'error');
     }
@@ -138,8 +137,8 @@ async function testOoConnection() {
 async function deleteOoConfig() {
     await deleteConfigFromAPI({
         endpoint: '/api/admin/onlyoffice/config',
-        confirmMessage: 'ONLYOFFICE-Konfiguration wirklich loeschen?',
-        successMessage: 'ONLYOFFICE-Konfiguration geloescht',
+        confirmMessage: t('ooAdmin.deleteConfirm'),
+        successMessage: t('ooAdmin.deleted'),
         onSuccess: () => {
             ooConfig = null;
             renderOnlyOfficeTab();

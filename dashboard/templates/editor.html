@@ -62,17 +62,18 @@
 <body>
     <div class="editor-page">
         <div class="oo-header">
-            <div class="oo-title" id="editorTitle">Wird geladen...</div>
+            <div class="oo-title" id="editorTitle" data-i18n="editor.loading">Wird geladen...</div>
             <div id="oo-badge-container"></div>
         </div>
         <div class="oo-body" id="ooEditorBody">
             <div class="oo-loading">
                 <div class="spinner"></div>
-                <span>Editor wird geladen...</span>
+                <span data-i18n="editor.editorLoading">Editor wird geladen...</span>
             </div>
         </div>
     </div>
 
+    <script src="/static/js/i18n.js"></script>
     <script>
         // Theme aus localStorage uebernehmen
         const savedTheme = localStorage.getItem('theme') || 'light';
@@ -90,7 +91,7 @@
 
             if (!taskId || !filePath) {
                 document.getElementById('ooEditorBody').innerHTML =
-                    '<div class="oo-loading" style="color:#e74c3c">Fehlende Parameter (taskId, path)</div>';
+                    `<div class="oo-loading" style="color:#e74c3c">${escapeHtml(t('editor.missingParams'))}</div>`;
                 return;
             }
 
@@ -102,7 +103,7 @@
                 const resp = await fetch(`/api/tasks/${taskId}/files/edit?path=${encodeURIComponent(filePath)}`);
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
-                    throw new Error(err.detail || 'Fehler beim Laden der Editor-Konfiguration');
+                    throw new Error(err.detail || t('editor.configError'));
                 }
 
                 const data = await resp.json();
@@ -111,8 +112,8 @@
                 const badgeContainer = document.getElementById('oo-badge-container');
                 if (badgeContainer) {
                     badgeContainer.innerHTML = data.can_edit
-                        ? '<span class="oo-badge oo-badge-edit">Bearbeiten</span>'
-                        : '<span class="oo-badge oo-badge-readonly">Nur Lesen</span>';
+                        ? `<span class="oo-badge oo-badge-edit">${t('editor.edit')}</span>`
+                        : `<span class="oo-badge oo-badge-readonly">${t('editor.readonly')}</span>`;
                 }
 
                 // ONLYOFFICE JS API laden
@@ -120,7 +121,7 @@
                     const script = document.createElement('script');
                     script.src = `${data.editor_url}/web-apps/apps/api/documents/api.js`;
                     script.onload = resolve;
-                    script.onerror = () => reject(new Error('ONLYOFFICE API konnte nicht geladen werden'));
+                    script.onerror = () => reject(new Error(t('editor.apiError')));
                     document.head.appendChild(script);
                 });
 

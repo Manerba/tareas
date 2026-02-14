@@ -22,10 +22,10 @@ async function initBenutzerTab() {
         filterBar.style.display = 'flex';
         filterBar.innerHTML = `
             <div class="control-bar">
-                <button class="control-btn primary" onclick="openNewUserModal()">+ Neuer Benutzer</button>
+                <button class="control-btn primary" onclick="openNewUserModal()">${t('users.newBtn')}</button>
                 <span class="spacer"></span>
                 <input type="text" class="control-search" id="userSearchInput"
-                       placeholder="Suche..." oninput="applyUserSearch(this.value)">
+                       placeholder="${t('common.search')}" oninput="applyUserSearch(this.value)">
             </div>
         `;
     }
@@ -38,21 +38,21 @@ async function initBenutzerTab() {
         showHeader: true,
         gridTemplate: '30px 1fr 130px 130px 180px 70px 80px 70px 100px',
         columns: [
-            { label: 'Nachname', field: 'nachname', width: 0, sortable: true },
-            { label: 'Vorname', field: 'vorname', width: 130, sortable: true },
-            { label: 'Benutzername', field: 'username', width: 130, sortable: true },
-            { label: 'E-Mail', field: 'email', width: 180, sortable: true },
-            { label: 'Quelle', field: 'auth_source', width: 70, sortable: true, align: 'center', renderer: 'sourceBadge' },
-            { label: 'Status', field: 'is_active', width: 80, sortable: true, align: 'center', renderer: 'statusBadge' },
-            { label: 'Admin', field: 'is_admin', width: 70, sortable: true, align: 'center', renderer: 'adminBadge' },
-            { label: 'Erstellt', field: 'created_at', width: 100, sortable: true },
+            { label: t('users.lastName'), field: 'nachname', width: 0, sortable: true },
+            { label: t('users.firstName'), field: 'vorname', width: 130, sortable: true },
+            { label: t('users.username'), field: 'username', width: 130, sortable: true },
+            { label: t('users.email'), field: 'email', width: 180, sortable: true },
+            { label: t('users.source'), field: 'auth_source', width: 70, sortable: true, align: 'center', renderer: 'sourceBadge' },
+            { label: t('users.status'), field: 'is_active', width: 80, sortable: true, align: 'center', renderer: 'statusBadge' },
+            { label: t('users.admin'), field: 'is_admin', width: 70, sortable: true, align: 'center', renderer: 'adminBadge' },
+            { label: t('users.created'), field: 'created_at', width: 100, sortable: true },
         ],
         detailFields: [],
         defaultSort: { field: 'nachname', direction: 'asc' },
         filters: [
             {
                 id: 'userSearch',
-                label: 'Suche',
+                label: t('common.search'),
                 type: 'input',
                 field: 'username',
                 wildcard: true,
@@ -88,23 +88,23 @@ function applyUserSearch(value) {
 
 function renderAdminBadge(value) {
     if (value) {
-        return '<span class="badge badge-admin">Admin</span>';
+        return `<span class="badge badge-admin">${t('users.admin')}</span>`;
     }
     return '';
 }
 
 function renderSourceBadge(value) {
     if (value === 'ldap') {
-        return '<span class="badge badge-ldap">LDAP</span>';
+        return `<span class="badge badge-ldap">${t('users.ldapBadge')}</span>`;
     }
-    return '<span class="badge badge-local">Lokal</span>';
+    return `<span class="badge badge-local">${t('users.local')}</span>`;
 }
 
 function renderStatusBadge(value) {
     if (value === 0) {
-        return '<span class="badge badge-inactive">Deaktiviert</span>';
+        return `<span class="badge badge-inactive">${t('users.inactive')}</span>`;
     }
-    return '<span class="badge badge-active">Aktiv</span>';
+    return `<span class="badge badge-active">${t('users.active')}</span>`;
 }
 
 // ========================================
@@ -124,22 +124,22 @@ function onUserRowExpanded(rowId, detailElement) {
     let html = `<div class="detail-edit" data-user-id="${row.id}">
         <div class="detail-edit-header">
             <div class="detail-edit-field">
-                <label>Nachname</label>
+                <label>${t('users.lastName')}</label>
                 <input type="text" id="editNachname_${row.id}" value="${escapeAttr(row.nachname)}" ${readonly} style="${readonlyStyle}">
             </div>
             <div class="detail-edit-field">
-                <label>Vorname</label>
+                <label>${t('users.firstName')}</label>
                 <input type="text" id="editVorname_${row.id}" value="${escapeAttr(row.vorname)}" ${readonly} style="${readonlyStyle}">
             </div>
             <div class="detail-edit-field">
-                <label>E-Mail</label>
+                <label>${t('users.email')}</label>
                 <input type="email" id="editEmail_${row.id}" value="${escapeAttr(row.email)}" ${readonly} style="${readonlyStyle}">
             </div>
             <div class="detail-edit-field">
-                <label>Admin</label>
+                <label>${t('users.admin')}</label>
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
                     <input type="checkbox" id="editAdmin_${row.id}" ${row.is_admin ? 'checked' : ''}>
-                    Administrator
+                    ${t('users.administrator')}
                 </label>
             </div>
         </div>`;
@@ -149,24 +149,24 @@ function onUserRowExpanded(rowId, detailElement) {
         html += `
         <div class="detail-edit-header" style="margin-top:12px">
             <div class="detail-edit-field">
-                <label>Neues Passwort (leer = nicht aendern)</label>
-                <input type="password" id="editPassword_${row.id}" placeholder="Neues Passwort..." autocomplete="new-password">
+                <label>${t('users.newPasswordHint')}</label>
+                <input type="password" id="editPassword_${row.id}" placeholder="${t('users.newPasswordPlaceholder')}" autocomplete="new-password">
             </div>
         </div>`;
     }
 
     // Buttons
     html += '<div class="detail-edit-actions">';
-    html += `<button class="action-btn primary" onclick="saveUser(${row.id})">Speichern</button>`;
+    html += `<button class="action-btn primary" onclick="saveUser(${row.id})">${t('common.save')}</button>`;
 
     // Einladungsmail-Button (nur wenn User E-Mail hat)
     if (row.email) {
-        html += ` <button class="action-btn" onclick="sendInviteMail(${row.id}, '${escapeAttr(row.username)}')">Einladungsmail senden</button>`;
+        html += ` <button class="action-btn" onclick="sendInviteMail(${row.id}, '${escapeAttr(row.username)}')">${t('users.sendInvite')}</button>`;
     }
 
     // Loeschen-Button: LDAP-User nur wenn deaktiviert, lokale immer
     if (!isLdap || !row.is_active) {
-        html += ` <button class="action-btn danger" onclick="deleteUser(${row.id}, '${escapeAttr(row.username)}')">Loeschen</button>`;
+        html += ` <button class="action-btn danger" onclick="deleteUser(${row.id}, '${escapeAttr(row.username)}')">${t('common.delete')}</button>`;
     }
 
     html += '</div></div>';
@@ -204,10 +204,10 @@ async function saveUser(userId) {
 
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Speichern');
+            throw new Error(data.detail || t('common.saveError'));
         }
 
-        showNotification('Benutzer gespeichert', 'success');
+        showNotification(t('users.saved'), 'success');
         await benutzerTable.loadData();
     } catch (error) {
         showNotification(error.message, 'error');
@@ -215,16 +215,16 @@ async function saveUser(userId) {
 }
 
 async function deleteUser(userId, username) {
-    if (!await msgbox('cancel/yes', 'warning', `Benutzer "${username}" wirklich loeschen?`)) return;
+    if (!await msgbox('cancel/yes', 'warning', t('users.deleteConfirm', { username }))) return;
 
     try {
         const resp = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Loeschen');
+            throw new Error(data.detail || t('common.deleteError'));
         }
 
-        showNotification('Benutzer geloescht', 'success');
+        showNotification(t('users.deleted'), 'success');
         await benutzerTable.loadData();
     } catch (error) {
         showNotification(error.message, 'error');
@@ -237,36 +237,36 @@ async function deleteUser(userId, username) {
 
 function openNewUserModal() {
     createModal({
-        title: 'Neuer Benutzer',
+        title: t('users.new'),
         body: `
             <div class="modal-field">
-                <label>Benutzername *</label>
-                <input type="text" id="newUsername" placeholder="Benutzername..." autofocus autocomplete="off">
+                <label>${t('users.usernameRequired')}</label>
+                <input type="text" id="newUsername" placeholder="${t('users.usernamePlaceholder')}" autofocus autocomplete="off">
             </div>
             <div class="modal-field">
-                <label>Vorname</label>
-                <input type="text" id="newVorname" placeholder="Vorname...">
+                <label>${t('users.firstName')}</label>
+                <input type="text" id="newVorname" placeholder="${t('users.firstnamePlaceholder')}">
             </div>
             <div class="modal-field">
-                <label>Nachname</label>
-                <input type="text" id="newNachname" placeholder="Nachname...">
+                <label>${t('users.lastName')}</label>
+                <input type="text" id="newNachname" placeholder="${t('users.lastnamePlaceholder')}">
             </div>
             <div class="modal-field">
-                <label>E-Mail</label>
-                <input type="email" id="newEmail" placeholder="E-Mail...">
+                <label>${t('users.email')}</label>
+                <input type="email" id="newEmail" placeholder="${t('users.emailPlaceholder')}">
             </div>
             <div class="modal-field">
-                <label>Passwort *</label>
-                <input type="password" id="newPassword" placeholder="Passwort..." autocomplete="new-password">
+                <label>${t('users.passwordRequired')}</label>
+                <input type="password" id="newPassword" placeholder="${t('users.passwordPlaceholder')}" autocomplete="new-password">
             </div>
             <div class="modal-field">
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
                     <input type="checkbox" id="newIsAdmin">
-                    Administrator
+                    ${t('users.administrator')}
                 </label>
             </div>`,
-        footer: '<button class="action-btn" onclick="closeModal()">Abbrechen</button>' +
-                '<button class="action-btn primary" id="createUserBtn">Erstellen</button>',
+        footer: `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>` +
+                `<button class="action-btn primary" id="createUserBtn">${t('common.create')}</button>`,
         onOpen: () => {
             document.getElementById('newUsername').focus();
 
@@ -279,11 +279,11 @@ function openNewUserModal() {
                 const is_admin = document.getElementById('newIsAdmin').checked ? 1 : 0;
 
                 if (!username) {
-                    showNotification('Benutzername ist Pflichtfeld', 'error');
+                    showNotification(t('users.usernameNeeded'), 'error');
                     return;
                 }
                 if (!password || password.length < 4) {
-                    showNotification('Passwort muss mindestens 4 Zeichen haben', 'error');
+                    showNotification(t('users.passwordMin'), 'error');
                     return;
                 }
 
@@ -296,11 +296,11 @@ function openNewUserModal() {
 
                     if (!resp.ok) {
                         const data = await resp.json().catch(() => ({}));
-                        throw new Error(data.detail || 'Fehler beim Erstellen');
+                        throw new Error(data.detail || t('common.createError'));
                     }
 
                     closeModal();
-                    showNotification('Benutzer erstellt', 'success');
+                    showNotification(t('users.createdMsg'), 'success');
                     await benutzerTable.loadData();
                 } catch (error) {
                     showNotification(error.message, 'error');
@@ -315,17 +315,17 @@ function openNewUserModal() {
 // ========================================
 
 async function sendInviteMail(userId, username) {
-    if (!await msgbox('cancel/yes', 'confirm', `Einladungsmail an "${username}" senden?`)) return;
+    if (!await msgbox('cancel/yes', 'confirm', t('users.inviteConfirm', { username }))) return;
 
     try {
         const resp = await fetch(`/api/admin/mail/invite/${userId}`, { method: 'POST' });
 
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Senden');
+            throw new Error(data.detail || t('common.saveError'));
         }
 
-        showNotification('Einladungsmail gesendet', 'success');
+        showNotification(t('users.inviteSent'), 'success');
     } catch (error) {
         showNotification(error.message, 'error');
     }

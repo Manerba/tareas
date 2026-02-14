@@ -19,7 +19,14 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 
 ## Screenshots
 
-*Coming soon*
+**Project view** — Rich text description, Nextcloud file browser, inline editing
+![Project View](docs/Screenshot-Projekt.png)
+
+**Subtask list** — Dependencies, status tracking, priority, assignments
+![Subtask List](docs/Screenshot-Projekt2.png)
+
+**Network diagram** — Interactive dependency graph with auto-layout and status colors
+![Network Diagram](docs/Screenshot-Netplan.png)
 
 ## Installation
 

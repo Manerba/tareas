@@ -61,20 +61,20 @@ function renderConfigSection(hasConfig) {
     const c = ldapConfig || {};
     let html = `
         <div class="ldap-section">
-            <h3>LDAP-Server Konfiguration</h3>
+            <h3>${t('ldap.title')}</h3>
             <div class="ldap-form">
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Server</label>
+                        <label>${t('ldap.server')}</label>
                         <input type="text" id="ldapServer" value="${escapeAttr(c.server || '')}"
                                placeholder="10.0.12.1 oder dc.firma.local">
                     </div>
                     <div class="ldap-form-field" style="max-width:120px">
-                        <label>Port</label>
+                        <label>${t('ldap.port')}</label>
                         <input type="number" id="ldapPort" value="${c.port || 389}">
                     </div>
                     <div class="ldap-form-field" style="max-width:80px">
-                        <label>SSL</label>
+                        <label>${t('ldap.ssl')}</label>
                         <label class="ldap-checkbox">
                             <input type="checkbox" id="ldapUseSSL" ${c.use_ssl ? 'checked' : ''}>
                             SSL
@@ -83,44 +83,44 @@ function renderConfigSection(hasConfig) {
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Bind-DN</label>
+                        <label>${t('ldap.bindDn')}</label>
                         <input type="text" id="ldapBindDN" value="${escapeAttr(c.bind_dn || '')}"
                                placeholder="CN=ldapreader,OU=Service,DC=firma,DC=local">
                     </div>
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Bind-Passwort</label>
+                        <label>${t('ldap.bindPassword')}</label>
                         <input type="password" id="ldapBindPassword"
                                value="${hasConfig ? '********' : ''}"
-                               placeholder="Passwort..." autocomplete="new-password">
+                               placeholder="${t('auth.password')}..." autocomplete="new-password">
                     </div>
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Suchpfad (Search Base)</label>
+                        <label>${t('ldap.searchBase')}</label>
                         <input type="text" id="ldapSearchBase" value="${escapeAttr(c.search_base || '')}"
                                placeholder="OU=Benutzer,DC=firma,DC=local">
                     </div>
                     <div class="ldap-form-field" style="max-width:180px">
-                        <label>Sync-Intervall (Min.)</label>
+                        <label>${t('ldap.syncInterval')}</label>
                         <input type="number" id="ldapSyncInterval" value="${c.sync_interval_minutes || 60}" min="5">
                     </div>
                 </div>
                 <div class="ldap-form-actions">
-                    <button class="action-btn primary" onclick="saveLdapConfig()">Verbindung testen &amp; Speichern</button>
-                    ${hasConfig ? '<button class="action-btn danger" onclick="deleteLdapConfig()">Loeschen</button>' : ''}
+                    <button class="action-btn primary" onclick="saveLdapConfig()">${t('ldap.testAndSave')}</button>
+                    ${hasConfig ? `<button class="action-btn danger" onclick="deleteLdapConfig()">${t('common.delete')}</button>` : ''}
                 </div>
             </div>`;
 
     // Status-Anzeige
     if (hasConfig) {
-        const ssl = c.use_ssl ? 'Ja' : 'Nein';
-        const lastSync = c.last_sync_at || 'Noch nie';
+        const ssl = c.use_ssl ? t('common.yes') : t('common.no');
+        const lastSync = c.last_sync_at || t('ldap.never');
         html += `
             <div class="ldap-status-info">
-                <strong>Aktive Konfiguration:</strong>
-                ${escapeHtml(c.server)}:${c.port} | SSL: ${ssl} | Suchpfad: ${escapeHtml(c.search_base)} | Letzter Sync: ${lastSync}
+                <strong>${t('ldap.activeConfig')}</strong>
+                ${escapeHtml(c.server)}:${c.port} | SSL: ${ssl} | ${t('ldap.searchBase')}: ${escapeHtml(c.search_base)} | ${t('ldap.lastSync')} ${lastSync}
             </div>`;
     }
 
@@ -130,29 +130,29 @@ function renderConfigSection(hasConfig) {
 
 function renderGroupSection(hasGroup) {
     let html = '<div class="ldap-section">';
-    html += '<h3>AD-Gruppe</h3>';
+    html += `<h3>${t('ldap.group')}</h3>`;
 
     if (hasGroup) {
         // Gruppe ist gewaehlt
         html += `
             <div class="ldap-group-selected">
                 <div class="ldap-group-info">
-                    <span class="badge badge-ldap">Gewaehlt</span>
+                    <span class="badge badge-ldap">${t('ldap.selected')}</span>
                     <strong>${escapeHtml(ldapConfig.group_name)}</strong>
                     <span class="ldap-group-dn">${escapeHtml(ldapConfig.group_dn)}</span>
                 </div>
-                <button class="action-btn danger" onclick="deselectGroup()">Auswahl aufheben</button>
+                <button class="action-btn danger" onclick="deselectGroup()">${t('ldap.deselect')}</button>
             </div>
             <div class="ldap-sync-bar">
-                <button class="action-btn primary" onclick="manualSync()">Jetzt synchronisieren</button>
-                <span class="ldap-last-sync">Letzter Sync: ${ldapConfig.last_sync_at || 'Noch nie'}</span>
+                <button class="action-btn primary" onclick="manualSync()">${t('ldap.syncNow')}</button>
+                <span class="ldap-last-sync">${t('ldap.lastSync')} ${ldapConfig.last_sync_at || t('ldap.never')}</span>
             </div>
-            <div class="ldap-hint">LDAP-Benutzer werden in der Benutzerverwaltung angezeigt.</div>`;
+            <div class="ldap-hint">${t('ldap.hint')}</div>`;
     } else {
         // Gruppen-Liste laden
         html += `
             <div id="ldapGroupsList">
-                <button class="action-btn" onclick="loadGroups()">Gruppen laden</button>
+                <button class="action-btn" onclick="loadGroups()">${t('ldap.loadGroups')}</button>
             </div>`;
     }
 
@@ -174,14 +174,14 @@ async function saveLdapConfig() {
     const sync_interval_minutes = parseInt(document.getElementById('ldapSyncInterval')?.value) || 60;
 
     if (!server || !bind_dn || !bind_password || !search_base) {
-        showNotification('Bitte alle Pflichtfelder ausfuellen', 'error');
+        showNotification(t('common.fillRequired'), 'error');
         return;
     }
 
     await saveConfigToAPI({
         endpoint: '/api/admin/ldap/config',
         data: { server, port, use_ssl, bind_dn, bind_password, search_base, sync_interval_minutes },
-        successMessage: 'LDAP-Konfiguration gespeichert (Verbindung OK)',
+        successMessage: t('ldap.saved'),
         onSuccess: async () => {
             await loadLdapConfig();
             renderLdapTab();
@@ -192,8 +192,8 @@ async function saveLdapConfig() {
 async function deleteLdapConfig() {
     await deleteConfigFromAPI({
         endpoint: '/api/admin/ldap/config',
-        confirmMessage: 'LDAP-Konfiguration wirklich loeschen? Alle LDAP-Benutzer werden deaktiviert.',
-        successMessage: 'LDAP-Konfiguration geloescht',
+        confirmMessage: t('ldap.deleteConfirm'),
+        successMessage: t('ldap.deleted'),
         onSuccess: () => {
             ldapConfig = null;
             renderLdapTab();
@@ -215,21 +215,21 @@ async function loadGroups() {
         const resp = await fetch('/api/admin/ldap/groups');
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Laden');
+            throw new Error(data.detail || t('common.loadError'));
         }
 
         const data = await resp.json();
         const groups = data.groups || [];
 
         if (groups.length === 0) {
-            container.innerHTML = '<p class="ldap-hint">Keine Gruppen gefunden im Suchpfad.</p>';
+            container.innerHTML = `<p class="ldap-hint">${t('ldap.noGroups')}</p>`;
             return;
         }
 
         let html = `
             <table class="ldap-groups-table">
                 <thead>
-                    <tr><th>Name</th><th>DN</th><th style="width:60px"></th></tr>
+                    <tr><th>${t('ldap.groupName')}</th><th>${t('ldap.groupDn')}</th><th style="width:60px"></th></tr>
                 </thead>
                 <tbody>`;
 
@@ -261,13 +261,13 @@ async function selectGroup(dn, name) {
 
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Fehler beim Auswaehlen');
+            throw new Error(data.detail || t('common.error'));
         }
 
         const data = await resp.json();
         const sync = data.sync || {};
         showNotification(
-            `Gruppe "${name}" ausgewaehlt. Erstellt: ${sync.created || 0}, Aktualisiert: ${sync.updated || 0}`,
+            t('ldap.groupSelected', { name, created: sync.created || 0, updated: sync.updated || 0 }),
             'success'
         );
 
@@ -279,13 +279,13 @@ async function selectGroup(dn, name) {
 }
 
 async function deselectGroup() {
-    if (!await msgbox('cancel/yes', 'warning', 'Gruppenauswahl aufheben? Alle LDAP-Benutzer werden deaktiviert.')) return;
+    if (!await msgbox('cancel/yes', 'warning', t('ldap.deselectConfirm'))) return;
 
     try {
         const resp = await fetch('/api/admin/ldap/group', { method: 'DELETE' });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
-        showNotification('Gruppenauswahl aufgehoben', 'success');
+        showNotification(t('ldap.deselected'), 'success');
         await loadLdapConfig();
         renderLdapTab();
     } catch (error) {
@@ -302,13 +302,13 @@ async function manualSync() {
         const resp = await fetch('/api/admin/ldap/sync', { method: 'POST' });
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.detail || 'Sync fehlgeschlagen');
+            throw new Error(data.detail || t('ldap.syncFailed'));
         }
 
         const data = await resp.json();
         const sync = data.sync || {};
         showNotification(
-            `Sync abgeschlossen. Erstellt: ${sync.created || 0}, Aktualisiert: ${sync.updated || 0}, Deaktiviert: ${sync.deactivated || 0}`,
+            t('ldap.syncComplete', { created: sync.created || 0, updated: sync.updated || 0, deactivated: sync.deactivated || 0 }),
             'success'
         );
 

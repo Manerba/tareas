@@ -26,22 +26,21 @@ function renderAllgemeinTab() {
     container.innerHTML = `
         <div class="mail-container">
             <div class="mail-section">
-                <h3>Server-Adresse</h3>
+                <h3>${t('allgemein.title')}</h3>
                 <div class="mail-form">
                     <div class="mail-form-row">
                         <div class="mail-form-field">
-                            <label>Server-Adresse</label>
+                            <label>${t('allgemein.serverAddress')}</label>
                             <input type="text" id="appServerAddress"
                                    value="${escapeAttr(c.server_address || '')}"
-                                   placeholder="z.B. tareas.domain.tld oder 192.168.1.100:8504">
+                                   placeholder="${t('allgemein.placeholder')}">
                             <small style="color: var(--text-muted); margin-top: 4px; display: block;">
-                                Protokoll (http/https) wird automatisch aus den TLS-Einstellungen abgeleitet.
-                                Diese Adresse wird in E-Mails als Link zur App verwendet.
+                                ${t('allgemein.hint')}
                             </small>
                         </div>
                     </div>
                     <div class="mail-form-actions">
-                        <button class="action-btn primary" onclick="saveAppConfig()">Speichern</button>
+                        <button class="action-btn primary" onclick="saveAppConfig()">${t('common.save')}</button>
                     </div>
                 </div>
             </div>
@@ -52,14 +51,14 @@ async function saveAppConfig() {
     const server_address = document.getElementById('appServerAddress')?.value?.trim();
 
     if (!server_address) {
-        showNotification('Bitte Server-Adresse eingeben', 'error');
+        showNotification(t('allgemein.addressRequired'), 'error');
         return;
     }
 
     await saveConfigToAPI({
         endpoint: '/api/admin/app/config',
         data: { server_address },
-        successMessage: 'App-Konfiguration gespeichert',
+        successMessage: t('allgemein.saved'),
         onSuccess: async () => {
             await loadAppConfig();
             renderAllgemeinTab();

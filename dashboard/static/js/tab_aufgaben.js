@@ -79,7 +79,7 @@ async function initAufgabenTab() {
         await aufgabenTable.loadData();
     } catch (error) {
         console.error('Aufgaben-Tab Fehler:', error);
-        container.innerHTML = '<div class="table-error">Fehler beim Laden der Aufgaben</div>';
+        container.innerHTML = `<div class="table-error">${t('tasks.loadError')}</div>`;
     }
 }
 
@@ -93,29 +93,29 @@ function buildControlBar() {
 
     filterBar.innerHTML = `
         <div class="control-bar">
-            <button class="control-btn primary" onclick="openNewTaskModal()">+ Neue Aufgabe</button>
-            <button class="control-btn" id="toggleAllBtn" onclick="toggleAllExpand()">Alle aufklappen</button>
+            <button class="control-btn primary" onclick="openNewTaskModal()">${t('tasks.newTask')}</button>
+            <button class="control-btn" id="toggleAllBtn" onclick="toggleAllExpand()">${t('tasks.expandAll')}</button>
             <span class="separator"></span>
             <div class="filter-group">
-                <label class="filter-label">Typ:</label>
+                <label class="filter-label">${t('tasks.typeLabel')}</label>
                 <select class="filter-select" id="typeFilterSelect" onchange="applyControlFilter()">
-                    <option value="">Alle</option>
-                    <option value="aufgabe">Aufgabe</option>
-                    <option value="projekt">Projekt</option>
+                    <option value="">${t('common.all')}</option>
+                    <option value="aufgabe">${t('type.aufgabe')}</option>
+                    <option value="projekt">${t('type.projekt')}</option>
                 </select>
             </div>
             <div class="filter-group">
-                <label class="filter-label">Status:</label>
+                <label class="filter-label">${t('tasks.statusLabel')}</label>
                 <select class="filter-select" id="statusFilterSelect" onchange="applyControlFilter()">
-                    <option value="">Alle</option>
-                    <option value="offen">Offen</option>
-                    <option value="in_arbeit">In Arbeit</option>
-                    <option value="erledigt">Erledigt</option>
+                    <option value="">${t('common.all')}</option>
+                    <option value="offen">${t('status.offen')}</option>
+                    <option value="in_arbeit">${t('status.in_arbeit')}</option>
+                    <option value="erledigt">${t('status.erledigt')}</option>
                 </select>
             </div>
             <span class="spacer"></span>
             <input type="text" class="control-search" id="searchFilterInput"
-                   placeholder="Suche..." oninput="applySearchFilter(this.value)">
+                   placeholder="${t('common.search')}" oninput="applySearchFilter(this.value)">
         </div>
     `;
 }
@@ -140,7 +140,7 @@ function toggleAllExpand() {
 
     const btn = document.getElementById('toggleAllBtn');
     if (btn) {
-        btn.textContent = allExpanded ? 'Alle zuklappen' : 'Alle aufklappen';
+        btn.textContent = allExpanded ? t('tasks.collapseAll') : t('tasks.expandAll');
         btn.classList.toggle('active', allExpanded);
     }
 }
@@ -149,12 +149,15 @@ function toggleAllExpand() {
 // Category Filter Buttons
 // ========================================
 
-const _categoryLabels = {
-    'team': 'Team',
-    'zugewiesene': 'Zugewiesen',
-    'vergebene': 'Vergeben',
-    'eigene': 'Eigene',
-};
+function _getCategoryLabel(cat) {
+    const labels = {
+        'team': t('category.team'),
+        'zugewiesene': t('category.zugewiesene'),
+        'vergebene': t('category.vergebene'),
+        'eigene': t('category.eigene'),
+    };
+    return labels[cat] || cat;
+}
 
 function buildCategoryButtons() {
     if (!aufgabenTable) return;
@@ -190,7 +193,7 @@ function buildCategoryButtons() {
     order.forEach(cat => {
         if (!counts[cat]) return;
         const isActive = activeSet.has(cat);
-        const label = _categoryLabels[cat] || cat;
+        const label = _getCategoryLabel(cat);
         html += `<button class="control-btn category-btn${isActive ? ' active' : ''}" data-category="${escapeAttr(cat)}" onclick="toggleCategoryFilter('${escapeAttr(cat)}')">${label} (${counts[cat]})</button>`;
     });
 
@@ -258,9 +261,9 @@ function activateInlineEditing(rowId) {
         if (canEditStatus) {
             cells[2]._originalHTML = cells[2].innerHTML;
             cells[2].innerHTML = `<select class="inline-edit-select" id="inlineStatus_${row.id}" onclick="event.stopPropagation()">
-                <option value="offen" ${row.status === 'offen' ? 'selected' : ''}>Offen</option>
-                <option value="in_arbeit" ${row.status === 'in_arbeit' ? 'selected' : ''}>In Arbeit</option>
-                <option value="erledigt" ${row.status === 'erledigt' ? 'selected' : ''}>Erledigt</option>
+                <option value="offen" ${row.status === 'offen' ? 'selected' : ''}>${t('status.offen')}</option>
+                <option value="in_arbeit" ${row.status === 'in_arbeit' ? 'selected' : ''}>${t('status.in_arbeit')}</option>
+                <option value="erledigt" ${row.status === 'erledigt' ? 'selected' : ''}>${t('status.erledigt')}</option>
             </select>`;
         }
     }
@@ -374,14 +377,14 @@ async function saveTaskFromInline(taskId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!resp.ok) throw new Error('Fehler beim Speichern');
+        if (!resp.ok) throw new Error(t('common.saveError'));
     } catch (error) {
         // Bei Fehler: lokale Daten zuruecksetzen
         for (const [key, value] of Object.entries(oldValues)) {
             row[key] = value;
         }
         console.error('Inline-Save fehlgeschlagen:', error);
-        showNotification('Fehler beim Speichern', 'error');
+        showNotification(t('common.saveError'), 'error');
     }
 }
 
@@ -402,11 +405,11 @@ function renderAufgabenBadge(value, col, row) {
 
     const cssClass = value.toLowerCase().replace(/\s+/g, '_');
     const labelMap = {
-        'offen': 'Offen',
-        'in_arbeit': 'In Arbeit',
-        'erledigt': 'Erledigt',
-        'aufgabe': 'Aufgabe',
-        'projekt': 'Projekt',
+        'offen': t('status.offen'),
+        'in_arbeit': t('status.in_arbeit'),
+        'erledigt': t('status.erledigt'),
+        'aufgabe': t('type.aufgabe'),
+        'projekt': t('type.projekt'),
     };
     const label = labelMap[value] || value;
     return `<span class="badge badge-${cssClass}">${label}</span>`;
@@ -425,7 +428,7 @@ function renderDeleteAction(value, col, row) {
     const perm = getTaskPermissions(row);
     if (!perm.isCreator && !perm.isOwnTask && !perm.isLegacy) return '';
     const taskId = row.id;
-    return `<button class="row-delete-btn" onclick="event.stopPropagation(); deleteTask(${taskId})" title="Loeschen">&times;</button>`;
+    return `<button class="row-delete-btn" onclick="event.stopPropagation(); deleteTask(${taskId})" title="${t('common.delete')}">&times;</button>`;
 }
 
 // ========================================
@@ -450,7 +453,7 @@ function getTaskPermissions(row) {
 // ========================================
 
 function buildUserOptions(selectedId) {
-    let html = '<option value="">-- Nicht zugewiesen --</option>';
+    let html = `<option value="">${t('tasks.unassigned')}</option>`;
     cachedUsers.forEach(u => {
         const name = `${u.vorname} ${u.nachname}`.trim() || `User ${u.id}`;
         const sel = u.id === selectedId ? 'selected' : '';
@@ -492,21 +495,21 @@ async function onTaskRowExpanded(rowId, detailElement) {
     // Beschreibung: WYSIWYG fuer Ersteller/eigene, readonly fuer Zugewiesene
     if (perm.isAssignee && !perm.isCreator) {
         html += `<div class="notes-section">
-            <h5>Beschreibung von ${escapeHtml(row.created_by_name || 'Ersteller')}</h5>
-            <div class="description-readonly">${sanitizeHtml(row.description) || '<em>Keine Beschreibung</em>'}</div>
+            <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
+            <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
         </div>`;
         html += `<div class="notes-section">
-            <h5>Meine Notizen</h5>
+            <h5>${t('detail.myNotes')}</h5>
             <div id="notesEditor_${row.id}"></div>
         </div>`;
     } else if (perm.isCreator && perm.isAssigned) {
         html += `<div class="notes-section">
-            <h5>Beschreibung</h5>
-            <div class="description-readonly">${sanitizeHtml(row.description) || '<em>Keine Beschreibung</em>'}</div>
+            <h5>${t('detail.description')}</h5>
+            <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
         </div>`;
         html += `<div class="notes-section" id="assigneeNotes_${row.id}">
-            <h5>Notizen von ${escapeHtml(row.assigned_to_name || 'Zugewiesenem')}</h5>
-            <div class="description-readonly" id="assigneeNotesContent_${row.id}"><em>Laden...</em></div>
+            <h5>${t('detail.notesFrom', { name: escapeHtml(row.assigned_to_name || 'Zugewiesenem') })}</h5>
+            <div class="description-readonly" id="assigneeNotesContent_${row.id}"><em>${t('common.loading')}</em></div>
         </div>`;
     } else {
         html += `<div id="wysiwygEditor_${row.id}"></div>`;
@@ -524,7 +527,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
     // Dateiablage-Button fuer Aufgaben (nicht-Projekte)
     if (row.task_type !== 'projekt' && ncConfigured && (perm.isCreator || perm.isLegacy)) {
         html += `<div class="subtask-section-actions" style="margin-top:8px;display:flex;justify-content:flex-end">
-            <button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : 'Dateiablage'}</button>
+            <button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>
         </div>`;
     }
 
@@ -532,11 +535,11 @@ async function onTaskRowExpanded(rowId, detailElement) {
     if (row.task_type === 'projekt') {
         html += `<div class="subtask-section" id="subtaskSection_${row.id}">
             <div class="subtask-section-header">
-                <h4>Teilaufgaben</h4>
+                <h4>${t('subtask.title')}</h4>
                 <div class="subtask-section-actions">
-                    <button class="control-btn" onclick="event.stopPropagation(); openNetzplan(${row.id})">Netzplan</button>
-                    ${perm.isCreator ? `<button class="team-btn" onclick="event.stopPropagation(); openTeamDialog(${row.id})">Team</button>` : ''}
-                    ${ncConfigured && (perm.isCreator || perm.isLegacy) ? `<button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : 'Dateiablage'}</button>` : ''}
+                    <button class="control-btn" onclick="event.stopPropagation(); openNetzplan(${row.id})">${t('netzplan.title')}</button>
+                    ${perm.isCreator ? `<button class="team-btn" onclick="event.stopPropagation(); openTeamDialog(${row.id})">${t('team.title')}</button>` : ''}
+                    ${ncConfigured && (perm.isCreator || perm.isLegacy) ? `<button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>` : ''}
                 </div>
             </div>
             <div id="subtaskContainer_${row.id}">
@@ -570,11 +573,11 @@ async function onTaskRowExpanded(rowId, detailElement) {
             if (contentEl) {
                 contentEl.innerHTML = assigneeNote && assigneeNote.content
                     ? sanitizeHtml(assigneeNote.content)
-                    : '<em>Keine Notizen vorhanden</em>';
+                    : `<em>${t('detail.noNotes')}</em>`;
             }
         } catch (e) {
             const contentEl = document.getElementById(`assigneeNotesContent_${row.id}`);
-            if (contentEl) contentEl.innerHTML = '<em>Fehler beim Laden</em>';
+            if (contentEl) contentEl.innerHTML = `<em>${t('detail.loadError')}</em>`;
         }
     } else {
         // WYSIWYG-Editor fuer Beschreibung
@@ -696,7 +699,7 @@ async function saveTask(taskId, silent = false) {
             body: JSON.stringify(body),
         });
 
-        if (!resp.ok) throw new Error('Fehler beim Speichern');
+        if (!resp.ok) throw new Error(t('common.saveError'));
 
         // Notizen separat speichern (fuer Zugewiesene)
         if (perm.isAssignee && !perm.isCreator) {
@@ -712,12 +715,12 @@ async function saveTask(taskId, silent = false) {
         }
 
         if (!silent) {
-            showNotification('Aufgabe gespeichert', 'success');
+            showNotification(t('tasks.saved'), 'success');
             await aufgabenTable.loadData();
         }
     } catch (error) {
         console.error('Speichern fehlgeschlagen:', error);
-        showNotification('Fehler beim Speichern', 'error');
+        showNotification(t('common.saveError'), 'error');
     }
 }
 
@@ -733,41 +736,41 @@ async function onSubtaskViewExpanded(row, detailElement) {
     let html = `<div class="detail-edit" data-task-id="${row.id}">`;
 
     // Info-Hinweis
-    html += `<div class="subtask-view-info">Teilaufgabe aus Projekt: <strong>${escapeHtml(row._project_name)}</strong></div>`;
+    html += `<div class="subtask-view-info">${t('subtask.info', { name: escapeHtml(row._project_name) })}</div>`;
 
     // Header-Felder (alle readonly ausser Status)
     html += `<div class="detail-edit-header">
         <div class="detail-edit-field flex-grow">
-            <label>Name</label>
+            <label>${t('subtask.col.name')}</label>
             <input type="text" value="${escapeAttr(row.name)}" disabled class="field-readonly">
         </div>
         <div class="detail-edit-field">
-            <label>Deadline</label>
+            <label>${t('subtask.col.deadline')}</label>
             <input type="date" value="${deadlineISO}" disabled class="field-readonly">
         </div>
         <div class="detail-edit-field">
-            <label>Prioritaet</label>
+            <label>${t('subtask.col.priority')}</label>
             <input type="number" value="${row.priority}" disabled class="field-readonly" style="width:70px">
         </div>
         <div class="detail-edit-field">
-            <label>Status</label>
+            <label>${t('tasks.status')}</label>
             <select id="stViewStatus_${stId}">
-                <option value="0" ${row._status_percent === 0 ? 'selected' : ''}>Offen</option>
-                <option value="50" ${row._status_percent > 0 && row._status_percent < 100 ? 'selected' : ''}>In Arbeit</option>
-                <option value="100" ${row._status_percent >= 100 ? 'selected' : ''}>Erledigt</option>
+                <option value="0" ${row._status_percent === 0 ? 'selected' : ''}>${t('status.offen')}</option>
+                <option value="50" ${row._status_percent > 0 && row._status_percent < 100 ? 'selected' : ''}>${t('status.in_arbeit')}</option>
+                <option value="100" ${row._status_percent >= 100 ? 'selected' : ''}>${t('status.erledigt')}</option>
             </select>
         </div>
     </div>`;
 
     // Beschreibung readonly
     html += `<div class="notes-section">
-        <h5>Beschreibung von ${escapeHtml(row.created_by_name || 'Ersteller')}</h5>
-        <div class="description-readonly">${sanitizeHtml(row.description) || '<em>Keine Beschreibung</em>'}</div>
+        <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
+        <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
     </div>`;
 
     // Eigene Notizen (WYSIWYG)
     html += `<div class="notes-section">
-        <h5>Meine Notizen</h5>
+        <h5>${t('detail.myNotes')}</h5>
         <div id="stViewNotes_${stId}"></div>
     </div>`;
 
@@ -815,7 +818,7 @@ async function saveSubtaskView(row, silent = false) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status_percent: statusPercent }),
         });
-        if (!resp.ok) throw new Error('Fehler beim Speichern');
+        if (!resp.ok) throw new Error(t('common.saveError'));
 
         // 2. Notizen speichern (nur wenn project_id bekannt)
         if (projectId) {
@@ -831,27 +834,27 @@ async function saveSubtaskView(row, silent = false) {
         }
 
         if (!silent) {
-            showNotification('Teilaufgabe gespeichert', 'success');
+            showNotification(t('subtask.saved'), 'success');
             await aufgabenTable.loadData();
         }
     } catch (error) {
         console.error('Speichern fehlgeschlagen:', error);
-        showNotification('Fehler beim Speichern', 'error');
+        showNotification(t('common.saveError'), 'error');
     }
 }
 
 async function deleteTask(taskId) {
-    if (!await msgbox('cancel/yes', 'confirm', 'Aufgabe wirklich loeschen?')) return;
+    if (!await msgbox('cancel/yes', 'confirm', t('tasks.deleteConfirm'))) return;
 
     try {
         const resp = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
-        if (!resp.ok) throw new Error('Fehler beim Loeschen');
+        if (!resp.ok) throw new Error(t('common.deleteError'));
 
-        showNotification('Aufgabe geloescht', 'success');
+        showNotification(t('tasks.deleted'), 'success');
         await aufgabenTable.loadData();
     } catch (error) {
         console.error('Loeschen fehlgeschlagen:', error);
-        showNotification('Fehler beim Loeschen', 'error');
+        showNotification(t('common.deleteError'), 'error');
     }
 }
 
@@ -886,7 +889,7 @@ async function loadSubTasks(taskId) {
         expandedIds.forEach(id => toggleSubTaskDetail(taskId, id));
     } catch (error) {
         console.error('SubTasks laden fehlgeschlagen:', error);
-        container.innerHTML = '<div class="table-error">Fehler beim Laden</div>';
+        container.innerHTML = `<div class="table-error">${t('common.loadError')}</div>`;
     }
 }
 
@@ -907,16 +910,16 @@ function renderSubTasks(taskId, subtasks) {
     let html = `<table class="subtask-table">
         <thead>
             <tr>
-                <th class="pos-cell">Pos.</th>
-                <th>Name</th>
-                <th>Vorgaenger</th>
-                <th>Bereich</th>
-                <th>Von</th>
-                <th>Zugewiesen an</th>
-                <th>Erstellt</th>
-                <th>Deadline</th>
-                <th>Prioritaet</th>
-                <th>Status (%)</th>
+                <th class="pos-cell">${t('subtask.col.pos')}</th>
+                <th>${t('subtask.col.name')}</th>
+                <th>${t('subtask.col.predecessor')}</th>
+                <th>${t('subtask.col.area')}</th>
+                <th>${t('subtask.col.from')}</th>
+                <th>${t('subtask.col.assignedTo')}</th>
+                <th>${t('subtask.col.created')}</th>
+                <th>${t('subtask.col.deadline')}</th>
+                <th>${t('subtask.col.priority')}</th>
+                <th>${t('subtask.col.status')}</th>
                 <th></th>
             </tr>
         </thead>
@@ -978,7 +981,7 @@ function renderSubTasks(taskId, subtasks) {
                 <span class="st-cell-text">${predDisplay ? `<span class="predecessor-display">${escapeHtml(predDisplay)}</span>` : '-'}</span>
                 <span class="st-cell-edit">
                     <select id="predSelect_${st.id}" onclick="event.stopPropagation()" onchange="addPredecessorDirect(${taskId}, ${st.id}, this)">
-                        <option value="">+Vorg.</option>
+                        <option value="">${t('subtask.addPred')}</option>
                         ${predOptions}
                     </select>
                     <div class="st-pred-chips" id="predChips_${st.id}">${predChips}</div>
@@ -1017,9 +1020,9 @@ function renderSubTasks(taskId, subtasks) {
             ${!stStatusRO ? `<td>
                 <span class="st-cell-text">${renderAufgabenBadge(statusPct >= 100 ? 'erledigt' : statusPct > 0 ? 'in_arbeit' : 'offen', {field:'status'}, st)}</span>
                 <span class="st-cell-edit"><select id="stEditStatus_${st.id}" onclick="event.stopPropagation()">
-                    <option value="0" ${statusPct === 0 ? 'selected' : ''}>Offen</option>
-                    <option value="50" ${statusPct > 0 && statusPct < 100 ? 'selected' : ''}>In Arbeit</option>
-                    <option value="100" ${statusPct >= 100 ? 'selected' : ''}>Erledigt</option>
+                    <option value="0" ${statusPct === 0 ? 'selected' : ''}>${t('status.offen')}</option>
+                    <option value="50" ${statusPct > 0 && statusPct < 100 ? 'selected' : ''}>${t('status.in_arbeit')}</option>
+                    <option value="100" ${statusPct >= 100 ? 'selected' : ''}>${t('status.erledigt')}</option>
                 </select></span>
             </td>` : `<td>${renderAufgabenBadge(statusPct >= 100 ? 'erledigt' : statusPct > 0 ? 'in_arbeit' : 'offen', {field:'status'}, st)}</td>`}`;
 
@@ -1039,15 +1042,15 @@ function renderSubTasks(taskId, subtasks) {
 
         // WYSIWYG oder Readonly-Beschreibung
         if (isSubCreator && isSubAssigned) {
-            html += `<div class="description-readonly">${sanitizeHtml(st.description) || '<em>Keine Beschreibung</em>'}</div>`;
+            html += `<div class="description-readonly">${sanitizeHtml(st.description) || `<em>${t('detail.noDescription')}</em>`}</div>`;
             html += `<div class="notes-section" id="stAssigneeNotes_${st.id}">
-                <h5>Notizen von ${escapeHtml(st.assigned_to_name || 'Zugewiesenem')}</h5>
-                <div class="description-readonly" id="stAssigneeNotesContent_${st.id}"><em>Laden...</em></div>
+                <h5>${t('detail.notesFrom', { name: escapeHtml(st.assigned_to_name || 'Zugewiesenem') })}</h5>
+                <div class="description-readonly" id="stAssigneeNotesContent_${st.id}"><em>${t('common.loading')}</em></div>
             </div>`;
         } else if (canEdit) {
             html += `<div id="stWysiwyg_${st.id}"></div>`;
         } else {
-            html += `<div class="description-readonly">${sanitizeHtml(st.description) || '<em>Keine Beschreibung</em>'}</div>`;
+            html += `<div class="description-readonly">${sanitizeHtml(st.description) || `<em>${t('detail.noDescription')}</em>`}</div>`;
         }
 
         html += `</div>
@@ -1062,7 +1065,7 @@ function renderSubTasks(taskId, subtasks) {
     const canCreate = parentPerm.isCreator || parentPerm.isLegacy || (firstSt && firstSt.permissions && firstSt.permissions.can_create);
     if (canCreate || subtasks.length === 0) {
         html += `<div class="subtask-add-row">
-            <button class="control-btn" onclick="addSubTask(${taskId})">+ Teilaufgabe</button>
+            <button class="control-btn" onclick="addSubTask(${taskId})">${t('subtask.add')}</button>
         </div>`;
     }
 
@@ -1113,9 +1116,9 @@ async function toggleSubTaskDetail(taskId, subtaskId) {
                 const assigneeNote = (notesData.items || []).find(n => n.user_id === st?.assigned_to);
                 notesContent.innerHTML = assigneeNote && assigneeNote.content
                     ? sanitizeHtml(assigneeNote.content)
-                    : '<em>Keine Notizen vorhanden</em>';
+                    : `<em>${t('detail.noNotes')}</em>`;
             } catch (e) {
-                notesContent.innerHTML = '<em>Fehler beim Laden</em>';
+                notesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
             }
         }
 
@@ -1184,10 +1187,10 @@ async function saveSubTask(taskId, subtaskId, silent = false) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!resp.ok) throw new Error('Fehler beim Speichern');
+        if (!resp.ok) throw new Error(t('common.saveError'));
 
         if (!silent) {
-            showNotification('Teilaufgabe gespeichert', 'success');
+            showNotification(t('subtask.saved'), 'success');
             await loadSubTasks(taskId);
         } else if (st) {
             // Lokale Daten aktualisieren damit Zuklappen korrekte Werte zeigt
@@ -1231,12 +1234,12 @@ async function saveSubTask(taskId, subtaskId, silent = false) {
         }
     } catch (error) {
         console.error('SubTask speichern fehlgeschlagen:', error);
-        showNotification('Fehler beim Speichern', 'error');
+        showNotification(t('common.saveError'), 'error');
     }
 }
 
 async function addNewAreaInDetail(btn, taskId, subtaskId) {
-    const name = prompt('Neuer Bereich:');
+    const name = prompt(t('subtask.newAreaPrompt'));
     if (!name || !name.trim()) return;
 
     try {
@@ -1245,7 +1248,7 @@ async function addNewAreaInDetail(btn, taskId, subtaskId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: name.trim() }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         const data = await resp.json();
         cachedAreas.push({ id: data.id, name: data.name });
@@ -1260,9 +1263,9 @@ async function addNewAreaInDetail(btn, taskId, subtaskId) {
             select.appendChild(option);
         }
 
-        showNotification(`Bereich "${data.name}" erstellt`, 'success');
+        showNotification(t('subtask.areaCreated', { name: data.name }), 'success');
     } catch (error) {
-        showNotification('Bereich existiert bereits oder Fehler', 'error');
+        showNotification(t('subtask.areaExistsError'), 'error');
     }
 }
 
@@ -1279,10 +1282,10 @@ async function updateSubTask(subtaskId, field, value) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
     } catch (error) {
         console.error('SubTask-Update fehlgeschlagen:', error);
-        showNotification('Fehler beim Aktualisieren', 'error');
+        showNotification(t('team.updateError'), 'error');
     }
 }
 
@@ -1291,14 +1294,14 @@ async function addSubTask(taskId) {
         const resp = await fetch(`/api/tasks/${taskId}/subtasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Neue Teilaufgabe' }),
+            body: JSON.stringify({ name: t('subtask.newName') }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('SubTask anlegen fehlgeschlagen:', error);
-        showNotification('Fehler beim Anlegen', 'error');
+        showNotification(t('common.createError'), 'error');
     }
 }
 
@@ -1309,27 +1312,27 @@ async function moveSubTask(taskId, subtaskId, direction) {
         body: JSON.stringify({ direction }),
     });
     if (!resp.ok) {
-        showNotification('Verschieben fehlgeschlagen', 'error');
+        showNotification(t('subtask.moveFailed'), 'error');
         return;
     }
     const data = await resp.json();
     if (data.removed_dependencies && data.removed_dependencies.length > 0) {
-        showNotification(`Position getauscht. ${data.removed_dependencies.length} ungueltige Abhaengigkeit(en) entfernt.`, 'info');
+        showNotification(t('subtask.moveRemovedDeps', { count: data.removed_dependencies.length }), 'info');
     }
     await loadSubTasks(taskId);
 }
 
 async function deleteSubTask(taskId, subtaskId) {
-    if (!await msgbox('cancel/yes', 'confirm', 'Teilaufgabe wirklich loeschen?')) return;
+    if (!await msgbox('cancel/yes', 'confirm', t('subtask.deleteConfirm'))) return;
 
     try {
         const resp = await fetch(`/api/subtasks/${subtaskId}`, { method: 'DELETE' });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('SubTask loeschen fehlgeschlagen:', error);
-        showNotification('Fehler beim Loeschen', 'error');
+        showNotification(t('common.deleteError'), 'error');
     }
 }
 
@@ -1363,7 +1366,7 @@ async function addPredecessor(taskId, subtaskId) {
     // Aktuelle Chips lesen um Duplikate zu vermeiden
     const chipsContainer = document.getElementById(`predChips_${subtaskId}`);
     if (chipsContainer && chipsContainer.querySelector(`[data-pred-id="${predId}"]`)) {
-        showNotification('Vorgaenger bereits vorhanden', 'error');
+        showNotification(t('subtask.predExists'), 'error');
         return;
     }
 
@@ -1378,13 +1381,13 @@ async function addPredecessor(taskId, subtaskId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ predecessor_ids: predIds }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         // Tabelle neu laden
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('Vorgaenger hinzufuegen fehlgeschlagen:', error);
-        showNotification('Fehler beim Hinzufuegen', 'error');
+        showNotification(t('team.addError'), 'error');
     }
 }
 
@@ -1396,7 +1399,7 @@ async function addPredecessorDirect(taskId, subtaskId, selectEl) {
     // Aktuelle Chips lesen um Duplikate zu vermeiden
     const chipsContainer = document.getElementById(`predChips_${subtaskId}`);
     if (chipsContainer && chipsContainer.querySelector(`[data-pred-id="${predId}"]`)) {
-        showNotification('Vorgaenger bereits vorhanden', 'error');
+        showNotification(t('subtask.predExists'), 'error');
         selectEl.value = '';
         return;
     }
@@ -1415,18 +1418,18 @@ async function addPredecessorDirect(taskId, subtaskId, selectEl) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ predecessor_ids: predIds }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         // Tabelle neu laden
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('Vorgaenger hinzufuegen fehlgeschlagen:', error);
-        showNotification('Fehler beim Hinzufuegen', 'error');
+        showNotification(t('team.addError'), 'error');
     }
 }
 
 async function removePredecessor(taskId, subtaskId, predIdToRemove) {
-    if (!await msgbox('cancel/yes', 'confirm', 'Vorgaenger wirklich entfernen?')) return;
+    if (!await msgbox('cancel/yes', 'confirm', t('subtask.predRemoveConfirm'))) return;
 
     // Aktuelle predecessor_ids sammeln und die zu entfernende rausfiltern
     const chipsContainer = document.getElementById(`predChips_${subtaskId}`);
@@ -1441,18 +1444,18 @@ async function removePredecessor(taskId, subtaskId, predIdToRemove) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ predecessor_ids: predIds }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         // Tabelle neu laden
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('Vorgaenger entfernen fehlgeschlagen:', error);
-        showNotification('Fehler beim Entfernen', 'error');
+        showNotification(t('team.removeError'), 'error');
     }
 }
 
 async function addNewArea(btn, subtaskId) {
-    const name = prompt('Neuer Bereich:');
+    const name = prompt(t('subtask.newAreaPrompt'));
     if (!name || !name.trim()) return;
 
     try {
@@ -1461,7 +1464,7 @@ async function addNewArea(btn, subtaskId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: name.trim() }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
         const data = await resp.json();
         cachedAreas.push({ id: data.id, name: data.name });
@@ -1481,9 +1484,9 @@ async function addNewArea(btn, subtaskId) {
             }
         }
 
-        showNotification(`Bereich "${data.name}" erstellt`, 'success');
+        showNotification(t('subtask.areaCreated', { name: data.name }), 'success');
     } catch (error) {
-        showNotification('Bereich existiert bereits oder Fehler', 'error');
+        showNotification(t('subtask.areaExistsError'), 'error');
     }
 }
 
@@ -1493,29 +1496,29 @@ async function addNewArea(btn, subtaskId) {
 
 function openNewTaskModal() {
     createModal({
-        title: 'Neue Aufgabe',
+        title: t('tasks.newTaskTitle'),
         body: `
             <div class="modal-field">
-                <label>Name *</label>
-                <input type="text" id="newTaskName" placeholder="Aufgabenname..." autofocus>
+                <label>${t('tasks.name')}</label>
+                <input type="text" id="newTaskName" placeholder="${t('tasks.namePlaceholder')}" autofocus>
             </div>
             <div class="modal-field">
-                <label>Typ</label>
+                <label>${t('tasks.type')}</label>
                 <select id="newTaskType">
-                    <option value="aufgabe">Aufgabe</option>
-                    <option value="projekt">Projekt</option>
+                    <option value="aufgabe">${t('type.aufgabe')}</option>
+                    <option value="projekt">${t('type.projekt')}</option>
                 </select>
             </div>
             <div class="modal-field">
-                <label>Deadline</label>
+                <label>${t('tasks.deadline')}</label>
                 <input type="date" id="newTaskDeadline">
             </div>
             <div class="modal-field">
-                <label>Prioritaet (1-100)</label>
+                <label>${t('tasks.priorityRange')}</label>
                 <input type="number" id="newTaskPriority" value="50" min="1" max="100">
             </div>`,
-        footer: '<button class="action-btn" onclick="closeModal()">Abbrechen</button>' +
-                '<button class="action-btn primary" onclick="createNewTask()">Erstellen</button>',
+        footer: `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>` +
+                `<button class="action-btn primary" onclick="createNewTask()">${t('common.create')}</button>`,
         onOpen: () => {
             // Enter im Name-Feld erstellt Aufgabe
             const nameInput = document.getElementById('newTaskName');
@@ -1532,7 +1535,7 @@ function openNewTaskModal() {
 async function createNewTask() {
     const name = document.getElementById('newTaskName')?.value?.trim();
     if (!name) {
-        showNotification('Name ist ein Pflichtfeld', 'error');
+        showNotification(t('tasks.nameRequired'), 'error');
         return;
     }
 
@@ -1547,16 +1550,16 @@ async function createNewTask() {
             body: JSON.stringify({ name, task_type, deadline, priority }),
         });
 
-        if (!resp.ok) throw new Error('Fehler beim Erstellen');
+        if (!resp.ok) throw new Error(t('common.createError'));
 
         // Modal schliessen
         closeModal();
 
-        showNotification('Aufgabe erstellt', 'success');
+        showNotification(t('tasks.created'), 'success');
         await aufgabenTable.loadData();
     } catch (error) {
         console.error('Erstellen fehlgeschlagen:', error);
-        showNotification('Fehler beim Erstellen', 'error');
+        showNotification(t('common.createError'), 'error');
     }
 }
 
@@ -1566,20 +1569,20 @@ async function createNewTask() {
 
 async function openTeamDialog(projectId) {
     createModal({
-        title: 'Teammitglieder',
+        title: t('team.title'),
         cssClass: 'modal-wide',
         body: `
-            <div class="team-info-text">Sie sind der Ersteller und haben vollen Zugriff.</div>
+            <div class="team-info-text">${t('team.creatorInfo')}</div>
             <div class="team-add-row">
                 <select id="teamAddUserSelect">
-                    <option value="">-- Benutzer auswaehlen --</option>
+                    <option value="">${t('team.selectUser')}</option>
                 </select>
-                <button class="control-btn primary" onclick="addTeamMember(${projectId})">+ Mitglied</button>
+                <button class="control-btn primary" onclick="addTeamMember(${projectId})">${t('team.addMember')}</button>
             </div>
             <div id="teamMembersContainer">
                 <div class="table-loading"><div class="spinner"></div></div>
             </div>`,
-        footer: '<button class="action-btn" onclick="closeModal()">Schliessen</button>',
+        footer: `<button class="action-btn" onclick="closeModal()">${t('common.close')}</button>`,
     });
 
     await loadTeamMembers(projectId);
@@ -1591,7 +1594,7 @@ async function loadTeamMembers(projectId) {
 
     try {
         const resp = await fetch(`/api/tasks/${projectId}/members`);
-        if (!resp.ok) throw new Error('Fehler beim Laden');
+        if (!resp.ok) throw new Error(t('common.loadError'));
         const data = await resp.json();
         const members = data.items || [];
 
@@ -1602,7 +1605,7 @@ async function loadTeamMembers(projectId) {
 
         const select = document.getElementById('teamAddUserSelect');
         if (select) {
-            select.innerHTML = '<option value="">-- Benutzer auswaehlen --</option>';
+            select.innerHTML = `<option value="">${t('team.selectUser')}</option>`;
             cachedUsers.forEach(u => {
                 if (u.id === creatorId || memberIds.includes(u.id)) return;
                 const name = `${u.vorname} ${u.nachname}`.trim() || `User ${u.id}`;
@@ -1611,19 +1614,19 @@ async function loadTeamMembers(projectId) {
         }
 
         if (members.length === 0) {
-            container.innerHTML = '<div class="team-empty">Noch keine Teammitglieder hinzugefuegt.</div>';
+            container.innerHTML = `<div class="team-empty">${t('team.noMembers')}</div>`;
             return;
         }
 
         let html = `<table class="team-table">
             <thead>
                 <tr>
-                    <th>Nachname</th>
-                    <th>Vorname</th>
-                    <th>E-Mail</th>
-                    <th style="text-align:center">Lesen</th>
-                    <th style="text-align:center">Bearbeiten</th>
-                    <th style="text-align:center">Erstellen</th>
+                    <th>${t('team.col.lastName')}</th>
+                    <th>${t('team.col.firstName')}</th>
+                    <th>${t('team.col.email')}</th>
+                    <th style="text-align:center">${t('team.col.read')}</th>
+                    <th style="text-align:center">${t('team.col.edit')}</th>
+                    <th style="text-align:center">${t('team.col.create')}</th>
                     <th></th>
                 </tr>
             </thead>
@@ -1645,14 +1648,14 @@ async function loadTeamMembers(projectId) {
         container.innerHTML = html;
     } catch (error) {
         console.error('Team laden fehlgeschlagen:', error);
-        container.innerHTML = '<div class="table-error">Fehler beim Laden</div>';
+        container.innerHTML = `<div class="table-error">${t('common.loadError')}</div>`;
     }
 }
 
 async function addTeamMember(projectId) {
     const select = document.getElementById('teamAddUserSelect');
     if (!select || !select.value) {
-        showNotification('Bitte Benutzer auswaehlen', 'error');
+        showNotification(t('team.selectRequired'), 'error');
         return;
     }
 
@@ -1664,13 +1667,13 @@ async function addTeamMember(projectId) {
         });
         if (!resp.ok) {
             const err = await resp.json();
-            throw new Error(err.detail || 'Fehler');
+            throw new Error(err.detail || t('common.error'));
         }
 
-        showNotification('Mitglied hinzugefuegt', 'success');
+        showNotification(t('team.memberAdded'), 'success');
         await loadTeamMembers(projectId);
     } catch (error) {
-        showNotification(error.message || 'Fehler beim Hinzufuegen', 'error');
+        showNotification(error.message || t('team.addError'), 'error');
     }
 }
 
@@ -1687,23 +1690,23 @@ async function updateTeamMember(projectId, userId, row) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ can_read, can_edit, can_create }),
         });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
     } catch (error) {
-        showNotification('Fehler beim Aktualisieren', 'error');
+        showNotification(t('team.updateError'), 'error');
     }
 }
 
 async function removeTeamMember(projectId, userId) {
-    if (!await msgbox('cancel/yes', 'confirm', 'Mitglied wirklich entfernen?')) return;
+    if (!await msgbox('cancel/yes', 'confirm', t('team.removeMemberConfirm'))) return;
 
     try {
         const resp = await fetch(`/api/tasks/${projectId}/members/${userId}`, { method: 'DELETE' });
-        if (!resp.ok) throw new Error('Fehler');
+        if (!resp.ok) throw new Error(t('common.error'));
 
-        showNotification('Mitglied entfernt', 'success');
+        showNotification(t('team.memberRemoved'), 'success');
         await loadTeamMembers(projectId);
     } catch (error) {
-        showNotification('Fehler beim Entfernen', 'error');
+        showNotification(t('team.removeError'), 'error');
     }
 }
 
@@ -1800,7 +1803,7 @@ function _computeValidNetzplanTargets(sourceId, subtasks) {
     return valid;
 }
 
-function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName) {
+function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, layoutType = 'barycenter') {
     const nodesArr = [];
     const edgesArr = [];
 
@@ -1827,7 +1830,7 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName) 
 
     // Positionen berechnen: X nach Level, Y gleichmaessig verteilt pro Level
     const levelSeparation = 220;
-    const nodeSpacing = 70;
+    const nodeSpacing = 90;
     const levelGroups = {};
     subtasks.forEach(st => {
         const lvl = levelMap[st.id];
@@ -1835,20 +1838,103 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName) 
         levelGroups[lvl].push(st);
     });
 
-    const positionMap = {};
-    Object.keys(levelGroups).forEach(lvl => {
-        const group = levelGroups[lvl];
-        const totalHeight = (group.length - 1) * nodeSpacing;
-        group.forEach((st, idx) => {
-            positionMap[st.id] = {
-                x: parseInt(lvl) * levelSeparation,
-                y: -totalHeight / 2 + idx * nodeSpacing,
-            };
+    // Successor-Map aufbauen: nodeId -> [IDs der abhaengigen Knoten]
+    const successorMap = {};
+    subtasks.forEach(st => {
+        (st.predecessor_ids || []).forEach(pid => {
+            if (!successorMap[pid]) successorMap[pid] = [];
+            successorMap[pid].push(st.id);
         });
     });
 
-    // Projektknoten-Position: eine Ebene links von Level 0
-    positionMap[0] = { x: -levelSeparation, y: 0 };
+    // Barycenter-Heuristik (Sugiyama): Knoten innerhalb jedes Levels
+    // nach dem Durchschnitt der Positionen ihrer Nachbarn sortieren
+    const levels = Object.keys(levelGroups).map(Number).sort((a, b) => a - b);
+    const orderIndex = {}; // nodeId -> index within its level
+
+    // Initiale Reihenfolge setzen
+    levels.forEach(lvl => {
+        levelGroups[lvl].forEach((st, idx) => { orderIndex[st.id] = idx; });
+    });
+
+    // 4 Sweeps (forward + backward) zur Kreuzungsminimierung
+    for (let sweep = 0; sweep < 4; sweep++) {
+        // Forward sweep: Level 0 -> max
+        for (let li = 1; li < levels.length; li++) {
+            const lvl = levels[li];
+            levelGroups[lvl].forEach(st => {
+                const preds = (st.predecessor_ids || []).filter(pid => subtasks.some(s => s.id === pid));
+                if (preds.length > 0) {
+                    const sum = preds.reduce((acc, pid) => acc + (orderIndex[pid] || 0), 0);
+                    orderIndex[st.id] = sum / preds.length;
+                }
+            });
+            levelGroups[lvl].sort((a, b) => (orderIndex[a.id] || 0) - (orderIndex[b.id] || 0));
+            levelGroups[lvl].forEach((st, idx) => { orderIndex[st.id] = idx; });
+        }
+
+        // Backward sweep: max -> Level 0
+        for (let li = levels.length - 2; li >= 0; li--) {
+            const lvl = levels[li];
+            levelGroups[lvl].forEach(st => {
+                const succs = (successorMap[st.id] || []).filter(sid => subtasks.some(s => s.id === sid));
+                if (succs.length > 0) {
+                    const sum = succs.reduce((acc, sid) => acc + (orderIndex[sid] || 0), 0);
+                    orderIndex[st.id] = sum / succs.length;
+                }
+            });
+            levelGroups[lvl].sort((a, b) => (orderIndex[a.id] || 0) - (orderIndex[b.id] || 0));
+            levelGroups[lvl].forEach((st, idx) => { orderIndex[st.id] = idx; });
+        }
+    }
+
+    // Positionen aus optimierter Reihenfolge berechnen
+    const positionMap = {};
+
+    if (layoutType === 'compact') {
+        // Kompakt: Gleiche Barycenter-Reihenfolge, aber geringerer Abstand
+        const compactSpacing = 55;
+        levels.forEach(lvl => {
+            const group = levelGroups[lvl];
+            const totalHeight = (group.length - 1) * compactSpacing;
+            group.forEach((st, idx) => {
+                positionMap[st.id] = {
+                    x: lvl * 180,
+                    y: -totalHeight / 2 + idx * compactSpacing,
+                };
+            });
+        });
+    } else if (layoutType === 'topAligned') {
+        // Oben ausgerichtet: Alle Knoten starten bei y=0 (oben)
+        levels.forEach(lvl => {
+            const group = levelGroups[lvl];
+            group.forEach((st, idx) => {
+                positionMap[st.id] = {
+                    x: lvl * levelSeparation,
+                    y: idx * nodeSpacing,
+                };
+            });
+        });
+    } else {
+        // Barycenter (Standard): Zentriert
+        levels.forEach(lvl => {
+            const group = levelGroups[lvl];
+            const totalHeight = (group.length - 1) * nodeSpacing;
+            group.forEach((st, idx) => {
+                positionMap[st.id] = {
+                    x: lvl * levelSeparation,
+                    y: -totalHeight / 2 + idx * nodeSpacing,
+                };
+            });
+        });
+    }
+
+    // Projektknoten-Position: eine Ebene links, Y-zentriert auf Nachfolger
+    const projSuccs = (successorMap[0] || []).filter(sid => positionMap[sid]);
+    const projY = projSuccs.length > 0
+        ? projSuccs.reduce((sum, sid) => sum + positionMap[sid].y, 0) / projSuccs.length
+        : 0;
+    positionMap[0] = { x: -levelSeparation, y: projY };
 
     // Gespeicherte Positionen ueberschreiben (falls vorhanden)
     if (savedPositions) {
@@ -1903,7 +1989,7 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName) 
             margin: { top: 8, right: 12, bottom: 8, left: 12 },
             borderWidth: 2,
             borderWidthSelected: 3,
-            title: `${st.name}\nStatus: ${statusPct}%${st.deadline ? '\nDeadline: ' + st.deadline : ''}${st.area_name ? '\nBereich: ' + st.area_name : ''}`,
+            title: `${st.name}\n${t('tasks.status')}: ${statusPct}%${st.deadline ? '\n' + t('subtask.col.deadline') + ': ' + st.deadline : ''}${st.area_name ? '\n' + t('subtask.col.area') + ': ' + st.area_name : ''}`,
         });
 
         // Kanten fuer Vorgaenger
@@ -1932,7 +2018,7 @@ function openNetzplan(taskId) {
     let subtasks = stContainer?._subtasksData || [];
 
     if (subtasks.length === 0) {
-        showNotification('Keine Teilaufgaben vorhanden', 'error');
+        showNotification(t('netzplan.noSubtasks'), 'error');
         return;
     }
 
@@ -2024,17 +2110,24 @@ function openNetzplan(taskId) {
         <div class="netzplan-header">
             <div class="netzplan-title" id="netzplanTitle">${defaultTitle}</div>
             <div class="netzplan-legend">
-                <span class="netzplan-legend-item"><span class="netzplan-legend-dot status-offen"></span> Offen</span>
-                <span class="netzplan-legend-item"><span class="netzplan-legend-dot status-arbeit"></span> In Arbeit</span>
-                <span class="netzplan-legend-item"><span class="netzplan-legend-dot status-erledigt"></span> Erledigt</span>
+                <span class="netzplan-legend-item"><span class="netzplan-legend-dot status-offen"></span> ${t('netzplan.statusOpen')}</span>
+                <span class="netzplan-legend-item"><span class="netzplan-legend-dot status-arbeit"></span> ${t('netzplan.statusWip')}</span>
+                <span class="netzplan-legend-item"><span class="netzplan-legend-dot status-erledigt"></span> ${t('netzplan.statusDone')}</span>
             </div>
             <div class="netzplan-toolbar">
-                <button class="netzplan-toolbar-btn" id="netzplanUndoBtn" disabled title="Rueckgaengig (Ctrl+Z)">&#x21B6;</button>
-                <button class="netzplan-toolbar-btn" id="netzplanRedoBtn" disabled title="Wiederherstellen (Ctrl+Y)">&#x21B7;</button>
-                <button class="netzplan-toolbar-btn" id="netzplanAutoLayoutBtn" title="Auto-Anordnung">&#x2725; Auto</button>
-                <button class="netzplan-toolbar-btn" id="netzplanFitBtn">Einpassen</button>
+                <button class="netzplan-toolbar-btn" id="netzplanUndoBtn" disabled title="${t('netzplan.undo')}">&#x21B6;</button>
+                <button class="netzplan-toolbar-btn" id="netzplanRedoBtn" disabled title="${t('netzplan.redo')}">&#x21B7;</button>
+                <div class="netzplan-toolbar-dropdown" id="netzplanAutoLayoutDropdown">
+                    <button class="netzplan-toolbar-btn" title="${t('netzplan.autoLayout')}">&#x2725; Auto &#x25BE;</button>
+                    <div class="netzplan-toolbar-dropdown-menu">
+                        <button data-layout="barycenter">Barycenter (Standard)</button>
+                        <button data-layout="compact">Kompakt</button>
+                        <button data-layout="topAligned">Oben ausgerichtet</button>
+                    </div>
+                </div>
+                <button class="netzplan-toolbar-btn" id="netzplanFitBtn">${t('netzplan.fit')}</button>
             </div>
-            <button class="netzplan-close-btn" title="Schliessen">&times;</button>
+            <button class="netzplan-close-btn" title="${t('common.close')}">&times;</button>
         </div>
         <div class="netzplan-body">
             <div class="netzplan-graph" id="netzplanGraph"></div>
@@ -2110,24 +2203,41 @@ function openNetzplan(taskId) {
         _dragOldPos = null;
     });
 
-    // Auto-Layout-Button
-    document.getElementById('netzplanAutoLayoutBtn').addEventListener('click', () => {
-        if (!netzplanNetwork) return;
-        const beforePositions = _getAllPositions();
-        const newColors = getNetzplanColors();
-        const { nodesArr: newNodes, edgesArr: newEdges } = _buildNetzplanGraphData(subtasks, newColors, null, projectName);
-        data.nodes.clear();
-        data.nodes.add(newNodes);
-        data.edges.clear();
-        data.edges.add(newEdges);
-        netzplanNetwork.fit({ animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
-        const afterPositions = _getAllPositions();
-        _pushNetzplanHistory({
-            type: 'auto-layout',
-            beforePositions: beforePositions,
-            afterPositions: afterPositions,
+    // Auto-Layout-Dropdown
+    const autoLayoutDropdown = document.getElementById('netzplanAutoLayoutDropdown');
+    const autoLayoutToggle = autoLayoutDropdown.querySelector('.netzplan-toolbar-btn');
+    autoLayoutToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        autoLayoutDropdown.classList.toggle('open');
+    });
+    // Close on outside click
+    document.addEventListener('click', () => {
+        autoLayoutDropdown.classList.remove('open');
+    });
+
+    // Layout-Optionen
+    autoLayoutDropdown.querySelectorAll('[data-layout]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            autoLayoutDropdown.classList.remove('open');
+            const layoutType = btn.dataset.layout;
+            if (!netzplanNetwork) return;
+            const beforePositions = _getAllPositions();
+            const newColors = getNetzplanColors();
+            const { nodesArr: newNodes, edgesArr: newEdges } = _buildNetzplanGraphData(subtasks, newColors, null, projectName, layoutType);
+            data.nodes.clear();
+            data.nodes.add(newNodes);
+            data.edges.clear();
+            data.edges.add(newEdges);
+            netzplanNetwork.fit({ animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
+            const afterPositions = _getAllPositions();
+            _pushNetzplanHistory({
+                type: 'auto-layout',
+                beforePositions: beforePositions,
+                afterPositions: afterPositions,
+            });
+            _savePositionsToDb(afterPositions);
         });
-        _savePositionsToDb(afterPositions);
     });
 
     // ---- Linking-Modus Funktionen (Closures) ----
@@ -2195,7 +2305,7 @@ function openNetzplan(taskId) {
 
         // Header-Text aendern
         const titleEl = document.getElementById('netzplanTitle');
-        if (titleEl) titleEl.textContent = 'Klicken Sie auf einen Zielknoten... (ESC = Abbrechen)';
+        if (titleEl) titleEl.textContent = t('netzplan.selectTarget');
 
         // Canvas-Cursor
         graphContainer.style.cursor = 'crosshair';
@@ -2376,7 +2486,7 @@ function openNetzplan(taskId) {
                 const fromLabel = edgeData.from === 0 ? 'Projekt' : (fromSt ? `${fromSt.position_number}: ${fromSt.name}` : `#${edgeData.from}`);
                 const toLabel = toSt ? `${toSt.position_number}: ${toSt.name}` : `#${edgeData.to}`;
 
-                const confirmed = await msgbox('cancel/yes', 'confirm', `Abhaengigkeit "${fromLabel}" → "${toLabel}" wirklich entfernen?`);
+                const confirmed = await msgbox('cancel/yes', 'confirm', t('netzplan.removeDep', { from: fromLabel, to: toLabel }));
                 if (!confirmed) return;
 
                 try {
@@ -2388,10 +2498,10 @@ function openNetzplan(taskId) {
                     });
                     if (!resp.ok) {
                         const err = await resp.json();
-                        showNotification(err.detail || 'Fehler beim Entfernen', 'error');
+                        showNotification(err.detail || t('team.removeError'), 'error');
                         return;
                     }
-                    showNotification('Abhaengigkeit entfernt', 'success');
+                    showNotification(t('netzplan.depRemoved'), 'success');
                     await _rebuildNetzplan();
                     _pushNetzplanHistory({
                         type: 'dependency-remove',
@@ -2401,7 +2511,7 @@ function openNetzplan(taskId) {
                         positionsAfter: _getAllPositions(),
                     });
                 } catch (error) {
-                    showNotification('Fehler beim Entfernen', 'error');
+                    showNotification(t('team.removeError'), 'error');
                 }
             }
         } else {
@@ -2423,10 +2533,10 @@ function openNetzplan(taskId) {
                     });
                     if (!resp.ok) {
                         const err = await resp.json();
-                        showNotification(err.detail || 'Fehler beim Hinzufuegen', 'error');
+                        showNotification(err.detail || t('team.addError'), 'error');
                         return;
                     }
-                    showNotification('Abhaengigkeit hinzugefuegt', 'success');
+                    showNotification(t('netzplan.depAdded'), 'success');
                     await _rebuildNetzplan();
                     _pushNetzplanHistory({
                         type: 'dependency-add',
@@ -2436,11 +2546,11 @@ function openNetzplan(taskId) {
                         positionsAfter: _getAllPositions(),
                     });
                 } catch (error) {
-                    showNotification('Fehler beim Hinzufuegen', 'error');
+                    showNotification(t('team.addError'), 'error');
                 }
             } else {
                 // Ungueltiger Knoten
-                showNotification('Ungueltige Verbindung', 'error');
+                showNotification(t('netzplan.invalidConnection'), 'error');
             }
         }
     });
@@ -2502,7 +2612,7 @@ function openNetzplan(taskId) {
                 });
                 await _rebuildNetzplanWithPositions(entry.positionsBefore);
             } catch (e) {
-                showNotification('Undo fehlgeschlagen', 'error');
+                showNotification(t('netzplan.undoFailed'), 'error');
             }
         } else if (entry.type === 'dependency-remove') {
             // Undo: Dependency wieder hinzufuegen
@@ -2514,7 +2624,7 @@ function openNetzplan(taskId) {
                 });
                 await _rebuildNetzplanWithPositions(entry.positionsBefore);
             } catch (e) {
-                showNotification('Undo fehlgeschlagen', 'error');
+                showNotification(t('netzplan.undoFailed'), 'error');
             }
         }
     }
@@ -2541,7 +2651,7 @@ function openNetzplan(taskId) {
                 });
                 await _rebuildNetzplanWithPositions(entry.positionsAfter);
             } catch (e) {
-                showNotification('Redo fehlgeschlagen', 'error');
+                showNotification(t('netzplan.redoFailed'), 'error');
             }
         } else if (entry.type === 'dependency-remove') {
             // Redo: Dependency wieder entfernen
@@ -2553,7 +2663,7 @@ function openNetzplan(taskId) {
                 });
                 await _rebuildNetzplanWithPositions(entry.positionsAfter);
             } catch (e) {
-                showNotification('Redo fehlgeschlagen', 'error');
+                showNotification(t('netzplan.redoFailed'), 'error');
             }
         }
     }
@@ -2601,20 +2711,20 @@ function openNetzplan(taskId) {
 
 async function openNcDirDialog(taskId, currentPath) {
     if (currentPath) {
-        const confirmed = await msgbox('confirm', 'warning', 'Wollen Sie die Dateiablage wirklich aendern?');
+        const confirmed = await msgbox('confirm', 'warning', t('nc.changeConfirm'));
         if (!confirmed) return;
     }
 
     createModal({
-        title: 'Dateiablage',
+        title: t('nc.fileStorage'),
         cssClass: 'modal-wide',
         body: `
             <div class="nc-browse-breadcrumb" id="ncBrowseBc"></div>
             <div id="ncDirList">
                 <div class="table-loading"><div class="spinner"></div></div>
             </div>`,
-        footer: (currentPath ? `<button class="action-btn danger" onclick="saveNcPath(${taskId}, '')">Zuordnung entfernen</button>` : '') +
-                '<button class="action-btn" onclick="closeModal()">Abbrechen</button>',
+        footer: (currentPath ? `<button class="action-btn danger" onclick="saveNcPath(${taskId}, '')">${t('nc.removeMapping')}</button>` : '') +
+                `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>`,
         onOpen: () => {
             // Footer braucht ID fuer dynamische Buttons
             const footer = document.querySelector('.modal-overlay .modal-footer');
@@ -2635,7 +2745,7 @@ async function ncBrowseDir(taskId, browsePath, selectedPath) {
     // Breadcrumb aktualisieren
     if (bcContainer) {
         const parts = browsePath ? browsePath.split('/').filter(Boolean) : [];
-        let bcHtml = `<span class="nc-bc-item" onclick="ncBrowseDir(${taskId}, '', '${escapeAttr(selectedPath)}')">&#127968; Wurzelverzeichnis</span>`;
+        let bcHtml = `<span class="nc-bc-item" onclick="ncBrowseDir(${taskId}, '', '${escapeAttr(selectedPath)}')">&#127968; ${t('nc.rootDir')}</span>`;
         let accumulated = '';
         parts.forEach(part => {
             accumulated += (accumulated ? '/' : '') + part;
@@ -2653,7 +2763,7 @@ async function ncBrowseDir(taskId, browsePath, selectedPath) {
         footer.querySelectorAll('.nc-select-btn').forEach(b => b.remove());
         const selectBtn = document.createElement('button');
         selectBtn.className = 'action-btn primary nc-select-btn';
-        selectBtn.textContent = `"${browsePath.split('/').pop()}" waehlen`;
+        selectBtn.textContent = t('nc.selectDir', { name: browsePath.split('/').pop() });
         selectBtn.onclick = () => saveNcPath(taskId, browsePath);
         footer.insertBefore(selectBtn, footer.firstChild);
     } else if (footer) {
@@ -2662,12 +2772,12 @@ async function ncBrowseDir(taskId, browsePath, selectedPath) {
 
     try {
         const resp = await fetch(`/api/nextcloud/directories?path=${encodeURIComponent(browsePath)}`);
-        if (!resp.ok) throw new Error('Fehler beim Laden der Verzeichnisse');
+        if (!resp.ok) throw new Error(t('nc.loadDirError'));
         const data = await resp.json();
         const dirs = data.directories || [];
 
         if (dirs.length === 0) {
-            listContainer.innerHTML = '<div class="nc-dir-empty">Keine Unterverzeichnisse vorhanden</div>';
+            listContainer.innerHTML = `<div class="nc-dir-empty">${t('nc.noSubdirs')}</div>`;
             return;
         }
 
@@ -2677,7 +2787,7 @@ async function ncBrowseDir(taskId, browsePath, selectedPath) {
             html += `<div class="nc-dir-item${isSelected ? ' nc-dir-selected' : ''}">
                 <span class="nc-dir-icon" onclick="event.stopPropagation(); ncBrowseDir(${taskId}, '${escapeAttr(d.path)}', '${escapeAttr(selectedPath)}')">&#128194;</span>
                 <span class="nc-dir-name" onclick="event.stopPropagation(); ncBrowseDir(${taskId}, '${escapeAttr(d.path)}', '${escapeAttr(selectedPath)}')">${escapeHtml(d.name)}</span>
-                <button class="nc-dir-select-btn" onclick="event.stopPropagation(); saveNcPath(${taskId}, '${escapeAttr(d.path)}')">${isSelected ? '&#10003; Gewaehlt' : 'Waehlen'}</button>
+                <button class="nc-dir-select-btn" onclick="event.stopPropagation(); saveNcPath(${taskId}, '${escapeAttr(d.path)}')">${isSelected ? '&#10003; ' + t('nc.selected') : t('nc.select')}</button>
             </div>`;
         });
         html += '</div>';
@@ -2694,8 +2804,8 @@ async function saveNcPath(taskId, value) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nextcloud_path: value }),
         });
-        if (!resp.ok) throw new Error('Fehler');
-        showNotification(value ? `Dateiablage "${value}" zugeordnet` : 'Dateiablage entfernt', 'success');
+        if (!resp.ok) throw new Error(t('common.error'));
+        showNotification(value ? t('nc.pathAssigned', { path: value }) : t('nc.pathRemoved'), 'success');
 
         // Modal schliessen
         closeModal();
@@ -2703,6 +2813,6 @@ async function saveNcPath(taskId, value) {
         // Tabelle neu laden damit das Detail mit/ohne File Browser aktualisiert wird
         await aufgabenTable.loadData();
     } catch (error) {
-        showNotification('Fehler beim Speichern der Verzeichniszuordnung', 'error');
+        showNotification(t('nc.saveFailed'), 'error');
     }
 }

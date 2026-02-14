@@ -204,6 +204,45 @@ body {
     border-radius: 10px;
 }
 
+.settings-expand {
+    font-size: 10px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+
+.settings-expand.open {
+    transform: rotate(180deg);
+}
+
+.settings-sub {
+    overflow: hidden;
+}
+
+.settings-sub-item {
+    padding: 8px 16px 8px 46px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-primary);
+    transition: background-color var(--transition-speed);
+}
+
+.settings-sub-item:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.settings-sub-item.active {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.settings-sub-item .lang-check {
+    width: 16px;
+    font-size: 12px;
+}
+
 .settings-divider {
     height: 1px;
     background-color: var(--border-color);

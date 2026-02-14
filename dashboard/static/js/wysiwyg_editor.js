@@ -56,28 +56,28 @@ class WysiwygEditor {
 
     buildToolbar() {
         return `
-            <select data-cmd="formatBlock" title="Formatvorlage">
-                <option value="">Format</option>
-                <option value="p">Standard</option>
-                <option value="pre">Code</option>
-                <option value="h1">Ueberschrift 1</option>
-                <option value="h2">Ueberschrift 2</option>
-                <option value="h3">Ueberschrift 3</option>
+            <select data-cmd="formatBlock" title="${t('wysiwyg.formatBlock')}">
+                <option value="">${t('wysiwyg.format')}</option>
+                <option value="p">${t('wysiwyg.normal')}</option>
+                <option value="pre">${t('wysiwyg.code')}</option>
+                <option value="h1">${t('wysiwyg.heading1')}</option>
+                <option value="h2">${t('wysiwyg.heading2')}</option>
+                <option value="h3">${t('wysiwyg.heading3')}</option>
             </select>
             <span class="toolbar-sep"></span>
-            <button data-cmd="bold" title="Fett"><b>F</b></button>
-            <button data-cmd="underline" title="Unterstrichen"><u>U</u></button>
-            <button data-cmd="italic" title="Kursiv"><i>K</i></button>
+            <button data-cmd="bold" title="${t('wysiwyg.bold')}"><b>F</b></button>
+            <button data-cmd="underline" title="${t('wysiwyg.underline')}"><u>U</u></button>
+            <button data-cmd="italic" title="${t('wysiwyg.italic')}"><i>K</i></button>
             <span class="toolbar-sep"></span>
-            <button data-cmd="insertOrderedList" title="Nummerierte Liste">1.</button>
-            <button data-cmd="insertUnorderedList" title="Aufzaehlung">&bull;</button>
+            <button data-cmd="insertOrderedList" title="${t('wysiwyg.orderedList')}">1.</button>
+            <button data-cmd="insertUnorderedList" title="${t('wysiwyg.unorderedList')}">&bull;</button>
             <span class="toolbar-sep"></span>
-            <select data-cmd="fontSize" title="Schriftgroesse">
-                <option value="">Groesse</option>
-                <option value="1">Klein</option>
-                <option value="3">Normal</option>
-                <option value="5">Gross</option>
-                <option value="7">Sehr Gross</option>
+            <select data-cmd="fontSize" title="${t('wysiwyg.fontSize')}">
+                <option value="">${t('wysiwyg.size')}</option>
+                <option value="1">${t('wysiwyg.small')}</option>
+                <option value="3">${t('wysiwyg.normalSize')}</option>
+                <option value="5">${t('wysiwyg.large')}</option>
+                <option value="7">${t('wysiwyg.xlarge')}</option>
             </select>
         `;
     }

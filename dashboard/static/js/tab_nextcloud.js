@@ -44,38 +44,38 @@ function renderNcConfigSection(hasConfig) {
     const c = ncConfig || {};
     let html = `
         <div class="ldap-section">
-            <h3>Nextcloud-Verbindung (WebDAV)</h3>
+            <h3>${t('ncAdmin.title')}</h3>
             <div class="ldap-form">
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Nextcloud-URL</label>
+                        <label>${t('ncAdmin.url')}</label>
                         <input type="text" id="ncServerUrl" value="${escapeAttr(c.server_url || '')}"
                                placeholder="https://cloud.firma.de">
                     </div>
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Benutzername</label>
+                        <label>${t('auth.username')}</label>
                         <input type="text" id="ncUsername" value="${escapeAttr(c.username || '')}"
                                placeholder="service-account">
                     </div>
                     <div class="ldap-form-field">
-                        <label>Passwort / App-Passwort</label>
+                        <label>${t('ncAdmin.password')}</label>
                         <input type="password" id="ncPassword"
                                value="${hasConfig ? '********' : ''}"
-                               placeholder="Passwort..." autocomplete="new-password">
+                               placeholder="${t('auth.password')}..." autocomplete="new-password">
                     </div>
                 </div>
                 <div class="ldap-form-row">
                     <div class="ldap-form-field">
-                        <label>Wurzelverzeichnis</label>
+                        <label>${t('ncAdmin.basePath')}</label>
                         <input type="text" id="ncBasePath" value="${escapeAttr(c.base_path || '')}"
                                placeholder="/Projekte">
                     </div>
                 </div>
                 <div class="ldap-form-actions">
-                    <button class="action-btn primary" onclick="saveNcConfig()">Verbindung testen &amp; Speichern</button>
-                    ${hasConfig ? '<button class="action-btn danger" onclick="deleteNcConfig()">Loeschen</button>' : ''}
+                    <button class="action-btn primary" onclick="saveNcConfig()">${t('ncAdmin.testAndSave')}</button>
+                    ${hasConfig ? `<button class="action-btn danger" onclick="deleteNcConfig()">${t('common.delete')}</button>` : ''}
                 </div>
             </div>`;
 
@@ -83,8 +83,8 @@ function renderNcConfigSection(hasConfig) {
     if (hasConfig) {
         html += `
             <div class="ldap-status-info">
-                <strong>Aktive Konfiguration:</strong>
-                ${escapeHtml(c.server_url)} | Benutzer: ${escapeHtml(c.username)} | Pfad: ${escapeHtml(c.base_path)}
+                <strong>${t('ncAdmin.activeConfig')}</strong>
+                ${escapeHtml(c.server_url)} | ${t('auth.username')}: ${escapeHtml(c.username)} | ${t('ncAdmin.basePath')}: ${escapeHtml(c.base_path)}
             </div>`;
     }
 
@@ -103,14 +103,14 @@ async function saveNcConfig() {
     const base_path = document.getElementById('ncBasePath')?.value?.trim();
 
     if (!server_url || !username || !password || !base_path) {
-        showNotification('Bitte alle Felder ausfuellen', 'error');
+        showNotification(t('ncAdmin.fillRequired'), 'error');
         return;
     }
 
     await saveConfigToAPI({
         endpoint: '/api/admin/nextcloud/config',
         data: { server_url, username, password, base_path },
-        successMessage: 'Nextcloud-Konfiguration gespeichert (Verbindung OK)',
+        successMessage: t('ncAdmin.saved'),
         onSuccess: async () => {
             await loadNcConfig();
             renderNextcloudTab();
@@ -121,8 +121,8 @@ async function saveNcConfig() {
 async function deleteNcConfig() {
     await deleteConfigFromAPI({
         endpoint: '/api/admin/nextcloud/config',
-        confirmMessage: 'Nextcloud-Konfiguration wirklich loeschen? Alle Verzeichniszuordnungen werden entfernt.',
-        successMessage: 'Nextcloud-Konfiguration geloescht',
+        confirmMessage: t('ncAdmin.deleteConfirm'),
+        successMessage: t('ncAdmin.deleted'),
         onSuccess: () => {
             ncConfig = null;
             renderNextcloudTab();
