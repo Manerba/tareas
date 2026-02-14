@@ -58,6 +58,8 @@ python dashboard/app.py
 
 The dashboard is available at `http://localhost:8504`.
 
+> **Note:** Tested on Ubuntu 24.04 Server (standard installation).
+
 ### Option 3: Systemd Service
 
 After manual installation, copy the service files:
