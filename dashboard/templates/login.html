@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tareas - Anmeldung</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/login.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-title">Tareas</div>
+        <div class="login-subtitle">Bitte anmelden</div>
+
+        <div class="login-error" id="loginError"></div>
+
+        <div class="login-field">
+            <label>Benutzername</label>
+            <input type="text" id="loginUsername" autocomplete="username" autofocus>
+        </div>
+
+        <div class="login-field">
+            <label>Passwort</label>
+            <input type="password" id="loginPassword" autocomplete="current-password">
+        </div>
+
+        <button class="login-btn" id="loginBtn">Anmelden</button>
+    </div>
+
+    <script>
+        // Theme laden
+        const savedTheme = localStorage.getItem('dashboard-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        const usernameInput = document.getElementById('loginUsername');
+        const passwordInput = document.getElementById('loginPassword');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorDiv = document.getElementById('loginError');
+
+        usernameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') passwordInput.focus();
+        });
+
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
+
+        loginBtn.addEventListener('click', doLogin);
+
+        async function doLogin() {
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username || !password) {
+                showError('Bitte Benutzername und Passwort eingeben');
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Wird angemeldet...';
+            errorDiv.style.display = 'none';
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ username, password }),
+                });
+
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    if (resp.status === 429) {
+                        const retryAfter = parseInt(resp.headers.get('Retry-After') || '10', 10);
+                        startCountdown(retryAfter, data.detail || 'Zu viele Fehlversuche');
+                        return;
+                    }
+                    throw new Error(data.detail || 'Anmeldung fehlgeschlagen');
+                }
+
+                window.location.href = '/aufgaben';
+            } catch (error) {
+                showError(error.message);
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Anmelden';
+            }
+        }
+
+        function startCountdown(seconds, msg) {
+            loginBtn.disabled = true;
+            usernameInput.disabled = true;
+            passwordInput.disabled = true;
+            showError(msg);
+            let remaining = seconds;
+            loginBtn.textContent = `Gesperrt (${remaining}s)`;
+            const iv = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(iv);
+                    loginBtn.disabled = false;
+                    usernameInput.disabled = false;
+                    passwordInput.disabled = false;
+                    loginBtn.textContent = 'Anmelden';
+                    errorDiv.style.display = 'none';
+                } else {
+                    loginBtn.textContent = `Gesperrt (${remaining}s)`;
+                }
+            }, 1000);
+        }
+
+        function showError(msg) {
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

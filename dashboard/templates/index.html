@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tareas</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/expandable_table.css">
+    <link rel="stylesheet" href="/static/css/kpi_grid.css">
+    <link rel="stylesheet" href="/static/css/aufgaben.css">
+    <link rel="stylesheet" href="/static/css/vis-network.min.css">
+    <link rel="stylesheet" href="/static/css/file_browser.css">
+    <link rel="stylesheet" href="/static/css/onlyoffice.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <h1>Tareas</h1>
+        <div class="header-controls">
+            <span class="header-username" id="headerUsername"></span>
+            <div class="settings-dropdown-wrapper">
+                <button class="settings-btn" id="settingsBtn">&#x2699;&#xFE0F;</button>
+                <nav class="settings-dropdown" id="settingsDropdown" style="display: none;">
+                    <div class="settings-menu">
+                        <div class="settings-item" id="changePasswordBtn">
+                            <span class="settings-icon">&#x1F511;</span>
+                            <span class="settings-label">Passwort aendern</span>
+                        </div>
+                        <div class="settings-item settings-danger" id="logoutBtn">
+                            <span class="settings-icon">&#x2192;</span>
+                            <span class="settings-label">Abmelden</span>
+                        </div>
+                        <div class="settings-divider"></div>
+                        <div class="settings-item" id="mailPrefsBtn">
+                            <span class="settings-icon">&#x2709;</span>
+                            <span class="settings-label">Mail-Benachrichtigungen</span>
+                        </div>
+                        <div class="settings-divider"></div>
+                        <div class="settings-item" id="themeToggle">
+                            <span class="settings-icon">&#x263E;</span>
+                            <span class="settings-label">Dark Mode</span>
+                            <span class="settings-value" id="themeStatus">Aus</span>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs main-tabs">
+        <a class="tab" href="/aufgaben" data-tab="aufgaben">Aufgaben</a>
+    </nav>
+
+    <!-- Filter Bar (fuer zukuenftige Tabs) -->
+    <div class="filter-bar" id="filterBar" style="display: none;"></div>
+
+    <!-- Content Container -->
+    <main class="container" id="contentContainer">
+        <div class="table-loading">
+            <div class="spinner"></div>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script src="/static/js/expandable_table.js"></script>
+    <script src="/static/js/kpi_grid.js"></script>
+    <script src="/static/js/wysiwyg_editor.js"></script>
+    <script src="/static/js/app_core.js"></script>
+    <script src="/static/js/vis-network.min.js"></script>
+    <script src="/static/js/file_browser.js"></script>
+    <script src="/static/js/onlyoffice_editor.js"></script>
+    <script src="/static/js/tab_aufgaben.js"></script>
+</body>
+</html>

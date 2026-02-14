@@ -1,0 +1,1277 @@
+/* ========================================
+   Aufgaben Tab - Styles
+   ======================================== */
+
+/* ----------------------------------------
+   Control Bar
+   ---------------------------------------- */
+
+.control-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.control-bar .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.control-bar .separator {
+    width: 1px;
+    height: 24px;
+    background-color: var(--border-color);
+    margin: 0 4px;
+}
+
+.control-bar .spacer {
+    flex: 1;
+}
+
+.control-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: all var(--transition-speed);
+    white-space: nowrap;
+}
+
+.control-btn:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.control-btn.primary {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.control-btn.primary:hover {
+    background-color: var(--accent-hover);
+}
+
+.control-btn.active {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+/* Category Filter Buttons */
+.category-filter-group {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.category-btn {
+    font-size: 11px;
+    padding: 4px 10px;
+}
+
+.control-search {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    width: 180px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Row Delete Button */
+.row-delete-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    border-radius: 3px;
+    opacity: 0.4;
+    transition: all var(--transition-speed);
+}
+
+.row-delete-btn:hover {
+    opacity: 1;
+    color: var(--color-bearish);
+    background-color: rgba(231, 76, 60, 0.1);
+}
+
+/* ----------------------------------------
+   Status Badges
+   ---------------------------------------- */
+
+.badge-offen {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    border: 1px solid var(--border-color);
+}
+
+.badge-in_arbeit {
+    background-color: rgba(52, 152, 219, 0.15);
+    color: var(--accent-primary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    border: 1px solid var(--accent-primary);
+}
+
+.badge-erledigt {
+    background-color: rgba(40, 167, 69, 0.15);
+    color: var(--color-bullish);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    border: 1px solid var(--color-bullish);
+}
+
+.badge-aufgabe {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+}
+
+.badge-projekt {
+    background-color: rgba(155, 89, 182, 0.15);
+    color: #9b59b6;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    border: 1px solid #9b59b6;
+}
+
+[data-theme="dark"] .badge-projekt {
+    color: #c39bd3;
+    border-color: #c39bd3;
+}
+
+/* Prioritaet-Anzeige */
+.priority-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.priority-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.priority-high { background-color: var(--color-bearish); }
+.priority-medium { background-color: var(--color-unclear); }
+.priority-low { background-color: var(--color-bullish); }
+
+/* ----------------------------------------
+   Detail-Bereich editierbar
+   ---------------------------------------- */
+
+.detail-edit {
+    padding: 12px 16px;
+    background-color: var(--bg-detail);
+    border-radius: 0 0 6px 6px;
+}
+
+.detail-edit-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detail-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.detail-edit-field.flex-grow {
+    flex: 1;
+    min-width: 200px;
+}
+
+.detail-edit-field label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.detail-edit-field input,
+.detail-edit-field select {
+    padding: 5px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.detail-edit-field input:focus,
+.detail-edit-field select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-focus);
+}
+
+.detail-edit-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ----------------------------------------
+   WYSIWYG Editor
+   ---------------------------------------- */
+
+.wysiwyg-container {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.wysiwyg-toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 6px 8px;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+}
+
+.wysiwyg-toolbar button {
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    min-width: 28px;
+    text-align: center;
+}
+
+.wysiwyg-toolbar button:hover {
+    background-color: var(--bg-row-hover);
+    border-color: var(--border-color);
+}
+
+.wysiwyg-toolbar button.active {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.wysiwyg-toolbar select {
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 11px;
+    cursor: pointer;
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.wysiwyg-toolbar .toolbar-sep {
+    width: 1px;
+    height: 20px;
+    background-color: var(--border-color);
+    margin: 0 4px;
+}
+
+.wysiwyg-content {
+    min-height: 120px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+}
+
+.wysiwyg-content:focus {
+    outline: none;
+}
+
+.wysiwyg-content p {
+    margin: 0 0 8px 0;
+}
+
+.wysiwyg-content h1,
+.wysiwyg-content h2,
+.wysiwyg-content h3 {
+    margin: 12px 0 6px 0;
+    color: var(--text-primary);
+}
+
+.wysiwyg-content h1 { font-size: 20px; }
+.wysiwyg-content h2 { font-size: 17px; }
+.wysiwyg-content h3 { font-size: 14px; }
+
+.wysiwyg-content ul,
+.wysiwyg-content ol {
+    margin: 4px 0;
+    padding-left: 24px;
+}
+
+.wysiwyg-content pre {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    overflow-x: auto;
+}
+
+.wysiwyg-content blockquote {
+    border-left: 3px solid var(--accent-primary);
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: var(--text-secondary);
+}
+
+/* ----------------------------------------
+   SubTask-Tabelle (verschachtelt)
+   ---------------------------------------- */
+
+.subtask-section {
+    margin-top: 12px;
+}
+
+.subtask-section h4 {
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.subtask-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.subtask-table th {
+    text-align: left;
+    padding: 6px 8px;
+    background-color: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.subtask-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.subtask-table tr.subtask-row:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.subtask-table input:not(.wysiwyg-toolbar input),
+.subtask-table select:not(.wysiwyg-toolbar select) {
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    font-size: 12px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    width: 100%;
+}
+
+.subtask-table input:not(.wysiwyg-toolbar input):focus,
+.subtask-table select:not(.wysiwyg-toolbar select):focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.subtask-table input[type="number"] {
+    width: 60px;
+}
+
+.subtask-table input[type="date"] {
+    width: 130px;
+}
+
+.subtask-table .subtask-name-input {
+    min-width: 150px;
+}
+
+.subtask-actions {
+    display: flex;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.subtask-btn {
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: all var(--transition-speed);
+}
+
+.subtask-btn:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.subtask-btn.delete:hover {
+    background-color: var(--color-bearish);
+    color: white;
+    border-color: var(--color-bearish);
+}
+
+.subtask-add-row {
+    margin-top: 8px;
+}
+
+/* Area inline anlegen */
+.area-select-wrapper {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.area-select-wrapper select {
+    flex: 1;
+}
+
+.area-add-btn {
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    font-weight: bold;
+    line-height: 1;
+}
+
+.area-add-btn:hover {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+/* ----------------------------------------
+   Aufklappbare SubTask-Zeilen
+   ---------------------------------------- */
+
+.subtask-row {
+    cursor: pointer;
+    user-select: none;
+}
+
+.subtask-row:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.subtask-row.expanded {
+    background-color: var(--bg-secondary);
+}
+
+.subtask-expand-icon {
+    display: inline-block;
+    transition: transform 0.2s;
+    font-size: 10px;
+    margin-right: 4px;
+    color: var(--text-secondary);
+}
+
+.subtask-row.expanded .subtask-expand-icon {
+    transform: rotate(90deg);
+}
+
+.subtask-detail-row {
+    display: none;
+}
+
+.subtask-detail-row.visible {
+    display: table-row;
+}
+
+.subtask-detail-row > td {
+    padding: 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.subtask-detail-content {
+    padding: 12px 16px;
+    background-color: var(--bg-detail-nested);
+    border-radius: 4px;
+    margin: 4px 0;
+}
+
+.subtask-detail-content .detail-edit-header {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.subtask-detail-content .detail-edit-actions {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Vorgaenger-Chips inline im Header (zwischen Dropdown und Bereich) */
+.predecessor-chips-inline {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 4px;
+    align-self: flex-end;
+    padding-bottom: 2px;
+}
+
+.predecessor-chips-inline:empty {
+    display: none;
+}
+
+/* Status-Prozent in Text-Zeile */
+.subtask-status-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.subtask-status-bar {
+    width: 40px;
+    height: 5px;
+    background-color: var(--bg-secondary);
+    border-radius: 3px;
+    overflow: hidden;
+    display: inline-block;
+}
+
+.subtask-status-fill {
+    height: 100%;
+    background-color: var(--accent-primary);
+    border-radius: 3px;
+}
+
+/* ----------------------------------------
+   Positionsnummer-Spalte
+   ---------------------------------------- */
+
+.subtask-table .pos-cell {
+    text-align: center;
+    width: 65px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.subtask-table th.pos-cell {
+    text-align: center;
+}
+
+/* Positions-Pfeile */
+.pos-arrows {
+    display: inline-flex;
+    flex-direction: column;
+    vertical-align: middle;
+    margin-left: 2px;
+    gap: 0;
+    line-height: 1;
+}
+
+.pos-arrow {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 8px;
+    line-height: 1;
+    padding: 0 2px;
+    color: var(--text-secondary);
+    border-radius: 2px;
+    transition: all var(--transition-speed);
+}
+
+.pos-arrow:hover {
+    color: var(--accent-primary);
+    background-color: var(--bg-row-hover);
+}
+
+/* ----------------------------------------
+   Vorgaenger-Chips
+   ---------------------------------------- */
+
+.predecessor-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.predecessor-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.predecessor-chip .remove {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 1px;
+    border: none;
+    background: none;
+    border-radius: 50%;
+}
+
+.predecessor-chip .remove:hover {
+    color: var(--color-bearish);
+}
+
+/* Vorgaenger-Eingabe */
+.predecessor-input {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.predecessor-input select {
+    flex: 1;
+    min-width: 100px;
+}
+
+.predecessor-input button {
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    font-weight: bold;
+    line-height: 1;
+}
+
+.predecessor-input button:hover {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+/* Vorgaenger-Spalte */
+.subtask-table .predecessor-cell {
+    min-width: 120px;
+}
+
+.predecessor-display {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Status-Prozent Slider-Like */
+.status-percent-display {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-percent-bar {
+    flex: 1;
+    height: 6px;
+    background-color: var(--bg-secondary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.status-percent-fill {
+    height: 100%;
+    background-color: var(--accent-primary);
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+/* ----------------------------------------
+   Modal Dialog
+   ---------------------------------------- */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 800;
+    animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background-color: var(--bg-primary);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    width: 400px;
+    max-width: 90vw;
+    animation: modalIn 0.2s ease-out;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.modal-field label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.modal-field input,
+.modal-field select {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.modal-field input:focus,
+.modal-field select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-focus);
+}
+
+.modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* ----------------------------------------
+   MsgBox Dialog
+   ---------------------------------------- */
+
+.msgbox-dialog {
+    width: 320px;
+}
+
+.msgbox-dialog .modal-body {
+    padding: 24px 20px;
+    text-align: center;
+}
+
+.msgbox-dialog .modal-footer {
+    border-top: none;
+    justify-content: center;
+}
+
+/* Type: confirm → roter Danger-Button */
+.msgbox-dialog.type-confirm .msgbox-btn-primary {
+    background-color: var(--color-bearish);
+    color: white;
+    border-color: var(--color-bearish);
+}
+
+.msgbox-dialog.type-confirm .msgbox-btn-primary:hover {
+    opacity: 0.85;
+}
+
+/* Type: alert → Akzent-Blau */
+.msgbox-dialog.type-alert .msgbox-btn-primary {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.msgbox-dialog.type-alert .msgbox-btn-primary:hover {
+    opacity: 0.85;
+}
+
+/* Type: warning → Orange */
+.msgbox-dialog.type-warning .msgbox-btn-primary {
+    background-color: #e67e22;
+    color: white;
+    border-color: #e67e22;
+}
+
+.msgbox-dialog.type-warning .msgbox-btn-primary:hover {
+    opacity: 0.85;
+}
+
+/* Danger-Button (fuer Detail-Actions) */
+.action-btn.danger {
+    background-color: var(--color-bearish);
+    color: white;
+    border-color: var(--color-bearish);
+}
+
+.action-btn.danger:hover {
+    opacity: 0.85;
+}
+
+/* ----------------------------------------
+   Subtask-View Info-Hinweis
+   ---------------------------------------- */
+
+.subtask-view-info {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    border-left: 3px solid #9b59b6;
+}
+
+[data-theme="dark"] .subtask-view-info {
+    border-left-color: #c39bd3;
+}
+
+/* ----------------------------------------
+   Readonly-Felder & Notes (Sprint B)
+   ---------------------------------------- */
+
+.field-readonly {
+    opacity: 0.7;
+    pointer-events: none;
+    background: var(--bg-secondary) !important;
+}
+
+.description-readonly {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    min-height: 60px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.description-readonly em {
+    color: var(--text-secondary);
+}
+
+.notes-section {
+    margin-top: 16px;
+}
+
+.notes-section h5 {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* ----------------------------------------
+   Team-Dialog (Sprint C)
+   ---------------------------------------- */
+
+.modal-wide {
+    width: 650px;
+    max-width: 95vw;
+}
+
+.team-info-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    border-left: 3px solid var(--accent-primary);
+}
+
+.team-add-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.team-add-row select {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.team-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.team-table th {
+    text-align: left;
+    padding: 6px 8px;
+    background-color: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.team-table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.team-table tr:hover {
+    background-color: var(--bg-row-hover);
+}
+
+.team-table input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+}
+
+.team-table .team-remove-btn {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.team-table .team-remove-btn:hover {
+    background-color: var(--color-bearish);
+    color: white;
+    border-color: var(--color-bearish);
+}
+
+.team-empty {
+    text-align: center;
+    padding: 16px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* Subtask-Section-Header mit Team-Button */
+.subtask-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.subtask-section-header h4 {
+    margin-bottom: 0;
+}
+
+.subtask-section-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.team-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    transition: all var(--transition-speed);
+}
+
+.team-btn:hover {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+/* ----------------------------------------
+   Inline-Editing (Haupt-Tabelle)
+   ---------------------------------------- */
+
+.inline-edit-input,
+.inline-edit-select {
+    padding: 3px 6px;
+    border: 1px solid var(--accent-primary);
+    border-radius: 3px;
+    font-size: 12px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.inline-edit-input:focus,
+.inline-edit-select:focus {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
+.inline-edit-input[type="number"] {
+    width: 60px;
+}
+
+.inline-edit-input[type="date"] {
+    width: 120px;
+}
+
+/* Haupt-Tabelle: Overflow bei expanded */
+.table-row-wrapper.expanded .table-row .table-cell {
+    overflow: visible;
+}
+
+/* ----------------------------------------
+   Subtask Dual-Content Toggle
+   ---------------------------------------- */
+
+.st-cell-edit {
+    display: none;
+}
+
+.subtask-row.expanded .st-cell-text {
+    display: none;
+}
+
+.subtask-row.expanded .st-cell-edit {
+    display: block;
+}
+
+/* Predecessor chips im Subtask-Edit-Modus */
+.st-pred-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 3px;
+}
+
+.st-pred-chips:empty {
+    display: none;
+}
+
+/* ----------------------------------------
+   Responsive
+   ---------------------------------------- */
+
+@media (max-width: 768px) {
+    .control-bar {
+        flex-wrap: wrap;
+    }
+
+    .control-bar .spacer {
+        display: none;
+    }
+
+    .control-search {
+        width: 100%;
+    }
+
+    .detail-edit-header {
+        flex-direction: column;
+    }
+
+    .subtask-table {
+        font-size: 11px;
+    }
+}
+
+/* ----------------------------------------
+   Netzplan Overlay
+   ---------------------------------------- */
+
+.netzplan-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 600;
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.netzplan-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background-color: var(--bg-header);
+    color: var(--text-header);
+    flex-shrink: 0;
+}
+
+.netzplan-title {
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.netzplan-legend {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    font-size: 12px;
+}
+
+.netzplan-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.netzplan-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.netzplan-legend-dot.status-offen { background-color: #95a5a6; }
+.netzplan-legend-dot.status-arbeit { background-color: var(--accent-primary); }
+.netzplan-legend-dot.status-erledigt { background-color: var(--color-bullish); }
+
+.netzplan-close-btn {
+    background: none;
+    border: 2px solid var(--text-header);
+    color: var(--text-header);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-speed);
+}
+
+.netzplan-close-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.netzplan-body {
+    flex: 1;
+    position: relative;
+    background-color: var(--bg-primary);
+    overflow: hidden;
+}
+
+.netzplan-graph {
+    width: 100%;
+    height: 100%;
+}
+
+.netzplan-toolbar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: auto;
+    margin-right: 12px;
+}
+
+.netzplan-toolbar-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: all var(--transition-speed);
+}
+
+.netzplan-toolbar-btn:hover:not(:disabled) {
+    background-color: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.netzplan-toolbar-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}

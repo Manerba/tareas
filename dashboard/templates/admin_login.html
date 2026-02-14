@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tareas Admin - Anmeldung</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/login.css">
+    <style>
+        /* Admin-Login: Title-Abstand kleiner wegen Badge */
+        .login-title { margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-title">Tareas</div>
+        <div class="login-badge"><span>Admin</span></div>
+        <div class="login-subtitle">Admin-Anmeldung</div>
+
+        <div class="login-error" id="loginError"></div>
+
+        <div class="login-field">
+            <label>Benutzername</label>
+            <input type="text" id="loginUsername" autocomplete="username" autofocus>
+        </div>
+
+        <div class="login-field">
+            <label>Passwort</label>
+            <input type="password" id="loginPassword" autocomplete="current-password">
+        </div>
+
+        <button class="login-btn" id="loginBtn">Anmelden</button>
+    </div>
+
+    <script>
+        // Theme laden
+        const savedTheme = localStorage.getItem('dashboard-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        const usernameInput = document.getElementById('loginUsername');
+        const passwordInput = document.getElementById('loginPassword');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorDiv = document.getElementById('loginError');
+
+        usernameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') passwordInput.focus();
+        });
+
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doLogin();
+        });
+
+        loginBtn.addEventListener('click', doLogin);
+
+        async function doLogin() {
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!username || !password) {
+                showError('Bitte Benutzername und Passwort eingeben');
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Wird angemeldet...';
+            errorDiv.style.display = 'none';
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ username, password }),
+                });
+
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || 'Anmeldung fehlgeschlagen');
+                }
+
+                const result = await resp.json();
+
+                // Pruefen ob Admin
+                if (!result.user || !result.user.is_admin) {
+                    // Nicht-Admin: wieder ausloggen
+                    await fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    throw new Error('Kein Admin-Zugriff. Nur Administratoren koennen sich hier anmelden.');
+                }
+
+                window.location.href = '/';
+            } catch (error) {
+                showError(error.message);
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Anmelden';
+            }
+        }
+
+        function showError(msg) {
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

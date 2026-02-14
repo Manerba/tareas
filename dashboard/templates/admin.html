@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tareas Admin</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/expandable_table.css">
+</head>
+<body data-admin-mode="true">
+    <!-- Header -->
+    <header class="header">
+        <h1>Tareas <span style="font-size:12px; opacity:0.7; font-weight:normal;">Admin</span></h1>
+        <div class="header-controls">
+            <span class="header-username" id="headerUsername"></span>
+            <div class="settings-dropdown-wrapper">
+                <button class="settings-btn" id="settingsBtn">&#x2699;&#xFE0F;</button>
+                <nav class="settings-dropdown" id="settingsDropdown" style="display: none;">
+                    <div class="settings-menu">
+                        <div class="settings-item" id="changePasswordBtn">
+                            <span class="settings-icon">&#x1F511;</span>
+                            <span class="settings-label">Passwort aendern</span>
+                        </div>
+                        <div class="settings-item settings-danger" id="logoutBtn">
+                            <span class="settings-icon">&#x2192;</span>
+                            <span class="settings-label">Abmelden</span>
+                        </div>
+                        <div class="settings-divider"></div>
+                        <div class="settings-item" id="themeToggle">
+                            <span class="settings-icon">&#x263E;</span>
+                            <span class="settings-label">Dark Mode</span>
+                            <span class="settings-value" id="themeStatus">Aus</span>
+                        </div>
+                        <div class="settings-divider"></div>
+                        <div class="settings-item settings-danger" id="restartBtn">
+                            <span class="settings-icon">&#x21BB;</span>
+                            <span class="settings-label">Restart Dashboard</span>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs main-tabs">
+        <a class="tab active" href="#" data-tab="allgemein">Allgemein</a>
+        <a class="tab" href="#" data-tab="benutzer">Benutzerverwaltung</a>
+        <a class="tab" href="#" data-tab="ldap">LDAP</a>
+        <a class="tab" href="#" data-tab="nextcloud">Nextcloud</a>
+        <a class="tab" href="#" data-tab="onlyoffice">ONLYOFFICE</a>
+        <a class="tab" href="#" data-tab="mail">Mail</a>
+        <a class="tab" href="#" data-tab="tls">TLS</a>
+    </nav>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar" id="filterBar" style="display: none;"></div>
+
+    <!-- Content Container -->
+    <main class="container" id="contentContainer">
+        <div class="table-loading">
+            <div class="spinner"></div>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script src="/static/js/expandable_table.js"></script>
+    <script src="/static/js/app_core.js"></script>
+    <script src="/static/js/tab_allgemein.js"></script>
+    <script src="/static/js/tab_benutzer.js"></script>
+    <script src="/static/js/tab_ldap.js"></script>
+    <script src="/static/js/tab_nextcloud.js"></script>
+    <script src="/static/js/tab_onlyoffice.js"></script>
+    <script src="/static/js/tab_mail.js"></script>
+    <script src="/static/js/tab_tls.js"></script>
+    <script>
+        // Admin-App: User laden und Tab initialisieren
+        let adminCurrentTab = 'allgemein';
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            await loadCurrentUser();
+
+            // Tab-Klick-Handler
+            document.querySelectorAll('.main-tabs .tab').forEach(tab => {
+                tab.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    switchAdminTab(this.dataset.tab);
+                });
+            });
+
+            // URL-basierter Tab
+            const path = window.location.pathname.replace(/\/+$/, '');
+            if (path === '/benutzer') {
+                switchAdminTab('benutzer');
+            } else if (path === '/ldap') {
+                switchAdminTab('ldap');
+            } else if (path === '/nextcloud') {
+                switchAdminTab('nextcloud');
+            } else if (path === '/onlyoffice') {
+                switchAdminTab('onlyoffice');
+            } else if (path === '/mail') {
+                switchAdminTab('mail');
+            } else if (path === '/tls') {
+                switchAdminTab('tls');
+            } else {
+                switchAdminTab('allgemein');
+            }
+        });
+
+        function switchAdminTab(tab) {
+            adminCurrentTab = tab;
+
+            // Tab-Buttons aktualisieren
+            document.querySelectorAll('.main-tabs .tab').forEach(t => {
+                t.classList.remove('active');
+                if (t.dataset.tab === tab) t.classList.add('active');
+            });
+
+            // URL aktualisieren
+            const pathMap = { 'allgemein': '/allgemein', 'benutzer': '/benutzer', 'ldap': '/ldap', 'nextcloud': '/nextcloud', 'onlyoffice': '/onlyoffice', 'mail': '/mail', 'tls': '/tls' };
+            history.replaceState({}, '', pathMap[tab] || '/allgemein');
+
+            // Tab-Inhalt laden
+            if (tab === 'allgemein') {
+                initAllgemeinTab();
+            } else if (tab === 'benutzer') {
+                initBenutzerTab();
+            } else if (tab === 'ldap') {
+                initLdapTab();
+            } else if (tab === 'nextcloud') {
+                initNextcloudTab();
+            } else if (tab === 'onlyoffice') {
+                initOnlyOfficeTab();
+            } else if (tab === 'mail') {
+                initMailTab();
+            } else if (tab === 'tls') {
+                initTlsTab();
+            }
+        }
+    </script>
+</body>
+</html>

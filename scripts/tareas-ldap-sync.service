@@ -1,0 +1,22 @@
+[Unit]
+Description=Tareas LDAP Sync
+After=network.target
+
+[Service]
+Type=oneshot
+User=tareas
+Group=tareas
+WorkingDirectory=/opt/tareas
+ExecStart=/opt/tareas/venv/bin/python scripts/ldap_sync_cron.py
+StandardOutput=journal
+StandardError=journal
+
+# Security Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=true
+ReadWritePaths=/opt/tareas/data /var/log
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
