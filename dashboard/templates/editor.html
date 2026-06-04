@@ -75,9 +75,16 @@
 
     <script src="/static/js/i18n.js"></script>
     <script>
-        // Theme aus localStorage uebernehmen
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        // Farbschema aus localStorage uebernehmen
+        const schemes = { light: 'light', dark: 'dark', graphit: 'light', slate: 'light', ink: 'dark' };
+        let savedScheme = localStorage.getItem('dashboard-color-scheme');
+        if (!schemes[savedScheme]) {
+            savedScheme = localStorage.getItem('dashboard-theme') === 'dark' || localStorage.getItem('theme') === 'dark'
+                ? 'dark'
+                : 'light';
+        }
+        document.documentElement.setAttribute('data-color-scheme', savedScheme);
+        document.documentElement.setAttribute('data-theme', schemes[savedScheme]);
 
         function escapeHtml(str) {
             if (!str) return '';
@@ -91,7 +98,7 @@
 
             if (!taskId || !filePath) {
                 document.getElementById('ooEditorBody').innerHTML =
-                    `<div class="oo-loading" style="color:#e74c3c">${escapeHtml(t('editor.missingParams'))}</div>`;
+                    `<div class="oo-loading" style="color:var(--color-bearish)">${escapeHtml(t('editor.missingParams'))}</div>`;
                 return;
             }
 
@@ -144,7 +151,7 @@
 
             } catch (error) {
                 document.getElementById('ooEditorBody').innerHTML =
-                    `<div class="oo-loading" style="color:#e74c3c">${escapeHtml(error.message)}</div>`;
+                    `<div class="oo-loading" style="color:var(--color-bearish)">${escapeHtml(error.message)}</div>`;
             }
         }
 

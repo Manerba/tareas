@@ -1,6 +1,27 @@
 # Changelog
 
 Zeitstempel;Version;Kategorie;Beschreibung
+04.06.2026 17:29;0.0.1+100;Aenderung;GitHub-Publish-Dryrun abgesichert: Public-Clean-Copy behaelt .gitignore, schliesst AGENTS.md und .codex aus und verwendet fuer den Mail-Scheduler eine Production-Service-Datei ohne lokale Dev-Pfade
+04.06.2026 17:29;0.0.1+100;Docs;LDAP-Admin-Placeholder neutralisiert, damit keine konkrete private Infrastruktur-IP im oeffentlichen Repo erscheint
+04.06.2026 13:29;0.0.1+99;Aenderung;UI-Farbschemas korrigiert: Hell und Dunkel sind jetzt Schema 1/2, Graphit/Cyan, Slate/Emerald und Ink/Indigo sind drei zusaetzliche feste Schemas. Separater Dark-Mode-Schalter entfernt, data-theme wird aus dem gewaehlten Schema abgeleitet
+04.06.2026 13:29;0.0.1+99;Enhancement;Kontrast der Farbschemas deutlich erhoeht: Haupttexte, Header, Buttons, Badges, Highlights, Login, Datei-Browser, OnlyOffice und Editor verwenden themefaehige Text-/Soft-Farben mit geprueften AA-Kontrasten
+04.06.2026 13:29;0.0.1+99;Docs;README um MCP-Server, AI-Agent-Collaboration, MCP-Konfiguration, Token-/Audit-Sicherheit und Architekturhinweise ergaenzt. Erster Abschnitt erwaehnt Optimierung fuer Zusammenarbeit mit KI-Agenten
+04.06.2026 12:50;0.0.1+98;Feature;UI-Farbschemas: drei kontrastreiche Paletten Graphit/Cyan, Slate/Emerald und Ink/Indigo mit je Light- und Dark-Variante. Neues ausklappbares Farbschema-Menue im Settings-Dropdown von Haupt- und Admin-App, Persistenz via localStorage
+04.06.2026 12:50;0.0.1+98;Bugfix;Admin-UI MCP/API-Tokens: Modal-Styles global in style.css verfuegbar gemacht, damit Token-Erstellung und Einmal-Anzeige als Overlay statt im View-Bereich erscheinen. Token-Anzeige nutzt breite Modal-Variante
+04.06.2026 12:50;0.0.1+98;Docs;AGENTS.md aus CLAUDE.md und Claude-Memory aufgebaut und gegen aktuellen Repo-Stand geprueft: Architektur, Services, Import-Pattern, DB, API-Router, MCP, Frontend, Security, Commit- und Zwei-Umgebungen-Konvention
+04.06.2026 12:50;0.0.1+98;Aenderung;publish.sh: Clean-Copy-Excludes an .gitignore angeglichen und interne Publish-/Packaging-Artefakte gezielter entfernt
+04.06.2026 05:02;0.0.1+97;Feature;MCP-Server: FastMCP an /mcp/ in app.py gemounted, Streamable-HTTP-Transport, Bearer-Token-Auth via Middleware. 19 Tools fuer Projekte, Subtasks, Notes, Dependencies, Suche, Users, Areas, Selbstzuweisung, whoami
+04.06.2026 05:02;0.0.1+97;Feature;Audit-Log: neue Tabelle audit_log + dashboard/audit_log.py Helper. log_change-Aufrufe an allen Schreib-Endpunkten (tasks, sub_tasks, notes, dependencies, mcp_tokens, mcp_config). Reads werden bewusst nicht geloggt
+04.06.2026 05:02;0.0.1+97;Feature;User-Provider 'mcp' (neben local/ldap): jeder MCP-Token bekommt eigenen User in users-Tabelle. Token als SHA-256-Hash gespeichert, Plain-Token nur beim Anlegen einmal sichtbar
+04.06.2026 05:02;0.0.1+97;Feature;Admin-UI: neuer Tab 'MCP' (admin.html, tab_mcp.js, api_admin_mcp.py) mit Server-Status, Tool-Liste, Token-Verwaltung, Audit-Log-Viewer mit Filtern (Actor/Entity/Action/Pagination), globalem Kill-Switch
+04.06.2026 05:02;0.0.1+97;Feature;Admin-Sicht erweitert: GET /api/tasks und GET /api/tasks/{id}/subtasks liefern Admins alle Eintraege (Read-Bypass, Edit bleibt beim Creator). Neue Frontend-Kategorie 'mcp' fuer Projekte mit creator.auth_source='mcp', neuer Filter-Button im Aufgaben-Tab, i18n-Key category.mcp in 7 Sprachen
+04.06.2026 05:02;0.0.1+97;Aenderung;Admin darf alle Tasks und SubTasks loeschen (delete_subtask-Endpunkt + UI-Buttons in tab_aufgaben.js: getTaskPermissions liefert isAdmin, renderDeleteAction und Subtask-Action-Spalte zeigen Buttons fuer Admin)
+04.06.2026 05:02;0.0.1+97;Aenderung;MCP-User-Assignees haben volle Edit-Rechte auf zugewiesene Tasks (Permission-Bypass fuer auth_source='mcp' in update_task), menschliche Assignees bleiben auf Status beschraenkt
+04.06.2026 05:02;0.0.1+97;Aenderung;requirements.txt: fastmcp>=3.0 ergaenzt
+04.06.2026 05:02;0.0.1+97;Bugfix;Aufgaben-Detail: Beschreibung editierbar fuer Creator-Assignee, wenn isOwnTask (Logik-Korrektur in tab_aufgaben.js: !perm.isOwnTask im Creator+Assigned-Branch)
+04.06.2026 05:02;0.0.1+97;Docs;CLAUDE.md: Zwei-Umgebungen-Konvention dokumentiert (Hauptprojekt Bash/Linux mir/Tareas vs. Desktop-App PowerShell/Windows mir/Tareas-Desktop)
+04.06.2026 05:02;0.0.1+97;Docs;docs/spec-desktop-app.md: Sprint-1/2-Markierungen, Installer-Architektur (zweistufig via Inno-Setup + --install), JWT statt generischem Token
+15.02.2026 15:30;0.0.1+95;Feature;Desktop-App: Komplettes Projekt-Skelett (22 Dateien) unter clients/desktop/ - Standalone/Client-Modus, pywebview-Fenster, System Tray, Benachrichtigungen, Settings-Dialog, Dateiablage, Welcome-Dialog, i18n (DE/EN), PyInstaller/Inno-Setup Build-Config
 14.02.2026 19:20;0.0.1+93;Docs;README: 3 Screenshots eingefuegt (Projekt-Ansicht, Subtask-Liste, Netzplan)
 14.02.2026 19:05;0.0.1+92;Enhancement;Demo-Daten: Subtasks von 26 auf 15 konsolidiert mit sauberen Abhaengigkeiten (5 Levels), ausfuehrliche Projekt- und Aufgabenbeschreibungen fuer GitHub-Screenshots
 14.02.2026 18:30;0.0.1+91;Enhancement;Netzplan: Auto-Button durch Dropdown-Submenu mit 3 Layout-Optionen ersetzt (Barycenter/Kompakt/Oben ausgerichtet), Mindestabstand zwischen Knoten von 70 auf 90 erhoeht

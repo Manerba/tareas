@@ -3,6 +3,7 @@ Tareas - Authentifizierung
 Hashing, Sessions, Cookie-Signing, FastAPI-Dependencies.
 """
 
+import hashlib
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -86,7 +87,7 @@ def validate_session(token: str) -> dict | None:
     try:
         row = db.execute(
             """SELECT s.*, u.id as uid, u.username, u.vorname, u.nachname,
-                      u.email, u.is_admin
+                      u.email, u.is_admin, u.auth_source
                FROM sessions s
                JOIN users u ON s.user_id = u.id
                WHERE s.token = ? AND s.expires_at > datetime('now')""",
@@ -101,6 +102,7 @@ def validate_session(token: str) -> dict | None:
             "nachname": row["nachname"],
             "email": row["email"],
             "is_admin": row["is_admin"],
+            "auth_source": row["auth_source"] or "local",
         }
     finally:
         db.close()
@@ -187,3 +189,199 @@ async def get_admin_user(request: Request) -> dict:
     if not user["is_admin"]:
         raise HTTPException(status_code=403, detail="Kein Admin-Zugriff")
     return user
+
+
+# ============================================================
+# MCP-Token-Auth (Bearer-Token fuer den /mcp-Endpoint)
+# ============================================================
+
+def _hash_token(plain_token: str) -> str:
+    """SHA-256-Hash eines Plain-Tokens (Hex). Nur Hash wird gespeichert."""
+    return hashlib.sha256(plain_token.encode()).hexdigest()
+
+
+def _mcp_globally_enabled() -> bool:
+    """Prueft den Kill-Switch (mcp_config.enabled)."""
+    db = get_db()
+    try:
+        row = db.execute("SELECT enabled FROM mcp_config WHERE id = 1").fetchone()
+        return bool(row and row["enabled"])
+    finally:
+        db.close()
+
+
+def validate_mcp_bearer(token: str) -> dict | None:
+    """Validiert einen MCP-Bearer-Token. Gibt User-Dict (auth_source='mcp')
+    oder None zurueck. Aktualisiert last_used_at."""
+    if not token:
+        return None
+    if not _mcp_globally_enabled():
+        return None
+    token_hash = _hash_token(token)
+    db = get_db()
+    try:
+        row = db.execute(
+            """SELECT t.id AS token_id, t.display_name,
+                      u.id AS uid, u.username, u.vorname, u.nachname,
+                      u.email, u.is_admin, u.auth_source
+               FROM mcp_tokens t
+               JOIN users u ON t.user_id = u.id
+               WHERE t.token_hash = ? AND t.revoked_at IS NULL""",
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return None
+        db.execute(
+            "UPDATE mcp_tokens SET last_used_at = datetime('now') WHERE id = ?",
+            (row["token_id"],),
+        )
+        db.commit()
+        return {
+            "id": row["uid"],
+            "username": row["username"],
+            "vorname": row["vorname"],
+            "nachname": row["nachname"],
+            "email": row["email"],
+            "is_admin": row["is_admin"],
+            "auth_source": row["auth_source"] or "mcp",
+            "mcp_token_id": row["token_id"],
+            "mcp_display_name": row["display_name"],
+        }
+    finally:
+        db.close()
+
+
+def _extract_bearer_token(request: Request) -> str | None:
+    """Liest 'Authorization: Bearer <token>' aus dem Request, oder None."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    return auth[7:].strip() or None
+
+
+async def get_mcp_user(request: Request) -> dict:
+    """FastAPI Dependency: Validiert Bearer-Token, gibt MCP-User zurueck oder 401/403."""
+    if not _mcp_globally_enabled():
+        raise HTTPException(status_code=403, detail="MCP ist deaktiviert")
+    token = _extract_bearer_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Bearer-Token fehlt")
+    user = validate_mcp_bearer(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Ungueltiges oder widerrufenes Token")
+    return user
+
+
+def create_mcp_token(display_name: str, created_by_user_id: int) -> tuple[str, int]:
+    """Legt einen neuen MCP-User samt Token an.
+
+    Returns:
+        (plain_token, token_id) - Plain-Token wird nur HIER und im Admin-UI angezeigt.
+
+    Der zugehoerige User hat auth_source='mcp' und einen automatischen Username
+    'mcp_<token_id>'. password_hash bleibt leer (Login per Cookie nicht moeglich).
+    """
+    plain_token = secrets.token_urlsafe(48)
+    token_hash = _hash_token(plain_token)
+    db = get_db()
+    try:
+        # 1. User anlegen (Platzhalter-Username, wird gleich aktualisiert)
+        placeholder_username = f"mcp_{secrets.token_hex(4)}"
+        cursor = db.execute(
+            """INSERT INTO users
+               (username, password_hash, vorname, nachname, is_admin, auth_source, is_active)
+               VALUES (?, '', ?, '', 0, 'mcp', 1)""",
+            (placeholder_username, display_name),
+        )
+        user_id = cursor.lastrowid
+
+        # 2. Token-Eintrag erstellen
+        cursor = db.execute(
+            """INSERT INTO mcp_tokens
+               (user_id, token_hash, display_name, created_by)
+               VALUES (?, ?, ?, ?)""",
+            (user_id, token_hash, display_name, created_by_user_id),
+        )
+        token_id = cursor.lastrowid
+
+        # 3. Username auf finales Format aktualisieren ('mcp_<token_id>')
+        db.execute(
+            "UPDATE users SET username = ? WHERE id = ?",
+            (f"mcp_{token_id}", user_id),
+        )
+
+        db.commit()
+        return plain_token, token_id
+    finally:
+        db.close()
+
+
+def revoke_mcp_token(token_id: int) -> bool:
+    """Setzt revoked_at auf jetzt. Behaelt Audit-Spur (User wird nicht geloescht).
+
+    Returns True wenn das Token aktiv war und revoked wurde, sonst False.
+    """
+    db = get_db()
+    try:
+        cursor = db.execute(
+            """UPDATE mcp_tokens
+               SET revoked_at = datetime('now')
+               WHERE id = ? AND revoked_at IS NULL""",
+            (token_id,),
+        )
+        db.commit()
+        return cursor.rowcount > 0
+    finally:
+        db.close()
+
+
+def list_mcp_tokens() -> list[dict]:
+    """Liste aller MCP-Tokens (ohne Hash) fuer Admin-UI."""
+    db = get_db()
+    try:
+        rows = db.execute(
+            """SELECT t.id, t.display_name, t.created_at, t.last_used_at,
+                      t.revoked_at, t.user_id,
+                      cb.username AS created_by_username
+               FROM mcp_tokens t
+               LEFT JOIN users cb ON t.created_by = cb.id
+               ORDER BY t.id DESC"""
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "display_name": r["display_name"],
+                "created_at": r["created_at"],
+                "last_used_at": r["last_used_at"],
+                "revoked_at": r["revoked_at"],
+                "user_id": r["user_id"],
+                "created_by_username": r["created_by_username"],
+                "active": r["revoked_at"] is None,
+            }
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
+def get_mcp_config() -> dict:
+    """Liefert die MCP-Config (Kill-Switch + Metadaten)."""
+    db = get_db()
+    try:
+        row = db.execute("SELECT enabled FROM mcp_config WHERE id = 1").fetchone()
+        return {"enabled": bool(row["enabled"]) if row else True}
+    finally:
+        db.close()
+
+
+def set_mcp_enabled(enabled: bool) -> None:
+    """Schaltet MCP global ein/aus (Kill-Switch)."""
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT OR REPLACE INTO mcp_config (id, enabled) VALUES (1, ?)",
+            (1 if enabled else 0,),
+        )
+        db.commit()
+    finally:
+        db.close()

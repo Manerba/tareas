@@ -55,8 +55,14 @@ from dashboard.api_teams import router as teams_router
 from dashboard.api_nextcloud import files_router as nextcloud_files_router
 from dashboard.api_onlyoffice import wopi_router, editor_router
 from dashboard.api_mail import mail_user_router
-from dashboard.auth import get_current_user, _extract_user_from_request
+from dashboard.auth import get_current_user, _extract_user_from_request, validate_mcp_bearer
+from dashboard.mcp_server import mcp, current_mcp_user
 from dashboard.tls_utils import get_tls_config
+
+
+# MCP-ASGI-App bauen. Lifespan muss zwingend in den FastAPI-Lifespan eingebunden
+# werden, sonst Runtime-Fehler "Task group is not initialized".
+mcp_app = mcp.http_app(path="/", transport="streamable-http")
 
 
 @asynccontextmanager
@@ -65,7 +71,8 @@ async def lifespan(app: FastAPI):
     init_db()
     migrate_plaintext_credentials()
     setup_security_logger()
-    yield
+    async with mcp_app.lifespan(app):
+        yield
 
 
 app = FastAPI(title="Tareas", lifespan=lifespan)
@@ -90,6 +97,9 @@ app.include_router(editor_router, dependencies=[Depends(get_current_user)])
 
 # Mail User-Router MIT auth Dependency
 app.include_router(mail_user_router, dependencies=[Depends(get_current_user)])
+
+# MCP-Server an /mcp/ mounten. Bearer-Token-Auth via mcp_auth-Middleware (s. unten).
+app.mount("/mcp", mcp_app)
 
 # Verzeichnisse
 static_dir = Path(__file__).parent / "static"
@@ -164,6 +174,28 @@ async def no_cache_static(request, call_next):
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+@app.middleware("http")
+async def mcp_auth(request: Request, call_next):
+    """Bearer-Token-Auth fuer /mcp/*. Setzt current_mcp_user ContextVar."""
+    if not request.url.path.startswith("/mcp"):
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse({"error": "Bearer-Token fehlt"}, status_code=401)
+    token = auth_header[7:].strip()
+    user = validate_mcp_bearer(token)
+    if not user:
+        return JSONResponse(
+            {"error": "Ungueltiges/widerrufenes Token oder MCP deaktiviert"},
+            status_code=401,
+        )
+    ctx_token = current_mcp_user.set(user)
+    try:
+        return await call_next(request)
+    finally:
+        current_mcp_user.reset(ctx_token)
 
 
 # ============================================================

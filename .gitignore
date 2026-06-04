@@ -30,5 +30,11 @@ build/
 docs/prompts.txt
 docs/TODO/
 
+# Clients (eigene Repos)
+clients/
+
 # Claude Code
 .claude/
+
+# Codex workspace metadata
+.codex/

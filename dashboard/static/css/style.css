@@ -1,67 +1,248 @@
 /* ========================================
    Dashboard Template - CSS
-   Generisches Theme-System mit Light/Dark Mode
+   Generisches Theme-System mit festen Farbschemas
    ======================================== */
 
-/* CSS Custom Properties fuer Themes */
-:root {
-    /* Light Theme (Standard) */
+/* CSS Custom Properties fuer Farbschemas */
+:root,
+[data-color-scheme="light"] {
+    /* Schema 1: Hell */
     --header-height: 60px;
     --filter-bar-height: 48px;
     --bg-primary: #ffffff;
-    --bg-secondary: #f5f5f5;
-    --bg-header: #2c3e50;
-    --bg-row-hover: #e8f4fc;
-    --bg-accordion-header: #ecf0f1;
-    --text-primary: #333333;
-    --text-secondary: #666666;
+    --bg-secondary: #eef2f6;
+    --bg-header: #172033;
+    --bg-row-hover: #dbeafe;
+    --bg-accordion-header: #d7dee8;
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
     --text-header: #ffffff;
-    --border-color: #ddd;
-    --shadow: 0 2px 4px rgba(0,0,0,0.1);
+    --border-color: #aebccc;
+    --text-muted: var(--text-secondary);
+    --bg-hover: var(--bg-row-hover);
+    --shadow: 0 2px 4px rgba(15, 23, 42, 0.14);
 
     /* Status-Farben */
-    --color-bullish: #28a745;
-    --color-bearish: #dc3545;
-    --color-neutral: #6c757d;
-    --color-unclear: #fd7e14;
+    --color-bullish: #166534;
+    --color-bearish: #b91c1c;
+    --color-neutral: #475569;
+    --color-unclear: #92400e;
+    --color-success: #166534;
+    --success-text: #ffffff;
+    --danger-text: #ffffff;
+    --warning-text: #ffffff;
+    --success-soft: #dcfce7;
+    --danger-soft: #fee2e2;
+    --warning-soft: #fef3c7;
+    --neutral-soft: #e2e8f0;
+    --highlight-bg: #fde68a;
+    --highlight-text: #422006;
+    --project-color: #5b21b6;
+    --project-soft: #ede9fe;
+    --project-text: #5b21b6;
 
     /* Akzentfarben */
-    --accent-primary: #3498db;
-    --accent-hover: #2980b9;
+    --accent-primary: #1d4ed8;
+    --accent-primary-rgb: 29, 78, 216;
+    --accent-hover: #1e40af;
+    --accent-text: #ffffff;
+    --accent-soft: #dbeafe;
+    --primary-color: var(--accent-primary);
 
     /* Detail-Hintergruende */
-    --bg-detail: #f0f4f8;
-    --bg-detail-nested: #d6e1ed;
+    --bg-detail: #e6eef8;
+    --bg-detail-nested: #cbdff5;
 
     /* Schatten */
-    --shadow-focus: 0 0 0 2px rgba(52, 152, 219, 0.2);
-    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --shadow-focus: 0 0 0 2px rgba(29, 78, 216, 0.28);
+    --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.12);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.18);
+    --shadow-lg: 0 8px 32px rgba(15, 23, 42, 0.28);
 
     /* Transitions */
     --transition-speed: 0.3s;
 }
 
-[data-theme="dark"] {
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-header: #0f3460;
-    --bg-row-hover: #1f4068;
-    --bg-accordion-header: #16213e;
-    --text-primary: #e8e8e8;
-    --text-secondary: #b0b0b0;
+[data-color-scheme="dark"] {
+    /* Schema 2: Dunkel */
+    --bg-primary: #0b1220;
+    --bg-secondary: #172033;
+    --bg-header: #020617;
+    --bg-row-hover: #1e3a5f;
+    --bg-accordion-header: #1e293b;
+    --text-primary: #f8fafc;
+    --text-secondary: #d6dee9;
     --text-header: #ffffff;
-    --border-color: #2a2a4a;
-    --shadow: 0 2px 4px rgba(0,0,0,0.3);
+    --border-color: #516174;
+    --shadow: 0 2px 4px rgba(0, 0, 0, 0.42);
 
-    --color-bullish: #5cb85c;
-    --color-bearish: #d9534f;
-    --color-neutral: #868e96;
-    --color-unclear: #f0ad4e;
+    --color-bullish: #4ade80;
+    --color-bearish: #fb7185;
+    --color-neutral: #cbd5e1;
+    --color-unclear: #facc15;
+    --color-success: #4ade80;
+    --success-text: #052e16;
+    --danger-text: #3f0714;
+    --warning-text: #422006;
+    --success-soft: #14532d;
+    --danger-soft: #4c0519;
+    --warning-soft: #422006;
+    --neutral-soft: #334155;
+    --highlight-bg: #854d0e;
+    --highlight-text: #fffbeb;
+    --project-color: #ddd6fe;
+    --project-soft: #312e81;
+    --project-text: #ddd6fe;
 
-    --bg-detail: #1e2a45;
-    --bg-detail-nested: #2a3a5e;
+    --accent-primary: #22d3ee;
+    --accent-primary-rgb: 34, 211, 238;
+    --accent-hover: #a5f3fc;
+    --accent-text: #031018;
+    --accent-soft: #164e63;
+    --primary-color: var(--accent-primary);
+
+    --bg-detail: #15223a;
+    --bg-detail-nested: #203554;
+
+    --shadow-focus: 0 0 0 2px rgba(34, 211, 238, 0.34);
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.38);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.58);
+}
+
+[data-color-scheme="graphit"] {
+    /* Schema 3: Graphit / Cyan / Amber */
+    --bg-primary: #f7f9fb;
+    --bg-secondary: #dfe7ef;
+    --bg-header: #111827;
+    --bg-row-hover: #bfe7f2;
+    --bg-accordion-header: #cbd5e1;
+    --text-primary: #0b1120;
+    --text-secondary: #253244;
+    --text-header: #ffffff;
+    --border-color: #94a3b8;
+    --shadow: 0 2px 4px rgba(17, 24, 39, 0.16);
+
+    --color-bullish: #15803d;
+    --color-bearish: #b91c1c;
+    --color-neutral: #475569;
+    --color-unclear: #92400e;
+    --color-success: #15803d;
+    --success-text: #ffffff;
+    --danger-text: #ffffff;
+    --warning-text: #ffffff;
+    --success-soft: #dcfce7;
+    --danger-soft: #fee2e2;
+    --warning-soft: #fef3c7;
+    --neutral-soft: #e2e8f0;
+    --highlight-bg: #fde68a;
+    --highlight-text: #422006;
+    --project-color: #5b21b6;
+    --project-soft: #ede9fe;
+    --project-text: #5b21b6;
+
+    --accent-primary: #0e7490;
+    --accent-primary-rgb: 14, 116, 144;
+    --accent-hover: #155e75;
+    --accent-text: #ffffff;
+    --accent-soft: #cffafe;
+    --primary-color: var(--accent-primary);
+
+    --bg-detail: #d8edf4;
+    --bg-detail-nested: #bae0ec;
+
+    --shadow-focus: 0 0 0 2px rgba(14, 116, 144, 0.3);
+}
+
+[data-color-scheme="slate"] {
+    /* Schema 4: Slate / Emerald / Coral */
+    --bg-primary: #fbfdfb;
+    --bg-secondary: #e4ece8;
+    --bg-header: #1f2933;
+    --bg-row-hover: #bfe8d3;
+    --bg-accordion-header: #d1ddd7;
+    --text-primary: #102018;
+    --text-secondary: #31483d;
+    --text-header: #ffffff;
+    --border-color: #9fb4aa;
+    --shadow: 0 2px 4px rgba(16, 32, 24, 0.15);
+
+    --color-bullish: #166534;
+    --color-bearish: #be123c;
+    --color-neutral: #475569;
+    --color-unclear: #92400e;
+    --color-success: #166534;
+    --success-text: #ffffff;
+    --danger-text: #ffffff;
+    --warning-text: #ffffff;
+    --success-soft: #dcfce7;
+    --danger-soft: #ffe4e6;
+    --warning-soft: #fef3c7;
+    --neutral-soft: #e2e8f0;
+    --highlight-bg: #fde68a;
+    --highlight-text: #422006;
+    --project-color: #5b21b6;
+    --project-soft: #ede9fe;
+    --project-text: #5b21b6;
+
+    --accent-primary: #047857;
+    --accent-primary-rgb: 4, 120, 87;
+    --accent-hover: #065f46;
+    --accent-text: #ffffff;
+    --accent-soft: #d1fae5;
+    --primary-color: var(--accent-primary);
+
+    --bg-detail: #d8eee2;
+    --bg-detail-nested: #bee4d0;
+
+    --shadow-focus: 0 0 0 2px rgba(4, 120, 87, 0.3);
+}
+
+[data-color-scheme="ink"] {
+    /* Schema 5: Ink / Indigo / Lime */
+    --bg-primary: #111014;
+    --bg-secondary: #211f2b;
+    --bg-header: #050508;
+    --bg-row-hover: #352d5c;
+    --bg-accordion-header: #2a2537;
+    --text-primary: #fafaf9;
+    --text-secondary: #ded8ec;
+    --text-header: #ffffff;
+    --border-color: #5b526d;
+    --shadow: 0 2px 4px rgba(0, 0, 0, 0.44);
+
+    --color-bullish: #bef264;
+    --color-bearish: #fb7185;
+    --color-neutral: #a8a29e;
+    --color-unclear: #fde047;
+    --color-success: #bef264;
+    --success-text: #1a2e05;
+    --danger-text: #3f0714;
+    --warning-text: #422006;
+    --success-soft: #365314;
+    --danger-soft: #4c0519;
+    --warning-soft: #422006;
+    --neutral-soft: #292524;
+    --highlight-bg: #713f12;
+    --highlight-text: #fffbeb;
+    --project-color: #ddd6fe;
+    --project-soft: #312e81;
+    --project-text: #ddd6fe;
+
+    --accent-primary: #c4b5fd;
+    --accent-primary-rgb: 196, 181, 253;
+    --accent-hover: #ddd6fe;
+    --accent-text: #1e1638;
+    --accent-soft: #312e81;
+    --primary-color: var(--accent-primary);
+
+    --bg-detail: #211d32;
+    --bg-detail-nested: #30274d;
+
+    --shadow-focus: 0 0 0 2px rgba(196, 181, 253, 0.36);
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.48);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
 /* Reset & Base */
@@ -243,6 +424,21 @@ body {
     font-size: 12px;
 }
 
+.scheme-swatch {
+    display: inline-flex;
+    width: 34px;
+    height: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+}
+
+.scheme-swatch span {
+    flex: 1;
+}
+
 .settings-divider {
     height: 1px;
     background-color: var(--border-color);
@@ -250,8 +446,8 @@ body {
 }
 
 .settings-danger:hover {
-    background-color: rgba(231, 76, 60, 0.1);
-    color: #e74c3c;
+    background-color: var(--danger-soft);
+    color: var(--color-bearish);
 }
 
 /* ========================================
@@ -416,17 +612,17 @@ a.tab {
 
 .notification-info {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
 }
 
 .notification-success {
     background-color: var(--color-bullish);
-    color: white;
+    color: var(--success-text);
 }
 
 .notification-error {
     background-color: var(--color-bearish);
-    color: white;
+    color: var(--danger-text);
 }
 
 .notification.fade-out {
@@ -443,6 +639,151 @@ a.tab {
         opacity: 1;
         transform: translateX(0);
     }
+}
+
+/* ========================================
+   Modal Dialogs
+   ======================================== */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 800;
+    padding: 16px;
+    animation: modalFadeIn 0.15s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    width: 400px;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: auto;
+    animation: modalIn 0.2s ease-out;
+}
+
+.modal-wide {
+    width: 650px;
+    max-width: 95vw;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.modal-field label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.modal-field input,
+.modal-field select {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.modal-field input:focus,
+.modal-field select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-focus);
+}
+
+.modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.msgbox-dialog {
+    width: 320px;
+}
+
+.msgbox-dialog .modal-body {
+    padding: 24px 20px;
+    text-align: center;
+}
+
+.msgbox-dialog .modal-footer {
+    border-top: none;
+    justify-content: center;
+}
+
+.msgbox-dialog.type-confirm .msgbox-btn-primary {
+    background-color: var(--color-bearish);
+    color: var(--danger-text);
+    border-color: var(--color-bearish);
+}
+
+.msgbox-dialog.type-confirm .msgbox-btn-primary:hover {
+    opacity: 0.85;
+}
+
+.msgbox-dialog.type-alert .msgbox-btn-primary {
+    background-color: var(--accent-primary);
+    color: var(--accent-text);
+    border-color: var(--accent-primary);
+}
+
+.msgbox-dialog.type-alert .msgbox-btn-primary:hover {
+    opacity: 0.85;
+}
+
+.msgbox-dialog.type-warning .msgbox-btn-primary {
+    background-color: var(--color-unclear);
+    color: var(--warning-text);
+    border-color: var(--color-unclear);
+}
+
+.msgbox-dialog.type-warning .msgbox-btn-primary:hover {
+    opacity: 0.85;
 }
 
 /* ========================================
@@ -466,7 +807,7 @@ a.tab {
 
 .action-btn.primary {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -481,7 +822,7 @@ a.tab {
 
 .action-btn.danger:hover {
     background-color: var(--color-bearish);
-    color: white;
+    color: var(--danger-text);
 }
 
 /* ========================================
@@ -516,13 +857,10 @@ a.tab {
 .text-muted { color: var(--text-secondary); }
 
 .highlight {
-    background-color: #ffeb3b;
+    background-color: var(--highlight-bg);
+    color: var(--highlight-text);
     padding: 1px 3px;
     border-radius: 2px;
-}
-
-[data-theme="dark"] .highlight {
-    background-color: #665c00;
 }
 
 /* ========================================
@@ -835,33 +1173,28 @@ a.tab {
 }
 
 .badge-admin {
-    background-color: rgba(52, 152, 219, 0.2);
+    background-color: var(--accent-soft);
     color: var(--accent-primary);
 }
 
 .badge-ldap {
-    background-color: rgba(142, 68, 173, 0.2);
-    color: #8e44ad;
+    background-color: var(--project-soft);
+    color: var(--project-text);
 }
 
 .badge-local {
-    background-color: rgba(108, 117, 125, 0.2);
+    background-color: var(--neutral-soft);
     color: var(--color-neutral);
 }
 
 .badge-active {
-    background-color: rgba(40, 167, 69, 0.2);
+    background-color: var(--success-soft);
     color: var(--color-bullish);
 }
 
 .badge-inactive {
-    background-color: rgba(220, 53, 69, 0.2);
+    background-color: var(--danger-soft);
     color: var(--color-bearish);
-}
-
-[data-theme="dark"] .badge-ldap {
-    background-color: rgba(142, 68, 173, 0.3);
-    color: #bb6bd9;
 }
 
 /* ========================================

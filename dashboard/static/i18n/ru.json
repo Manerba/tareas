@@ -21,14 +21,11 @@
   "common.fillAll": "Пожалуйста, заполните все поля",
   "common.fillRequired": "Пожалуйста, заполните все обязательные поля",
   "common.loading": "Загрузка...",
-
   "status.offen": "Открыто",
   "status.in_arbeit": "В работе",
   "status.erledigt": "Выполнено",
-
   "type.aufgabe": "Задача",
   "type.projekt": "Проект",
-
   "auth.login": "Вход",
   "auth.logout": "Выход",
   "auth.username": "Имя пользователя",
@@ -40,7 +37,6 @@
   "auth.locked": "Заблокировано ({remaining} сек.)",
   "auth.noAdminAccess": "Нет доступа администратора. Только администраторы могут войти здесь.",
   "auth.adminLogin": "Вход администратора",
-
   "password.change": "Изменить пароль",
   "password.old": "Старый пароль",
   "password.new": "Новый пароль",
@@ -49,12 +45,16 @@
   "password.mismatch": "Новые пароли не совпадают",
   "password.minLength": "Пароль должен содержать не менее 4 символов",
   "password.changed": "Пароль изменён",
-
   "settings.darkMode": "Тёмная тема",
   "settings.mailNotifications": "Уведомления по почте",
   "settings.restart": "Перезапустить панель",
   "settings.language": "Язык",
-
+  "settings.colorScheme": "Цветовая схема",
+  "settings.scheme.light": "Светлая",
+  "settings.scheme.dark": "Темная",
+  "settings.scheme.graphit": "Графит / циан",
+  "settings.scheme.slate": "Сланец / изумруд",
+  "settings.scheme.ink": "Чернила / индиго",
   "mail.prefs.title": "Уведомления по почте",
   "mail.prefs.saved": "Настройки почты сохранены",
   "mail.prefs.loadError": "Ошибка загрузки настроек",
@@ -63,10 +63,8 @@
   "mail.event.status_change": "Статус изменён",
   "mail.event.deadline_reached": "Срок наступил",
   "mail.event.deadline_warning": "Предупреждение о сроке",
-
   "restart.confirm": "Действительно перезапустить панель?",
   "restart.restarting": "Перезапуск...",
-
   "nav.aufgaben": "Задачи",
   "nav.allgemein": "Общее",
   "nav.benutzer": "Пользователи",
@@ -75,7 +73,6 @@
   "nav.onlyoffice": "ONLYOFFICE",
   "nav.mail": "Почта",
   "nav.tls": "TLS",
-
   "tasks.title": "Задачи",
   "tasks.newTask": "+ Новая задача",
   "tasks.expandAll": "Развернуть все",
@@ -97,7 +94,6 @@
   "tasks.typeLabel": "Тип:",
   "tasks.statusLabel": "Статус:",
   "tasks.unassigned": "-- Не назначено --",
-
   "tasks.col.name": "Название",
   "tasks.col.type": "Тип",
   "tasks.col.status": "Статус",
@@ -106,12 +102,11 @@
   "tasks.col.assignedTo": "Назначено",
   "tasks.col.created": "Создано",
   "tasks.col.deadline": "Срок",
-
   "category.team": "Команда",
   "category.zugewiesene": "Назначенные",
   "category.vergebene": "Делегированные",
   "category.eigene": "Собственные",
-
+  "category.mcp": "MCP",
   "subtask.title": "Подзадачи",
   "subtask.add": "+ Подзадача",
   "subtask.newName": "Новая подзадача",
@@ -136,7 +131,6 @@
   "subtask.predExists": "Предшественник уже существует",
   "subtask.predRemoveConfirm": "Действительно удалить предшественника?",
   "subtask.info": "Подзадача проекта: {name}",
-
   "detail.description": "Описание",
   "detail.descriptionFrom": "Описание от {name}",
   "detail.noDescription": "Нет описания",
@@ -144,13 +138,12 @@
   "detail.notesFrom": "Заметки от {name}",
   "detail.noNotes": "Заметки отсутствуют",
   "detail.loadError": "Ошибка загрузки",
-
   "netzplan.title": "Сетевой план",
   "netzplan.noSubtasks": "Подзадачи отсутствуют",
   "netzplan.fit": "Вписать",
   "netzplan.auto": "Авто",
   "netzplan.selectTarget": "Нажмите на целевой узел... (ESC = Отмена)",
-  "netzplan.removeDep": "Действительно удалить зависимость \"{from}\" \u2192 \"{to}\"?",
+  "netzplan.removeDep": "Действительно удалить зависимость \"{from}\" → \"{to}\"?",
   "netzplan.depRemoved": "Зависимость удалена",
   "netzplan.depAdded": "Зависимость добавлена",
   "netzplan.invalidConnection": "Недопустимое соединение",
@@ -165,7 +158,6 @@
   "netzplan.statusOpen": "Открыто",
   "netzplan.statusWip": "В работе",
   "netzplan.statusDone": "Выполнено",
-
   "nc.fileStorage": "Файловое хранилище",
   "nc.changeConfirm": "Действительно изменить файловое хранилище?",
   "nc.removeMapping": "Удалить привязку",
@@ -178,7 +170,6 @@
   "nc.selected": "Выбрано",
   "nc.select": "Выбрать",
   "nc.loadDirError": "Ошибка загрузки каталогов",
-
   "team.title": "Участники команды",
   "team.creatorInfo": "Вы являетесь создателем и имеете полный доступ.",
   "team.selectUser": "-- Выберите пользователя --",
@@ -197,7 +188,6 @@
   "team.addError": "Ошибка добавления участника",
   "team.removeError": "Ошибка удаления участника",
   "team.updateError": "Ошибка обновления",
-
   "files.title": "Файлы",
   "files.upload": "Загрузить",
   "files.folder": "Папка",
@@ -223,7 +213,6 @@
   "files.gridView": "Переключить на сетку",
   "files.treeView": "Переключить на дерево",
   "files.toggleView": "Переключить вид",
-
   "table.noData": "Данные не найдены",
   "table.loadError": "Ошибка загрузки данных",
   "table.truncated": "[... сокращено]",
@@ -232,7 +221,6 @@
   "table.prevPage": "Предыдущая страница",
   "table.nextPage": "Следующая страница",
   "table.lastPage": "Последняя страница",
-
   "wysiwyg.formatBlock": "Формат",
   "wysiwyg.format": "Формат",
   "wysiwyg.normal": "Обычный",
@@ -251,7 +239,6 @@
   "wysiwyg.normalSize": "Обычный",
   "wysiwyg.large": "Большой",
   "wysiwyg.xlarge": "Очень большой",
-
   "users.title": "Управление пользователями",
   "users.new": "Новый пользователь",
   "users.newBtn": "+ Новый пользователь",
@@ -286,7 +273,6 @@
   "users.sendInvite": "Отправить приглашение по почте",
   "users.inviteConfirm": "Отправить приглашение по почте пользователю \"{username}\"?",
   "users.inviteSent": "Приглашение отправлено",
-
   "ldap.title": "Конфигурация сервера LDAP",
   "ldap.server": "Сервер",
   "ldap.port": "Порт",
@@ -316,7 +302,6 @@
   "ldap.groupSelected": "Группа \"{name}\" выбрана. Создано: {created}, Обновлено: {updated}",
   "ldap.syncFailed": "Ошибка синхронизации",
   "ldap.syncComplete": "Синхронизация завершена. Создано: {created}, Обновлено: {updated}, Деактивировано: {deactivated}",
-
   "mailAdmin.smtpTitle": "Конфигурация SMTP-сервера",
   "mailAdmin.smtpServer": "SMTP-сервер",
   "mailAdmin.port": "Порт",
@@ -354,7 +339,6 @@
   "mailAdmin.event.test": "Тестовое письмо",
   "mailAdmin.noPlaceholders": "(нет заполнителей)",
   "mailAdmin.sendError": "Ошибка отправки",
-
   "ncAdmin.title": "Подключение к Nextcloud (WebDAV)",
   "ncAdmin.url": "URL Nextcloud",
   "ncAdmin.username": "Имя пользователя",
@@ -366,7 +350,6 @@
   "ncAdmin.saved": "Конфигурация Nextcloud сохранена (соединение установлено)",
   "ncAdmin.deleteConfirm": "Действительно удалить конфигурацию Nextcloud? Все привязки каталогов будут удалены.",
   "ncAdmin.deleted": "Конфигурация Nextcloud удалена",
-
   "ooAdmin.title": "Сервер документов ONLYOFFICE",
   "ooAdmin.serverUrl": "URL сервера",
   "ooAdmin.jwtSecret": "JWT Secret",
@@ -383,7 +366,6 @@
   "ooAdmin.deleteConfirm": "Действительно удалить конфигурацию ONLYOFFICE?",
   "ooAdmin.deleted": "Конфигурация ONLYOFFICE удалена",
   "ooAdmin.setupHint": "Запустите Docker-контейнер с помощью scripts/onlyoffice-setup.sh. Скрипт выведет URL и JWT Secret.",
-
   "tls.statusTitle": "Статус TLS",
   "tls.status": "Статус:",
   "tls.active": "Активно",
@@ -418,14 +400,12 @@
   "tls.trouble4": "При возникновении проблем: отключите TLS и перезапустите службы",
   "tls.verifySaved": "Настройки проверки сертификата сохранены",
   "tls.validateError": "Ошибка проверки",
-
   "allgemein.title": "Адрес сервера",
   "allgemein.serverAddress": "Адрес сервера",
   "allgemein.addressRequired": "Пожалуйста, введите адрес сервера",
   "allgemein.saved": "Конфигурация приложения сохранена",
   "allgemein.hint": "Протокол (http/https) автоматически определяется из настроек TLS. Этот адрес используется как ссылка на приложение в письмах.",
   "allgemein.placeholder": "напр. tareas.domain.tld или 192.168.1.100:8504",
-
   "editor.loading": "Загрузка...",
   "editor.editorLoading": "Загрузка редактора...",
   "editor.edit": "Редактирование",

@@ -30,6 +30,45 @@ let currentUser = null;
 // Settings Dropdown State
 let settingsDropdownOpen = false;
 
+// Farbschema-Konfiguration
+const COLOR_SCHEMES = [
+    {
+        code: 'light',
+        theme: 'light',
+        i18nKey: 'settings.scheme.light',
+        fallbackLabel: 'Hell',
+        swatches: ['#ffffff', '#172033', '#1d4ed8'],
+    },
+    {
+        code: 'dark',
+        theme: 'dark',
+        i18nKey: 'settings.scheme.dark',
+        fallbackLabel: 'Dunkel',
+        swatches: ['#0b1220', '#020617', '#22d3ee'],
+    },
+    {
+        code: 'graphit',
+        theme: 'light',
+        i18nKey: 'settings.scheme.graphit',
+        fallbackLabel: 'Graphit / Cyan',
+        swatches: ['#111827', '#0e7490', '#92400e'],
+    },
+    {
+        code: 'slate',
+        theme: 'light',
+        i18nKey: 'settings.scheme.slate',
+        fallbackLabel: 'Slate / Emerald',
+        swatches: ['#1f2933', '#047857', '#be123c'],
+    },
+    {
+        code: 'ink',
+        theme: 'dark',
+        i18nKey: 'settings.scheme.ink',
+        fallbackLabel: 'Ink / Indigo',
+        swatches: ['#111014', '#c4b5fd', '#bef264'],
+    },
+];
+
 // DOM-Cache fuer Tab-Inhalte (DocumentFragment-basiert)
 const tabDOMCache = {};
 
@@ -56,12 +95,6 @@ function initEventListeners() {
             e.stopPropagation();
             toggleSettingsDropdown();
         });
-    }
-
-    // Theme Toggle
-    const themeToggle = document.getElementById('themeToggle');
-    if (themeToggle) {
-        themeToggle.addEventListener('click', toggleTheme);
     }
 
     // Restart-Button
@@ -93,6 +126,13 @@ function initEventListeners() {
     if (langToggle) {
         langToggle.addEventListener('click', toggleLangMenu);
         buildLangMenu();
+    }
+
+    // Farbschema Submenu
+    const schemeToggle = document.getElementById('schemeToggle');
+    if (schemeToggle) {
+        schemeToggle.addEventListener('click', toggleColorSchemeMenu);
+        buildColorSchemeMenu();
     }
 
     // Tabs
@@ -221,40 +261,107 @@ function openPasswordChangeModal() {
 }
 
 // ========================================
-// Theme Handling
+// Theme / Color Scheme Handling
 // ========================================
 
 function initTheme() {
-    const raw = localStorage.getItem('dashboard-theme');
-    const savedTheme = ['light', 'dark'].includes(raw) ? raw : 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-    updateThemeButton(savedTheme);
+    let savedScheme = normalizeColorScheme(localStorage.getItem('dashboard-color-scheme'));
+    if (!localStorage.getItem('dashboard-color-scheme')) {
+        // Migration vom alten separaten Dark-Mode-Schalter.
+        savedScheme = localStorage.getItem('dashboard-theme') === 'dark' ? 'dark' : 'light';
+    }
+    applyColorScheme(savedScheme);
+    updateColorSchemeButton(savedScheme);
     initLangStatus();
 }
 
-function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('dashboard-theme', newTheme);
-    updateThemeButton(newTheme);
-
-    // Custom Event fuer Komponenten
-    document.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: newTheme } }));
+function normalizeColorScheme(code) {
+    return COLOR_SCHEMES.some(s => s.code === code) ? code : 'light';
 }
 
-function updateThemeButton(theme) {
-    const themeToggle = document.getElementById('themeToggle');
-    const themeStatus = document.getElementById('themeStatus');
-    if (themeToggle) {
-        const icon = themeToggle.querySelector('.settings-icon');
-        if (icon) {
-            icon.textContent = theme === 'dark' ? '\u2600\uFE0F' : '\u263E';
-        }
+function getColorScheme() {
+    return normalizeColorScheme(document.documentElement.getAttribute('data-color-scheme'));
+}
+
+function getColorSchemeConfig(code = getColorScheme()) {
+    const normalized = normalizeColorScheme(code);
+    return COLOR_SCHEMES.find(s => s.code === normalized) || COLOR_SCHEMES[0];
+}
+
+function getColorSchemeLabel(scheme) {
+    const label = t(scheme.i18nKey);
+    return label === scheme.i18nKey ? scheme.fallbackLabel : label;
+}
+
+function applyColorScheme(code) {
+    const cfg = getColorSchemeConfig(code);
+    document.documentElement.setAttribute('data-color-scheme', cfg.code);
+    document.documentElement.setAttribute('data-theme', cfg.theme);
+}
+
+function toggleColorSchemeMenu() {
+    const sub = document.getElementById('schemeSubMenu');
+    const icon = document.getElementById('schemeExpandIcon');
+    if (!sub) return;
+
+    const langSub = document.getElementById('langSubMenu');
+    const langIcon = document.getElementById('langExpandIcon');
+    if (langSub) langSub.style.display = 'none';
+    if (langIcon) langIcon.classList.remove('open');
+
+    const isOpen = sub.style.display !== 'none';
+    sub.style.display = isOpen ? 'none' : 'block';
+    if (icon) icon.classList.toggle('open', !isOpen);
+}
+
+function buildColorSchemeMenu() {
+    const sub = document.getElementById('schemeSubMenu');
+    if (!sub) return;
+    const current = getColorScheme();
+    sub.innerHTML = COLOR_SCHEMES.map(s => {
+        const active = s.code === current ? ' active' : '';
+        const check = s.code === current ? '\u2713' : '';
+        const label = getColorSchemeLabel(s);
+        const swatches = s.swatches
+            .map(color => `<span style="background:${escapeAttr(color)}"></span>`)
+            .join('');
+        return `<div class="settings-sub-item${active}" data-scheme="${escapeAttr(s.code)}">
+            <span class="lang-check">${check}</span>
+            <span class="scheme-swatch">${swatches}</span>
+            <span>${escapeHtml(label)}</span>
+        </div>`;
+    }).join('');
+
+    if (!sub.dataset.bound) {
+        sub.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-scheme]');
+            if (item) setColorScheme(item.dataset.scheme);
+        });
+        sub.dataset.bound = '1';
     }
-    if (themeStatus) {
-        themeStatus.textContent = theme === 'dark' ? t('common.on') : t('common.off');
+}
+
+function setColorScheme(code) {
+    const scheme = normalizeColorScheme(code);
+    const cfg = getColorSchemeConfig(scheme);
+    applyColorScheme(scheme);
+    localStorage.setItem('dashboard-color-scheme', scheme);
+    updateColorSchemeButton(scheme);
+    buildColorSchemeMenu();
+
+    document.dispatchEvent(new CustomEvent('colorSchemeChanged', {
+        detail: { colorScheme: scheme, theme: cfg.theme },
+    }));
+    document.dispatchEvent(new CustomEvent('themeChanged', {
+        detail: { theme: cfg.theme, colorScheme: scheme },
+    }));
+}
+
+function updateColorSchemeButton(code) {
+    const cfg = getColorSchemeConfig(code);
+    const schemeStatus = document.getElementById('schemeStatus');
+    if (schemeStatus) {
+        schemeStatus.textContent = getColorSchemeLabel(cfg);
     }
 }
 
@@ -266,6 +373,12 @@ function toggleLangMenu() {
     const sub = document.getElementById('langSubMenu');
     const icon = document.getElementById('langExpandIcon');
     if (!sub) return;
+
+    const schemeSub = document.getElementById('schemeSubMenu');
+    const schemeIcon = document.getElementById('schemeExpandIcon');
+    if (schemeSub) schemeSub.style.display = 'none';
+    if (schemeIcon) schemeIcon.classList.remove('open');
+
     const isOpen = sub.style.display !== 'none';
     sub.style.display = isOpen ? 'none' : 'block';
     if (icon) icon.classList.toggle('open', !isOpen);

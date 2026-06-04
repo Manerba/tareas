@@ -21,14 +21,11 @@
   "common.fillAll": "Por favor complete todos los campos",
   "common.fillRequired": "Por favor complete todos los campos obligatorios",
   "common.loading": "Cargando...",
-
   "status.offen": "Abierto",
   "status.in_arbeit": "En Progreso",
   "status.erledigt": "Completado",
-
   "type.aufgabe": "Tarea",
   "type.projekt": "Proyecto",
-
   "auth.login": "Iniciar sesion",
   "auth.logout": "Cerrar sesion",
   "auth.username": "Usuario",
@@ -40,7 +37,6 @@
   "auth.locked": "Bloqueado ({remaining}s)",
   "auth.noAdminAccess": "Sin acceso de administrador. Solo los administradores pueden iniciar sesion aqui.",
   "auth.adminLogin": "Inicio de sesion de administrador",
-
   "password.change": "Cambiar contrasena",
   "password.old": "Contrasena actual",
   "password.new": "Nueva contrasena",
@@ -49,12 +45,16 @@
   "password.mismatch": "Las nuevas contrasenas no coinciden",
   "password.minLength": "La contrasena debe tener al menos 4 caracteres",
   "password.changed": "Contrasena cambiada",
-
   "settings.darkMode": "Modo Oscuro",
   "settings.mailNotifications": "Notificaciones por correo",
   "settings.restart": "Reiniciar Dashboard",
   "settings.language": "Idioma",
-
+  "settings.colorScheme": "Esquema de color",
+  "settings.scheme.light": "Claro",
+  "settings.scheme.dark": "Oscuro",
+  "settings.scheme.graphit": "Grafito / Cian",
+  "settings.scheme.slate": "Pizarra / Esmeralda",
+  "settings.scheme.ink": "Tinta / Indigo",
   "mail.prefs.title": "Notificaciones por correo",
   "mail.prefs.saved": "Configuracion de correo guardada",
   "mail.prefs.loadError": "Error al cargar la configuracion",
@@ -63,10 +63,8 @@
   "mail.event.status_change": "Estado cambiado",
   "mail.event.deadline_reached": "Fecha limite alcanzada",
   "mail.event.deadline_warning": "Aviso de fecha limite",
-
   "restart.confirm": "Reiniciar el dashboard realmente?",
   "restart.restarting": "Reiniciando...",
-
   "nav.aufgaben": "Tareas",
   "nav.allgemein": "General",
   "nav.benutzer": "Gestion de usuarios",
@@ -75,7 +73,6 @@
   "nav.onlyoffice": "ONLYOFFICE",
   "nav.mail": "Correo",
   "nav.tls": "TLS",
-
   "tasks.title": "Tareas",
   "tasks.newTask": "+ Nueva Tarea",
   "tasks.expandAll": "Expandir todo",
@@ -97,7 +94,6 @@
   "tasks.typeLabel": "Tipo:",
   "tasks.statusLabel": "Estado:",
   "tasks.unassigned": "-- Sin asignar --",
-
   "tasks.col.name": "Nombre",
   "tasks.col.type": "Tipo",
   "tasks.col.status": "Estado",
@@ -106,12 +102,11 @@
   "tasks.col.assignedTo": "Asignado a",
   "tasks.col.created": "Creado",
   "tasks.col.deadline": "Fecha limite",
-
   "category.team": "Equipo",
   "category.zugewiesene": "Asignadas",
   "category.vergebene": "Delegadas",
   "category.eigene": "Propias",
-
+  "category.mcp": "MCP",
   "subtask.title": "Subtareas",
   "subtask.add": "+ Subtarea",
   "subtask.newName": "Nueva Subtarea",
@@ -136,7 +131,6 @@
   "subtask.predExists": "El predecesor ya existe",
   "subtask.predRemoveConfirm": "Eliminar predecesor realmente?",
   "subtask.info": "Subtarea del proyecto: {name}",
-
   "detail.description": "Descripcion",
   "detail.descriptionFrom": "Descripcion de {name}",
   "detail.noDescription": "Sin descripcion",
@@ -144,13 +138,12 @@
   "detail.notesFrom": "Notas de {name}",
   "detail.noNotes": "No hay notas disponibles",
   "detail.loadError": "Error al cargar",
-
   "netzplan.title": "Diagrama de Red",
   "netzplan.noSubtasks": "No hay subtareas disponibles",
   "netzplan.fit": "Ajustar",
   "netzplan.auto": "Auto",
   "netzplan.selectTarget": "Haga clic en un nodo destino... (ESC = Cancelar)",
-  "netzplan.removeDep": "Eliminar dependencia \"{from}\" \u2192 \"{to}\" realmente?",
+  "netzplan.removeDep": "Eliminar dependencia \"{from}\" → \"{to}\" realmente?",
   "netzplan.depRemoved": "Dependencia eliminada",
   "netzplan.depAdded": "Dependencia agregada",
   "netzplan.invalidConnection": "Conexion invalida",
@@ -165,7 +158,6 @@
   "netzplan.statusOpen": "Abierto",
   "netzplan.statusWip": "En Progreso",
   "netzplan.statusDone": "Completado",
-
   "nc.fileStorage": "Almacenamiento de archivos",
   "nc.changeConfirm": "Cambiar el almacenamiento de archivos realmente?",
   "nc.removeMapping": "Eliminar asignacion",
@@ -178,7 +170,6 @@
   "nc.selected": "Seleccionado",
   "nc.select": "Seleccionar",
   "nc.loadDirError": "Error al cargar los directorios",
-
   "team.title": "Miembros del equipo",
   "team.creatorInfo": "Usted es el creador y tiene acceso completo.",
   "team.selectUser": "-- Seleccionar usuario --",
@@ -197,7 +188,6 @@
   "team.addError": "Error al agregar",
   "team.removeError": "Error al eliminar",
   "team.updateError": "Error al actualizar",
-
   "files.title": "Archivos",
   "files.upload": "Subir",
   "files.folder": "Carpeta",
@@ -223,7 +213,6 @@
   "files.gridView": "Cambiar a vista de cuadricula",
   "files.treeView": "Cambiar a vista de arbol",
   "files.toggleView": "Cambiar vista",
-
   "table.noData": "No se encontraron datos",
   "table.loadError": "Error al cargar los datos",
   "table.truncated": "[... truncado]",
@@ -232,7 +221,6 @@
   "table.prevPage": "Pagina anterior",
   "table.nextPage": "Pagina siguiente",
   "table.lastPage": "Ultima pagina",
-
   "wysiwyg.formatBlock": "Formato",
   "wysiwyg.format": "Formato",
   "wysiwyg.normal": "Normal",
@@ -251,7 +239,6 @@
   "wysiwyg.normalSize": "Normal",
   "wysiwyg.large": "Grande",
   "wysiwyg.xlarge": "Muy Grande",
-
   "users.title": "Gestion de Usuarios",
   "users.new": "Nuevo Usuario",
   "users.newBtn": "+ Nuevo Usuario",
@@ -286,7 +273,6 @@
   "users.sendInvite": "Enviar correo de invitacion",
   "users.inviteConfirm": "Enviar correo de invitacion a \"{username}\"?",
   "users.inviteSent": "Correo de invitacion enviado",
-
   "ldap.title": "Configuracion del servidor LDAP",
   "ldap.server": "Servidor",
   "ldap.port": "Puerto",
@@ -316,7 +302,6 @@
   "ldap.groupSelected": "Grupo \"{name}\" seleccionado. Creados: {created}, Actualizados: {updated}",
   "ldap.syncFailed": "Error en la sincronizacion",
   "ldap.syncComplete": "Sincronizacion completada. Creados: {created}, Actualizados: {updated}, Desactivados: {deactivated}",
-
   "mailAdmin.smtpTitle": "Configuracion del servidor SMTP",
   "mailAdmin.smtpServer": "Servidor SMTP",
   "mailAdmin.port": "Puerto",
@@ -354,7 +339,6 @@
   "mailAdmin.event.test": "Correo de prueba",
   "mailAdmin.noPlaceholders": "(sin marcadores)",
   "mailAdmin.sendError": "Error al enviar",
-
   "ncAdmin.title": "Conexion Nextcloud (WebDAV)",
   "ncAdmin.url": "URL de Nextcloud",
   "ncAdmin.username": "Usuario",
@@ -366,7 +350,6 @@
   "ncAdmin.saved": "Configuracion de Nextcloud guardada (conexion OK)",
   "ncAdmin.deleteConfirm": "Eliminar configuracion de Nextcloud realmente? Se eliminaran todas las asignaciones de directorios.",
   "ncAdmin.deleted": "Configuracion de Nextcloud eliminada",
-
   "ooAdmin.title": "ONLYOFFICE Document Server",
   "ooAdmin.serverUrl": "URL del servidor",
   "ooAdmin.jwtSecret": "JWT Secret",
@@ -383,7 +366,6 @@
   "ooAdmin.deleteConfirm": "Eliminar configuracion de ONLYOFFICE realmente?",
   "ooAdmin.deleted": "Configuracion de ONLYOFFICE eliminada",
   "ooAdmin.setupHint": "Iniciar contenedor Docker con scripts/onlyoffice-setup.sh. El script muestra la URL y el JWT Secret.",
-
   "tls.statusTitle": "Estado TLS",
   "tls.status": "Estado:",
   "tls.active": "Activo",
@@ -418,14 +400,12 @@
   "tls.trouble4": "En caso de problemas: desactivar TLS y reiniciar los servicios",
   "tls.verifySaved": "Validacion de certificados guardada",
   "tls.validateError": "Error en la validacion",
-
   "allgemein.title": "Direccion del servidor",
   "allgemein.serverAddress": "Direccion del servidor",
   "allgemein.addressRequired": "Por favor ingrese la direccion del servidor",
   "allgemein.saved": "Configuracion de la app guardada",
   "allgemein.hint": "El protocolo (http/https) se determina automaticamente a partir de la configuracion TLS. Esta direccion se utiliza como enlace a la app en los correos.",
   "allgemein.placeholder": "ej. tareas.domain.tld o 192.168.1.100:8504",
-
   "editor.loading": "Cargando...",
   "editor.editorLoading": "Cargando editor...",
   "editor.edit": "Editar",

@@ -121,6 +121,22 @@ Das Script:
 
 ---
 
+## Zwei-Umgebungen-Konvention
+
+| | Hauptprojekt (dieses Repo) | Desktop-App |
+|---|---|---|
+| **Umgebung** | Bash auf Ubuntu 24.04 Server | PowerShell auf Windows 11 |
+| **Repo** | `mir/Tareas` | `mir/Tareas-Desktop` |
+| **Pfad** | `Tareas/` | `Tareas/clients/desktop/` |
+| **Commit** | `./git-commit.sh "msg"` | `clients/desktop/git-commit.sh` |
+| **Changelog** | `docs/changelog.md` | `clients/desktop/docs/changelog.md` |
+
+**Regel:** Wenn Claude Code in einer Bash/Linux-Umgebung laeuft, geht es um das Hauptprojekt. `clients/` ist per `.gitignore` ausgeschlossen und ein eigenes Repo.
+
+**Regel:** Wenn Claude Code in einer PowerShell/Windows-Umgebung laeuft, geht es **ausschliesslich** um die Desktop-App. Dann `clients/desktop/CLAUDE.md` lesen und befolgen. Nur Dateien unter `clients/desktop/` aendern, dessen `git-commit.sh` und `docs/changelog.md` verwenden.
+
+---
+
 ## Benutzer-Praeferenzen
 
 - Sprache: Deutsch bevorzugt

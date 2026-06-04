@@ -48,7 +48,7 @@
 
 .control-btn.primary {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -58,7 +58,7 @@
 
 .control-btn.active {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -101,7 +101,7 @@
 .row-delete-btn:hover {
     opacity: 1;
     color: var(--color-bearish);
-    background-color: rgba(231, 76, 60, 0.1);
+    background-color: var(--danger-soft);
 }
 
 /* ----------------------------------------
@@ -118,7 +118,7 @@
 }
 
 .badge-in_arbeit {
-    background-color: rgba(52, 152, 219, 0.15);
+    background-color: var(--accent-soft);
     color: var(--accent-primary);
     padding: 2px 8px;
     border-radius: 10px;
@@ -127,7 +127,7 @@
 }
 
 .badge-erledigt {
-    background-color: rgba(40, 167, 69, 0.15);
+    background-color: var(--success-soft);
     color: var(--color-bullish);
     padding: 2px 8px;
     border-radius: 10px;
@@ -144,17 +144,17 @@
 }
 
 .badge-projekt {
-    background-color: rgba(155, 89, 182, 0.15);
-    color: #9b59b6;
+    background-color: var(--project-soft);
+    color: var(--project-text);
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 11px;
-    border: 1px solid #9b59b6;
+    border: 1px solid var(--project-color);
 }
 
 [data-theme="dark"] .badge-projekt {
-    color: #c39bd3;
-    border-color: #c39bd3;
+    color: var(--project-text);
+    border-color: var(--project-color);
 }
 
 /* Prioritaet-Anzeige */
@@ -279,7 +279,7 @@
 
 .wysiwyg-toolbar button.active {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -449,7 +449,7 @@
 
 .subtask-btn.delete:hover {
     background-color: var(--color-bearish);
-    color: white;
+    color: var(--danger-text);
     border-color: var(--color-bearish);
 }
 
@@ -482,7 +482,7 @@
 
 .area-add-btn:hover {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -690,7 +690,7 @@
 
 .predecessor-input button:hover {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -842,7 +842,7 @@
 /* Type: confirm → roter Danger-Button */
 .msgbox-dialog.type-confirm .msgbox-btn-primary {
     background-color: var(--color-bearish);
-    color: white;
+    color: var(--danger-text);
     border-color: var(--color-bearish);
 }
 
@@ -853,7 +853,7 @@
 /* Type: alert → Akzent-Blau */
 .msgbox-dialog.type-alert .msgbox-btn-primary {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -863,9 +863,9 @@
 
 /* Type: warning → Orange */
 .msgbox-dialog.type-warning .msgbox-btn-primary {
-    background-color: #e67e22;
-    color: white;
-    border-color: #e67e22;
+    background-color: var(--color-unclear);
+    color: var(--warning-text);
+    border-color: var(--color-unclear);
 }
 
 .msgbox-dialog.type-warning .msgbox-btn-primary:hover {
@@ -875,7 +875,7 @@
 /* Danger-Button (fuer Detail-Actions) */
 .action-btn.danger {
     background-color: var(--color-bearish);
-    color: white;
+    color: var(--danger-text);
     border-color: var(--color-bearish);
 }
 
@@ -894,11 +894,11 @@
     padding: 6px 12px;
     background: var(--bg-secondary);
     border-radius: 4px;
-    border-left: 3px solid #9b59b6;
+    border-left: 3px solid var(--project-color);
 }
 
 [data-theme="dark"] .subtask-view-info {
-    border-left-color: #c39bd3;
+    border-left-color: var(--project-color);
 }
 
 /* ----------------------------------------
@@ -1022,7 +1022,7 @@
 
 .team-table .team-remove-btn:hover {
     background-color: var(--color-bearish);
-    color: white;
+    color: var(--danger-text);
     border-color: var(--color-bearish);
 }
 
@@ -1065,7 +1065,7 @@
 
 .team-btn:hover {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -1267,7 +1267,7 @@
 
 .netzplan-toolbar-btn:hover:not(:disabled) {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 

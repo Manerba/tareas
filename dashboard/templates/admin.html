@@ -33,11 +33,13 @@
                             <span class="settings-expand" id="langExpandIcon">&#x25BE;</span>
                         </div>
                         <div class="settings-sub" id="langSubMenu" style="display:none"></div>
-                        <div class="settings-item" id="themeToggle">
-                            <span class="settings-icon">&#x263E;</span>
-                            <span class="settings-label" data-i18n="settings.darkMode">Dark Mode</span>
-                            <span class="settings-value" id="themeStatus">Aus</span>
+                        <div class="settings-item" id="schemeToggle">
+                            <span class="settings-icon">&#x25A3;</span>
+                            <span class="settings-label" data-i18n="settings.colorScheme">Farbschema</span>
+                            <span class="settings-value" id="schemeStatus">Hell</span>
+                            <span class="settings-expand" id="schemeExpandIcon">&#x25BE;</span>
                         </div>
+                        <div class="settings-sub" id="schemeSubMenu" style="display:none"></div>
                         <div class="settings-divider"></div>
                         <div class="settings-item settings-danger" id="restartBtn">
                             <span class="settings-icon">&#x21BB;</span>
@@ -58,6 +60,7 @@
         <a class="tab" href="#" data-tab="onlyoffice" data-i18n="nav.onlyoffice">ONLYOFFICE</a>
         <a class="tab" href="#" data-tab="mail" data-i18n="nav.mail">Mail</a>
         <a class="tab" href="#" data-tab="tls" data-i18n="nav.tls">TLS</a>
+        <a class="tab" href="#" data-tab="mcp" data-i18n="nav.mcp">MCP</a>
     </nav>
 
     <!-- Filter Bar -->
@@ -81,6 +84,7 @@
     <script src="/static/js/tab_onlyoffice.js"></script>
     <script src="/static/js/tab_mail.js"></script>
     <script src="/static/js/tab_tls.js"></script>
+    <script src="/static/js/tab_mcp.js"></script>
     <script>
         // Admin-App: User laden und Tab initialisieren
         let adminCurrentTab = 'allgemein';
@@ -110,6 +114,8 @@
                 switchAdminTab('mail');
             } else if (path === '/tls') {
                 switchAdminTab('tls');
+            } else if (path === '/mcp') {
+                switchAdminTab('mcp');
             } else {
                 switchAdminTab('allgemein');
             }
@@ -125,7 +131,7 @@
             });
 
             // URL aktualisieren
-            const pathMap = { 'allgemein': '/allgemein', 'benutzer': '/benutzer', 'ldap': '/ldap', 'nextcloud': '/nextcloud', 'onlyoffice': '/onlyoffice', 'mail': '/mail', 'tls': '/tls' };
+            const pathMap = { 'allgemein': '/allgemein', 'benutzer': '/benutzer', 'ldap': '/ldap', 'nextcloud': '/nextcloud', 'onlyoffice': '/onlyoffice', 'mail': '/mail', 'tls': '/tls', 'mcp': '/mcp' };
             history.replaceState({}, '', pathMap[tab] || '/allgemein');
 
             // Tab-Inhalt laden
@@ -143,6 +149,8 @@
                 initMailTab();
             } else if (tab === 'tls') {
                 initTlsTab();
+            } else if (tab === 'mcp') {
+                initMcpTab();
             }
         }
     </script>

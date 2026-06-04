@@ -306,6 +306,41 @@ def init_db():
         );
     """)
 
+    # MCP-Tabellen (Token-Verwaltung, Audit-Log, globale Config)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS mcp_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            last_used_at TEXT,
+            revoked_at TEXT,
+            created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash);
+
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT (datetime('now')),
+            actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            actor_type TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER,
+            action TEXT NOT NULL,
+            changes_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_user_id);
+
+        CREATE TABLE IF NOT EXISTS mcp_config (
+            id INTEGER PRIMARY KEY,
+            enabled INTEGER DEFAULT 1
+        );
+        INSERT OR IGNORE INTO mcp_config (id, enabled) VALUES (1, 1);
+    """)
+
     # Default-Mail-Templates einfuegen (nur wenn Tabelle leer)
     tmpl_count = conn.execute("SELECT COUNT(*) FROM mail_templates").fetchone()[0]
     if tmpl_count == 0:

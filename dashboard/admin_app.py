@@ -25,6 +25,7 @@ from dashboard.api_onlyoffice import admin_router as onlyoffice_admin_router
 from dashboard.api_mail import mail_admin_router
 from dashboard.api_app import app_config_router
 from dashboard.api_tls import router as tls_router
+from dashboard.api_admin_mcp import router as mcp_admin_router
 from dashboard.auth import _extract_user_from_request, get_admin_user
 from dashboard.tls_utils import get_tls_config
 
@@ -61,6 +62,9 @@ app.include_router(app_config_router)
 
 # TLS-Router (hat eigene get_admin_user Dependency pro Endpoint)
 app.include_router(tls_router)
+
+# MCP-Admin-Router (Token-Verwaltung, Audit-Log, Kill-Switch)
+app.include_router(mcp_admin_router)
 
 # Verzeichnisse
 static_dir = Path(__file__).parent / "static"

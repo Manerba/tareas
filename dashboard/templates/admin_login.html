@@ -34,9 +34,14 @@
 
     <script src="/static/js/i18n.js"></script>
     <script>
-        // Theme laden
-        const savedTheme = localStorage.getItem('dashboard-theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        // Farbschema laden
+        const schemes = { light: 'light', dark: 'dark', graphit: 'light', slate: 'light', ink: 'dark' };
+        let savedScheme = localStorage.getItem('dashboard-color-scheme');
+        if (!schemes[savedScheme]) {
+            savedScheme = localStorage.getItem('dashboard-theme') === 'dark' ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-color-scheme', savedScheme);
+        document.documentElement.setAttribute('data-theme', schemes[savedScheme]);
 
         const usernameInput = document.getElementById('loginUsername');
         const passwordInput = document.getElementById('loginPassword');

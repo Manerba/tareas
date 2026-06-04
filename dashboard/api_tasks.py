@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 
+from dashboard.audit_log import log_change
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
@@ -227,23 +228,42 @@ async def _send_status_mail(user_id, task_name, actor_name, new_status):
 
 @router.get("/api/tasks")
 async def get_tasks(user=Depends(get_current_user)):
-    """Aufgaben abrufen (eigene/zugewiesene/Team-Mitglied + Altdaten ohne created_by)."""
+    """Aufgaben abrufen (eigene/zugewiesene/Team-Mitglied + Altdaten ohne created_by).
+    Admins sehen alle Aufgaben - inkl. MCP-erstellter Projekte (Kategorie 'mcp')."""
+    is_admin = bool(user.get("is_admin"))
     with db_query() as db:
-        rows = db.execute(
-            """SELECT t.*,
-                      uc.vorname || ' ' || uc.nachname AS created_by_name,
-                      ua.vorname || ' ' || ua.nachname AS assigned_to_name,
-                      (SELECT 1 FROM project_members pm WHERE pm.project_id = t.id AND pm.user_id = ?) AS is_team_member,
-                      (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
-                      (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
-               FROM tasks t
-               LEFT JOIN users uc ON t.created_by = uc.id
-               LEFT JOIN users ua ON t.assigned_to = ua.id
-               WHERE t.created_by = ? OR t.assigned_to = ? OR t.created_by IS NULL
-                  OR t.id IN (SELECT project_id FROM project_members WHERE user_id = ? AND can_read = 1)
-               ORDER BY t.priority ASC, t.created_at DESC""",
-            (user["id"], user["id"], user["id"], user["id"]),
-        ).fetchall()
+        if is_admin:
+            rows = db.execute(
+                """SELECT t.*,
+                          uc.vorname || ' ' || uc.nachname AS created_by_name,
+                          uc.auth_source AS created_by_auth_source,
+                          ua.vorname || ' ' || ua.nachname AS assigned_to_name,
+                          (SELECT 1 FROM project_members pm WHERE pm.project_id = t.id AND pm.user_id = ?) AS is_team_member,
+                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
+                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
+                   FROM tasks t
+                   LEFT JOIN users uc ON t.created_by = uc.id
+                   LEFT JOIN users ua ON t.assigned_to = ua.id
+                   ORDER BY t.priority ASC, t.created_at DESC""",
+                (user["id"],),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """SELECT t.*,
+                          uc.vorname || ' ' || uc.nachname AS created_by_name,
+                          uc.auth_source AS created_by_auth_source,
+                          ua.vorname || ' ' || ua.nachname AS assigned_to_name,
+                          (SELECT 1 FROM project_members pm WHERE pm.project_id = t.id AND pm.user_id = ?) AS is_team_member,
+                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
+                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
+                   FROM tasks t
+                   LEFT JOIN users uc ON t.created_by = uc.id
+                   LEFT JOIN users ua ON t.assigned_to = ua.id
+                   WHERE t.created_by = ? OR t.assigned_to = ? OR t.created_by IS NULL
+                      OR t.id IN (SELECT project_id FROM project_members WHERE user_id = ? AND can_read = 1)
+                   ORDER BY t.priority ASC, t.created_at DESC""",
+                (user["id"], user["id"], user["id"], user["id"]),
+            ).fetchall()
 
         items = []
         for row in rows:
@@ -251,6 +271,7 @@ async def get_tasks(user=Depends(get_current_user)):
             created_by = row["created_by"]
             assigned_to = row["assigned_to"]
             is_team = bool(row["is_team_member"])
+            creator_is_mcp = row["created_by_auth_source"] == "mcp"
 
             if not created_by:
                 category = "eigene"
@@ -262,6 +283,10 @@ async def get_tasks(user=Depends(get_current_user)):
                 category = "zugewiesene"
             elif is_team and created_by != user["id"] and assigned_to != user["id"]:
                 category = "team"
+            elif creator_is_mcp:
+                # Von MCP-User angelegt, weder eigene noch zugewiesene noch Team-Sichtbarkeit
+                # -> Admin-Sicht auf autonome MCP-Arbeit
+                category = "mcp"
             else:
                 category = "eigene"
 
@@ -344,7 +369,12 @@ async def create_task(task: TaskCreate, user=Depends(get_current_user)):
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (task.name, deadline, task.priority, task.task_type, task.status, task.description, user["id"]),
         )
-        return {"id": cursor.lastrowid, "message": "Aufgabe erstellt"}
+        new_id = cursor.lastrowid
+    log_change(user, "task", new_id, "create", {
+        "name": task.name, "priority": task.priority, "deadline": deadline,
+        "task_type": task.task_type, "status": task.status,
+    })
+    return {"id": new_id, "message": "Aufgabe erstellt"}
 
 
 @router.put("/api/tasks/{task_id}")
@@ -369,47 +399,60 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
             ).fetchone()
             has_team_edit = bool(membership and membership["can_edit"])
 
-        can_full_edit = is_creator or is_legacy or has_team_edit
+        # MCP-Assignees haben volle Edit-Rechte (im Gegensatz zu menschlichen Assignees)
+        mcp_assignee_full = (user.get("auth_source") == "mcp") and is_assignee
+        can_full_edit = is_creator or is_legacy or has_team_edit or mcp_assignee_full
         if not can_full_edit and not is_assignee:
             raise HTTPException(status_code=403, detail="Keine Berechtigung zum Bearbeiten")
 
         updates = []
         values = []
+        changes_diff: dict = {}
 
         # Zugewiesene duerfen nur Status aendern
         if can_full_edit:
             if task.name is not None:
                 updates.append("name = ?")
                 values.append(task.name)
+                changes_diff["name"] = task.name
             if task.deadline is not None:
                 updates.append("deadline = ?")
                 values.append(_parse_date_input(task.deadline))
+                changes_diff["deadline"] = task.deadline
             if task.priority is not None:
                 updates.append("priority = ?")
                 values.append(task.priority)
+                changes_diff["priority"] = task.priority
             if task.task_type is not None:
                 updates.append("task_type = ?")
                 values.append(task.task_type)
+                changes_diff["task_type"] = task.task_type
             if task.description is not None:
                 updates.append("description = ?")
                 values.append(task.description)
+                changes_diff["description_len"] = len(task.description)
             if task.assigned_to is not None:
                 if task.assigned_to == 0:
                     updates.append("assigned_to = NULL")
+                    changes_diff["assigned_to"] = None
                 else:
                     updates.append("assigned_to = ?")
                     values.append(task.assigned_to)
+                    changes_diff["assigned_to"] = task.assigned_to
             if task.nextcloud_path is not None:
                 if task.nextcloud_path == "":
                     updates.append("nextcloud_path = NULL")
+                    changes_diff["nextcloud_path"] = None
                 else:
                     updates.append("nextcloud_path = ?")
                     values.append(task.nextcloud_path)
+                    changes_diff["nextcloud_path"] = task.nextcloud_path
 
         # Status darf auch der Zugewiesene aendern
         if task.status is not None:
             updates.append("status = ?")
             values.append(task.status)
+            changes_diff["status"] = task.status
 
         if updates:
             values.append(task_id)
@@ -439,6 +482,9 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
                 task_row["assigned_to"], task_row["name"], actor_name, task.status
             ))
 
+    if changes_diff:
+        action = "status_change" if list(changes_diff.keys()) == ["status"] else "update"
+        log_change(user, "task", task_id, action, changes_diff)
     return {"message": "Aufgabe aktualisiert"}
 
 
@@ -446,7 +492,7 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
 async def delete_task(task_id: int, user=Depends(get_current_user)):
     """Aufgabe loeschen (inkl. SubTasks durch CASCADE)."""
     with db_transaction() as db:
-        existing = db.execute("SELECT id, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        existing = db.execute("SELECT id, name, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
 
@@ -456,8 +502,10 @@ async def delete_task(task_id: int, user=Depends(get_current_user)):
         if not is_creator and not is_legacy and not user.get("is_admin"):
             raise HTTPException(status_code=403, detail="Keine Berechtigung zum Loeschen")
 
+        task_name = existing["name"]
         db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        return {"message": "Aufgabe geloescht"}
+    log_change(user, "task", task_id, "delete", {"name": task_name})
+    return {"message": "Aufgabe geloescht"}
 
 
 # ============================================================
@@ -477,10 +525,11 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
 
         is_creator = task["created_by"] == user["id"]
         is_legacy = task["created_by"] is None
+        is_admin = bool(user.get("is_admin"))
 
         # Teammitgliedschaft pruefen
         membership = None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not is_admin:
             membership = db.execute(
                 "SELECT can_read, can_edit, can_create FROM project_members WHERE project_id = ? AND user_id = ?",
                 (task_id, user["id"]),
@@ -519,6 +568,9 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
             # Effektive Berechtigungen berechnen
             if is_creator or is_legacy:
                 permissions = {"can_read": True, "can_edit": True, "can_create": True}
+            elif is_admin:
+                # Admins sehen alle Subtasks (read), Edits bleiben dem Creator vorbehalten
+                permissions = {"can_read": True, "can_edit": False, "can_create": False}
             elif membership:
                 permissions = {
                     "can_read": bool(membership["can_read"]),
@@ -612,7 +664,11 @@ async def create_subtask(task_id: int, subtask: SubTaskCreate, user=Depends(get_
                 (new_id, pred_id),
             )
 
-        return {"id": new_id, "position_number": next_pos, "message": "Teilaufgabe erstellt"}
+    log_change(user, "sub_task", new_id, "create", {
+        "project_id": task_id, "name": subtask.name, "priority": subtask.priority,
+        "deadline": deadline, "predecessor_ids": subtask.predecessor_ids,
+    })
+    return {"id": new_id, "position_number": next_pos, "message": "Teilaufgabe erstellt"}
 
 
 @router.put("/api/subtasks/{subtask_id}")
@@ -707,28 +763,43 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
                     (subtask_id, pred_id),
                 )
 
-        return {"message": "Teilaufgabe aktualisiert"}
+    sub_changes: dict = {}
+    for f in ("name", "area_id", "deadline", "priority", "status_percent",
+              "position_number", "assigned_to"):
+        v = getattr(subtask, f, None)
+        if v is not None:
+            sub_changes[f] = v
+    if subtask.description is not None:
+        sub_changes["description_len"] = len(subtask.description)
+    if subtask.predecessor_ids is not None:
+        sub_changes["predecessor_ids"] = subtask.predecessor_ids
+    if sub_changes:
+        log_change(user, "sub_task", subtask_id, "update", sub_changes)
+    return {"message": "Teilaufgabe aktualisiert"}
 
 
 @router.delete("/api/subtasks/{subtask_id}")
 async def delete_subtask(subtask_id: int, user=Depends(get_current_user)):
-    """Teilaufgabe loeschen (nur Ersteller oder Legacy)."""
+    """Teilaufgabe loeschen (Ersteller, Legacy oder Admin)."""
     with db_transaction() as db:
-        existing = db.execute("SELECT id, project_id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
+        existing = db.execute("SELECT id, name, project_id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
 
-        # Nur Ersteller oder Legacy darf loeschen
+        # Ersteller des Projekts, Legacy oder Admin darf loeschen
         task = db.execute(
             "SELECT created_by FROM tasks WHERE id = ?", (existing["project_id"],)
         ).fetchone()
         is_creator = task and task["created_by"] == user["id"]
         is_legacy = task and task["created_by"] is None
-        if not is_creator and not is_legacy:
-            raise HTTPException(status_code=403, detail="Nur der Ersteller kann Teilaufgaben loeschen")
+        if not is_creator and not is_legacy and not user.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Keine Berechtigung zum Loeschen")
 
+        sub_name = existing["name"]
+        project_id = existing["project_id"]
         db.execute("DELETE FROM sub_tasks WHERE id = ?", (subtask_id,))
-        return {"message": "Teilaufgabe geloescht"}
+    log_change(user, "sub_task", subtask_id, "delete", {"name": sub_name, "project_id": project_id})
+    return {"message": "Teilaufgabe geloescht"}
 
 
 # ============================================================
@@ -929,7 +1000,9 @@ async def add_dependency(task_id: int, dep: DependencyAction, user=Depends(get_c
         # Topologische Neuordnung
         new_positions = _topological_reorder(db, task_id)
 
-        return {"message": "Abhaengigkeit hinzugefuegt", "new_positions": new_positions}
+    log_change(user, "dependency", dep.to_id, "create",
+               {"depends_on_id": dep.from_id, "project_id": task_id})
+    return {"message": "Abhaengigkeit hinzugefuegt", "new_positions": new_positions}
 
 
 @router.post("/api/tasks/{task_id}/subtasks/remove-dependency")
@@ -953,18 +1026,23 @@ async def remove_dependency(task_id: int, dep: DependencyAction, user=Depends(ge
                 "UPDATE sub_tasks SET depends_on_project = 0 WHERE id = ? AND project_id = ?",
                 (dep.to_id, task_id),
             )
-            return {"message": "Projekt-Abhaengigkeit entfernt", "new_positions": {}}
-
-        # Dependency loeschen
-        db.execute(
-            "DELETE FROM sub_task_dependencies WHERE sub_task_id = ? AND depends_on_id = ?",
-            (dep.to_id, dep.from_id),
-        )
+            removed_project_dep = True
+        else:
+            removed_project_dep = False
+            # Dependency loeschen
+            db.execute(
+                "DELETE FROM sub_task_dependencies WHERE sub_task_id = ? AND depends_on_id = ?",
+                (dep.to_id, dep.from_id),
+            )
 
         # Topologische Neuordnung
         new_positions = _topological_reorder(db, task_id)
 
-        return {"message": "Abhaengigkeit entfernt", "new_positions": new_positions}
+    log_change(user, "dependency", dep.to_id, "delete",
+               {"depends_on_id": dep.from_id, "project_id": task_id})
+    if removed_project_dep:
+        return {"message": "Projekt-Abhaengigkeit entfernt", "new_positions": {}}
+    return {"message": "Abhaengigkeit entfernt", "new_positions": new_positions}
 
 
 @router.post("/api/tasks/{task_id}/subtasks/save-netzplan-positions")
@@ -1059,7 +1137,8 @@ async def upsert_task_note(task_id: int, note: NoteUpdate, user=Depends(get_curr
                    updated_at = datetime('now')""",
             (task_id, user["id"], note.content),
         )
-        return {"message": "Notiz gespeichert"}
+    log_change(user, "task_note", task_id, "update", {"content_len": len(note.content)})
+    return {"message": "Notiz gespeichert"}
 
 
 @router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/notes")
@@ -1099,7 +1178,8 @@ async def upsert_subtask_note(task_id: int, subtask_id: int, note: NoteUpdate, u
                    updated_at = datetime('now')""",
             (subtask_id, user["id"], note.content),
         )
-        return {"message": "Notiz gespeichert"}
+    log_change(user, "sub_task_note", subtask_id, "update", {"content_len": len(note.content)})
+    return {"message": "Notiz gespeichert"}
 
 
 # ============================================================

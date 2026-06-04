@@ -21,14 +21,11 @@
   "common.fillAll": "Будь ласка, заповніть усі поля",
   "common.fillRequired": "Будь ласка, заповніть усі обов'язкові поля",
   "common.loading": "Завантаження...",
-
   "status.offen": "Відкрито",
   "status.in_arbeit": "В роботі",
   "status.erledigt": "Виконано",
-
   "type.aufgabe": "Завдання",
   "type.projekt": "Проєкт",
-
   "auth.login": "Увійти",
   "auth.logout": "Вийти",
   "auth.username": "Ім'я користувача",
@@ -40,7 +37,6 @@
   "auth.locked": "Заблоковано ({remaining} с)",
   "auth.noAdminAccess": "Немає доступу адміністратора. Тут можуть входити лише адміністратори.",
   "auth.adminLogin": "Вхід адміністратора",
-
   "password.change": "Змінити пароль",
   "password.old": "Старий пароль",
   "password.new": "Новий пароль",
@@ -49,12 +45,16 @@
   "password.mismatch": "Нові паролі не збігаються",
   "password.minLength": "Пароль повинен містити щонайменше 4 символи",
   "password.changed": "Пароль змінено",
-
   "settings.darkMode": "Темна тема",
   "settings.mailNotifications": "Сповіщення електронною поштою",
   "settings.restart": "Перезапустити панель",
   "settings.language": "Мова",
-
+  "settings.colorScheme": "Колірна схема",
+  "settings.scheme.light": "Світла",
+  "settings.scheme.dark": "Темна",
+  "settings.scheme.graphit": "Графіт / ціан",
+  "settings.scheme.slate": "Сланець / смарагд",
+  "settings.scheme.ink": "Чорнило / індиго",
   "mail.prefs.title": "Сповіщення електронною поштою",
   "mail.prefs.saved": "Налаштування пошти збережено",
   "mail.prefs.loadError": "Помилка завантаження налаштувань",
@@ -63,10 +63,8 @@
   "mail.event.status_change": "Статус змінено",
   "mail.event.deadline_reached": "Термін настав",
   "mail.event.deadline_warning": "Попередження про термін",
-
   "restart.confirm": "Дійсно перезапустити панель?",
   "restart.restarting": "Перезапуск...",
-
   "nav.aufgaben": "Завдання",
   "nav.allgemein": "Загальне",
   "nav.benutzer": "Керування користувачами",
@@ -75,7 +73,6 @@
   "nav.onlyoffice": "ONLYOFFICE",
   "nav.mail": "Пошта",
   "nav.tls": "TLS",
-
   "tasks.title": "Завдання",
   "tasks.newTask": "+ Нове завдання",
   "tasks.expandAll": "Розгорнути все",
@@ -97,7 +94,6 @@
   "tasks.typeLabel": "Тип:",
   "tasks.statusLabel": "Статус:",
   "tasks.unassigned": "-- Не призначено --",
-
   "tasks.col.name": "Назва",
   "tasks.col.type": "Тип",
   "tasks.col.status": "Статус",
@@ -106,12 +102,11 @@
   "tasks.col.assignedTo": "Призначено",
   "tasks.col.created": "Створено",
   "tasks.col.deadline": "Термін",
-
   "category.team": "Команда",
   "category.zugewiesene": "Призначені",
   "category.vergebene": "Делеговані",
   "category.eigene": "Власні",
-
+  "category.mcp": "MCP",
   "subtask.title": "Підзавдання",
   "subtask.add": "+ Підзавдання",
   "subtask.newName": "Нове підзавдання",
@@ -136,7 +131,6 @@
   "subtask.predExists": "Попередник вже існує",
   "subtask.predRemoveConfirm": "Дійсно видалити попередника?",
   "subtask.info": "Підзавдання з проєкту: {name}",
-
   "detail.description": "Опис",
   "detail.descriptionFrom": "Опис від {name}",
   "detail.noDescription": "Немає опису",
@@ -144,7 +138,6 @@
   "detail.notesFrom": "Нотатки від {name}",
   "detail.noNotes": "Нотатки відсутні",
   "detail.loadError": "Помилка завантаження",
-
   "netzplan.title": "Мережевий план",
   "netzplan.noSubtasks": "Підзавдання відсутні",
   "netzplan.fit": "Вмістити",
@@ -165,7 +158,6 @@
   "netzplan.statusOpen": "Відкрито",
   "netzplan.statusWip": "В роботі",
   "netzplan.statusDone": "Виконано",
-
   "nc.fileStorage": "Файлове сховище",
   "nc.changeConfirm": "Дійсно змінити файлове сховище?",
   "nc.removeMapping": "Видалити прив'язку",
@@ -178,7 +170,6 @@
   "nc.selected": "Обрано",
   "nc.select": "Обрати",
   "nc.loadDirError": "Помилка завантаження каталогів",
-
   "team.title": "Учасники команди",
   "team.creatorInfo": "Ви є автором і маєте повний доступ.",
   "team.selectUser": "-- Оберіть користувача --",
@@ -197,7 +188,6 @@
   "team.addError": "Помилка додавання учасника",
   "team.removeError": "Помилка видалення учасника",
   "team.updateError": "Помилка оновлення",
-
   "files.title": "Файли",
   "files.upload": "Завантажити",
   "files.folder": "Тека",
@@ -223,7 +213,6 @@
   "files.gridView": "Перемкнути на сітку",
   "files.treeView": "Перемкнути на дерево",
   "files.toggleView": "Перемкнути вигляд",
-
   "table.noData": "Дані не знайдено",
   "table.loadError": "Помилка завантаження даних",
   "table.truncated": "[... скорочено]",
@@ -232,7 +221,6 @@
   "table.prevPage": "Попередня сторінка",
   "table.nextPage": "Наступна сторінка",
   "table.lastPage": "Остання сторінка",
-
   "wysiwyg.formatBlock": "Формат",
   "wysiwyg.format": "Формат",
   "wysiwyg.normal": "Звичайний",
@@ -251,7 +239,6 @@
   "wysiwyg.normalSize": "Звичайний",
   "wysiwyg.large": "Великий",
   "wysiwyg.xlarge": "Дуже великий",
-
   "users.title": "Керування користувачами",
   "users.new": "Новий користувач",
   "users.newBtn": "+ Новий користувач",
@@ -286,7 +273,6 @@
   "users.sendInvite": "Надіслати запрошення",
   "users.inviteConfirm": "Надіслати запрошення на \"{username}\"?",
   "users.inviteSent": "Запрошення надіслано",
-
   "ldap.title": "Налаштування LDAP-сервера",
   "ldap.server": "Сервер",
   "ldap.port": "Порт",
@@ -316,7 +302,6 @@
   "ldap.groupSelected": "Групу \"{name}\" обрано. Створено: {created}, Оновлено: {updated}",
   "ldap.syncFailed": "Синхронізація не вдалася",
   "ldap.syncComplete": "Синхронізацію завершено. Створено: {created}, Оновлено: {updated}, Деактивовано: {deactivated}",
-
   "mailAdmin.smtpTitle": "Налаштування SMTP-сервера",
   "mailAdmin.smtpServer": "SMTP-сервер",
   "mailAdmin.port": "Порт",
@@ -354,7 +339,6 @@
   "mailAdmin.event.test": "Тестовий лист",
   "mailAdmin.noPlaceholders": "(без заповнювачів)",
   "mailAdmin.sendError": "Помилка надсилання",
-
   "ncAdmin.title": "Підключення Nextcloud (WebDAV)",
   "ncAdmin.url": "URL Nextcloud",
   "ncAdmin.username": "Ім'я користувача",
@@ -366,7 +350,6 @@
   "ncAdmin.saved": "Конфігурацію Nextcloud збережено (з'єднання OK)",
   "ncAdmin.deleteConfirm": "Дійсно видалити конфігурацію Nextcloud? Усі прив'язки каталогів буде видалено.",
   "ncAdmin.deleted": "Конфігурацію Nextcloud видалено",
-
   "ooAdmin.title": "Сервер документів ONLYOFFICE",
   "ooAdmin.serverUrl": "URL сервера",
   "ooAdmin.jwtSecret": "JWT Secret",
@@ -383,7 +366,6 @@
   "ooAdmin.deleteConfirm": "Дійсно видалити конфігурацію ONLYOFFICE?",
   "ooAdmin.deleted": "Конфігурацію ONLYOFFICE видалено",
   "ooAdmin.setupHint": "Запустіть Docker-контейнер за допомогою scripts/onlyoffice-setup.sh. Скрипт виведе URL та JWT Secret.",
-
   "tls.statusTitle": "Статус TLS",
   "tls.status": "Статус:",
   "tls.active": "Активний",
@@ -418,14 +400,12 @@
   "tls.trouble4": "У разі проблем: вимкніть TLS та перезапустіть служби",
   "tls.verifySaved": "Перевірку сертифіката збережено",
   "tls.validateError": "Помилка перевірки",
-
   "allgemein.title": "Адреса сервера",
   "allgemein.serverAddress": "Адреса сервера",
   "allgemein.addressRequired": "Будь ласка, введіть адресу сервера",
   "allgemein.saved": "Конфігурацію додатку збережено",
   "allgemein.hint": "Протокол (http/https) автоматично визначається з налаштувань TLS. Ця адреса використовується як посилання на додаток у листах.",
   "allgemein.placeholder": "напр. tareas.domain.tld або 192.168.1.100:8504",
-
   "editor.loading": "Завантаження...",
   "editor.editorLoading": "Завантаження редактора...",
   "editor.edit": "Редагувати",

@@ -261,22 +261,22 @@
 }
 
 .badge-buy, .badge-bullish {
-    background-color: rgba(40, 167, 69, 0.2);
+    background-color: var(--success-soft);
     color: var(--color-bullish);
 }
 
 .badge-sell, .badge-bearish {
-    background-color: rgba(220, 53, 69, 0.2);
+    background-color: var(--danger-soft);
     color: var(--color-bearish);
 }
 
 .badge-watch, .badge-neutral {
-    background-color: rgba(108, 117, 125, 0.2);
+    background-color: var(--neutral-soft);
     color: var(--color-neutral);
 }
 
 .badge-avoid, .badge-unclear {
-    background-color: rgba(253, 126, 20, 0.2);
+    background-color: var(--warning-soft);
     color: var(--color-unclear);
 }
 
@@ -472,7 +472,7 @@
 
 .view-btn.active {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -734,7 +734,7 @@
 
 .pagination-btn.active {
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border-color: var(--accent-primary);
 }
 
@@ -909,7 +909,7 @@
 .market-scoring-form .go-btn {
     padding: 8px 20px;
     background-color: var(--accent-primary);
-    color: white;
+    color: var(--accent-text);
     border: none;
     border-radius: 4px;
     font-size: 13px;
@@ -1005,7 +1005,7 @@
     color: var(--color-bearish);
     font-size: 13px;
     padding: 20px;
-    background-color: rgba(220, 53, 69, 0.1);
+    background-color: var(--danger-soft);
     border-radius: 6px;
 }
 

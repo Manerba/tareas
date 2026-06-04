@@ -67,7 +67,7 @@ function renderConfigSection(hasConfig) {
                     <div class="ldap-form-field">
                         <label>${t('ldap.server')}</label>
                         <input type="text" id="ldapServer" value="${escapeAttr(c.server || '')}"
-                               placeholder="10.0.12.1 oder dc.firma.local">
+                               placeholder="ldap.example.local oder dc.firma.local">
                     </div>
                     <div class="ldap-form-field" style="max-width:120px">
                         <label>${t('ldap.port')}</label>

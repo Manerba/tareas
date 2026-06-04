@@ -21,14 +21,11 @@
   "common.fillAll": "Va rugam completati toate campurile",
   "common.fillRequired": "Va rugam completati toate campurile obligatorii",
   "common.loading": "Se incarca...",
-
   "status.offen": "Deschis",
   "status.in_arbeit": "In lucru",
   "status.erledigt": "Finalizat",
-
   "type.aufgabe": "Sarcina",
   "type.projekt": "Proiect",
-
   "auth.login": "Autentificare",
   "auth.logout": "Deconectare",
   "auth.username": "Utilizator",
@@ -40,7 +37,6 @@
   "auth.locked": "Blocat ({remaining}s)",
   "auth.noAdminAccess": "Fara acces de administrator. Doar administratorii se pot autentifica aici.",
   "auth.adminLogin": "Autentificare Administrator",
-
   "password.change": "Schimbare parola",
   "password.old": "Parola veche",
   "password.new": "Parola noua",
@@ -49,12 +45,16 @@
   "password.mismatch": "Parolele noi nu corespund",
   "password.minLength": "Parola trebuie sa aiba cel putin 4 caractere",
   "password.changed": "Parola schimbata",
-
   "settings.darkMode": "Mod intunecat",
   "settings.mailNotifications": "Notificari email",
   "settings.restart": "Repornire Dashboard",
   "settings.language": "Limba",
-
+  "settings.colorScheme": "Schema de culori",
+  "settings.scheme.light": "Luminos",
+  "settings.scheme.dark": "Intunecat",
+  "settings.scheme.graphit": "Grafit / Cyan",
+  "settings.scheme.slate": "Ardezie / Smarald",
+  "settings.scheme.ink": "Cerneala / Indigo",
   "mail.prefs.title": "Notificari email",
   "mail.prefs.saved": "Setari email salvate",
   "mail.prefs.loadError": "Eroare la incarcarea setarilor",
@@ -63,10 +63,8 @@
   "mail.event.status_change": "Status modificat",
   "mail.event.deadline_reached": "Termen limita atins",
   "mail.event.deadline_warning": "Avertizare termen limita",
-
   "restart.confirm": "Reporniti dashboard-ul?",
   "restart.restarting": "Se reporneste...",
-
   "nav.aufgaben": "Sarcini",
   "nav.allgemein": "General",
   "nav.benutzer": "Gestionare utilizatori",
@@ -75,7 +73,6 @@
   "nav.onlyoffice": "ONLYOFFICE",
   "nav.mail": "Email",
   "nav.tls": "TLS",
-
   "tasks.title": "Sarcini",
   "tasks.newTask": "+ Sarcina noua",
   "tasks.expandAll": "Extindere toate",
@@ -97,7 +94,6 @@
   "tasks.typeLabel": "Tip:",
   "tasks.statusLabel": "Status:",
   "tasks.unassigned": "-- Neatribuit --",
-
   "tasks.col.name": "Nume",
   "tasks.col.type": "Tip",
   "tasks.col.status": "Status",
@@ -106,12 +102,11 @@
   "tasks.col.assignedTo": "Atribuit catre",
   "tasks.col.created": "Creat",
   "tasks.col.deadline": "Termen limita",
-
   "category.team": "Echipa",
   "category.zugewiesene": "Atribuite",
   "category.vergebene": "Delegate",
   "category.eigene": "Proprii",
-
+  "category.mcp": "MCP",
   "subtask.title": "Subsarcini",
   "subtask.add": "+ Subsarcina",
   "subtask.newName": "Subsarcina noua",
@@ -136,7 +131,6 @@
   "subtask.predExists": "Predecesorul exista deja",
   "subtask.predRemoveConfirm": "Eliminati predecesorul?",
   "subtask.info": "Subsarcina din proiectul: {name}",
-
   "detail.description": "Descriere",
   "detail.descriptionFrom": "Descriere de {name}",
   "detail.noDescription": "Fara descriere",
@@ -144,13 +138,12 @@
   "detail.notesFrom": "Notite de {name}",
   "detail.noNotes": "Nu exista notite disponibile",
   "detail.loadError": "Eroare la incarcare",
-
   "netzplan.title": "Plan retea",
   "netzplan.noSubtasks": "Nu exista subsarcini disponibile",
   "netzplan.fit": "Potrivire",
   "netzplan.auto": "Auto",
   "netzplan.selectTarget": "Faceti clic pe un nod tinta... (ESC = Anulare)",
-  "netzplan.removeDep": "Eliminati dependenta \"{from}\" \u2192 \"{to}\"?",
+  "netzplan.removeDep": "Eliminati dependenta \"{from}\" → \"{to}\"?",
   "netzplan.depRemoved": "Dependenta eliminata",
   "netzplan.depAdded": "Dependenta adaugata",
   "netzplan.invalidConnection": "Conexiune invalida",
@@ -165,7 +158,6 @@
   "netzplan.statusOpen": "Deschis",
   "netzplan.statusWip": "In lucru",
   "netzplan.statusDone": "Finalizat",
-
   "nc.fileStorage": "Stocare fisiere",
   "nc.changeConfirm": "Modificati stocarea fisierelor?",
   "nc.removeMapping": "Eliminare mapare",
@@ -178,7 +170,6 @@
   "nc.selected": "Selectat",
   "nc.select": "Selectare",
   "nc.loadDirError": "Eroare la incarcarea directoarelor",
-
   "team.title": "Membrii echipei",
   "team.creatorInfo": "Sunteti creatorul si aveti acces complet.",
   "team.selectUser": "-- Selectati utilizatorul --",
@@ -197,7 +188,6 @@
   "team.addError": "Eroare la adaugarea membrului",
   "team.removeError": "Eroare la eliminarea membrului",
   "team.updateError": "Eroare la actualizare",
-
   "files.title": "Fisiere",
   "files.upload": "Incarcare",
   "files.folder": "Dosar",
@@ -223,7 +213,6 @@
   "files.gridView": "Comutare la vizualizare grila",
   "files.treeView": "Comutare la vizualizare arbore",
   "files.toggleView": "Comutare vizualizare",
-
   "table.noData": "Nu s-au gasit date",
   "table.loadError": "Eroare la incarcarea datelor",
   "table.truncated": "[... trunchiat]",
@@ -232,7 +221,6 @@
   "table.prevPage": "Pagina anterioara",
   "table.nextPage": "Pagina urmatoare",
   "table.lastPage": "Ultima pagina",
-
   "wysiwyg.formatBlock": "Formatare",
   "wysiwyg.format": "Formatare",
   "wysiwyg.normal": "Normal",
@@ -251,7 +239,6 @@
   "wysiwyg.normalSize": "Normal",
   "wysiwyg.large": "Mare",
   "wysiwyg.xlarge": "Foarte mare",
-
   "users.title": "Gestionare utilizatori",
   "users.new": "Utilizator nou",
   "users.newBtn": "+ Utilizator nou",
@@ -286,7 +273,6 @@
   "users.sendInvite": "Trimitere email de invitatie",
   "users.inviteConfirm": "Trimiteti email de invitatie catre \"{username}\"?",
   "users.inviteSent": "Email de invitatie trimis",
-
   "ldap.title": "Configurare server LDAP",
   "ldap.server": "Server",
   "ldap.port": "Port",
@@ -316,7 +302,6 @@
   "ldap.groupSelected": "Grupul \"{name}\" selectat. Creati: {created}, Actualizati: {updated}",
   "ldap.syncFailed": "Sincronizare esuata",
   "ldap.syncComplete": "Sincronizare finalizata. Creati: {created}, Actualizati: {updated}, Dezactivati: {deactivated}",
-
   "mailAdmin.smtpTitle": "Configurare server SMTP",
   "mailAdmin.smtpServer": "Server SMTP",
   "mailAdmin.port": "Port",
@@ -354,7 +339,6 @@
   "mailAdmin.event.test": "Email de test",
   "mailAdmin.noPlaceholders": "(fara substituenti)",
   "mailAdmin.sendError": "Eroare la trimitere",
-
   "ncAdmin.title": "Conexiune Nextcloud (WebDAV)",
   "ncAdmin.url": "URL Nextcloud",
   "ncAdmin.username": "Utilizator",
@@ -366,7 +350,6 @@
   "ncAdmin.saved": "Configurare Nextcloud salvata (conexiune OK)",
   "ncAdmin.deleteConfirm": "Stergeti configurarea Nextcloud? Toate maparile directoarelor vor fi eliminate.",
   "ncAdmin.deleted": "Configurare Nextcloud stearsa",
-
   "ooAdmin.title": "Server documente ONLYOFFICE",
   "ooAdmin.serverUrl": "URL server",
   "ooAdmin.jwtSecret": "Secret JWT",
@@ -383,7 +366,6 @@
   "ooAdmin.deleteConfirm": "Stergeti configurarea ONLYOFFICE?",
   "ooAdmin.deleted": "Configurare ONLYOFFICE stearsa",
   "ooAdmin.setupHint": "Porniti containerul Docker cu scripts/onlyoffice-setup.sh. Scriptul afiseaza URL-ul si secretul JWT.",
-
   "tls.statusTitle": "Status TLS",
   "tls.status": "Status:",
   "tls.active": "Activ",
@@ -418,14 +400,12 @@
   "tls.trouble4": "In caz de probleme: dezactivati TLS si reporniti serviciile",
   "tls.verifySaved": "Validare certificat salvata",
   "tls.validateError": "Eroare de validare",
-
   "allgemein.title": "Adresa server",
   "allgemein.serverAddress": "Adresa server",
   "allgemein.addressRequired": "Va rugam introduceti adresa serverului",
   "allgemein.saved": "Configurare aplicatie salvata",
   "allgemein.hint": "Protocolul (http/https) este derivat automat din setarile TLS. Aceasta adresa este utilizata ca link al aplicatiei in email-uri.",
   "allgemein.placeholder": "ex. tareas.domeniu.tld sau 192.168.1.100:8504",
-
   "editor.loading": "Se incarca...",
   "editor.editorLoading": "Se incarca editorul...",
   "editor.edit": "Editare",

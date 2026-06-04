@@ -21,14 +21,11 @@
   "common.fillAll": "Please fill in all fields",
   "common.fillRequired": "Please fill in all required fields",
   "common.loading": "Loading...",
-
   "status.offen": "Open",
   "status.in_arbeit": "In Progress",
   "status.erledigt": "Done",
-
   "type.aufgabe": "Task",
   "type.projekt": "Project",
-
   "auth.login": "Login",
   "auth.logout": "Logout",
   "auth.username": "Username",
@@ -40,7 +37,6 @@
   "auth.locked": "Locked ({remaining}s)",
   "auth.noAdminAccess": "No admin access. Only administrators can sign in here.",
   "auth.adminLogin": "Admin Login",
-
   "password.change": "Change Password",
   "password.old": "Old Password",
   "password.new": "New Password",
@@ -49,12 +45,16 @@
   "password.mismatch": "New passwords do not match",
   "password.minLength": "Password must be at least 4 characters",
   "password.changed": "Password changed",
-
   "settings.darkMode": "Dark Mode",
   "settings.mailNotifications": "Mail Notifications",
   "settings.restart": "Restart Dashboard",
   "settings.language": "Language",
-
+  "settings.colorScheme": "Color Scheme",
+  "settings.scheme.light": "Light",
+  "settings.scheme.dark": "Dark",
+  "settings.scheme.graphit": "Graphite / Cyan",
+  "settings.scheme.slate": "Slate / Emerald",
+  "settings.scheme.ink": "Ink / Indigo",
   "mail.prefs.title": "Mail Notifications",
   "mail.prefs.saved": "Mail settings saved",
   "mail.prefs.loadError": "Error loading settings",
@@ -63,10 +63,8 @@
   "mail.event.status_change": "Status changed",
   "mail.event.deadline_reached": "Deadline reached",
   "mail.event.deadline_warning": "Deadline warning",
-
   "restart.confirm": "Really restart the dashboard?",
   "restart.restarting": "Restarting...",
-
   "nav.aufgaben": "Tasks",
   "nav.allgemein": "General",
   "nav.benutzer": "User Management",
@@ -75,7 +73,6 @@
   "nav.onlyoffice": "ONLYOFFICE",
   "nav.mail": "Mail",
   "nav.tls": "TLS",
-
   "tasks.title": "Tasks",
   "tasks.newTask": "+ New Task",
   "tasks.expandAll": "Expand all",
@@ -97,7 +94,6 @@
   "tasks.typeLabel": "Type:",
   "tasks.statusLabel": "Status:",
   "tasks.unassigned": "-- Unassigned --",
-
   "tasks.col.name": "Name",
   "tasks.col.type": "Type",
   "tasks.col.status": "Status",
@@ -106,12 +102,11 @@
   "tasks.col.assignedTo": "Assigned to",
   "tasks.col.created": "Created",
   "tasks.col.deadline": "Deadline",
-
   "category.team": "Team",
   "category.zugewiesene": "Assigned",
   "category.vergebene": "Delegated",
   "category.eigene": "Own",
-
+  "category.mcp": "MCP",
   "subtask.title": "Subtasks",
   "subtask.add": "+ Subtask",
   "subtask.newName": "New Subtask",
@@ -136,7 +131,6 @@
   "subtask.predExists": "Predecessor already exists",
   "subtask.predRemoveConfirm": "Really remove predecessor?",
   "subtask.info": "Subtask from project: {name}",
-
   "detail.description": "Description",
   "detail.descriptionFrom": "Description by {name}",
   "detail.noDescription": "No description",
@@ -144,13 +138,12 @@
   "detail.notesFrom": "Notes by {name}",
   "detail.noNotes": "No notes available",
   "detail.loadError": "Error loading",
-
   "netzplan.title": "Network Plan",
   "netzplan.noSubtasks": "No subtasks available",
   "netzplan.fit": "Fit",
   "netzplan.auto": "Auto",
   "netzplan.selectTarget": "Click on a target node... (ESC = Cancel)",
-  "netzplan.removeDep": "Really remove dependency \"{from}\" \u2192 \"{to}\"?",
+  "netzplan.removeDep": "Really remove dependency \"{from}\" → \"{to}\"?",
   "netzplan.depRemoved": "Dependency removed",
   "netzplan.depAdded": "Dependency added",
   "netzplan.invalidConnection": "Invalid connection",
@@ -165,7 +158,6 @@
   "netzplan.statusOpen": "Open",
   "netzplan.statusWip": "In Progress",
   "netzplan.statusDone": "Done",
-
   "nc.fileStorage": "File Storage",
   "nc.changeConfirm": "Really change the file storage?",
   "nc.removeMapping": "Remove mapping",
@@ -178,7 +170,6 @@
   "nc.selected": "Selected",
   "nc.select": "Select",
   "nc.loadDirError": "Error loading directories",
-
   "team.title": "Team Members",
   "team.creatorInfo": "You are the creator and have full access.",
   "team.selectUser": "-- Select user --",
@@ -197,7 +188,6 @@
   "team.addError": "Error adding member",
   "team.removeError": "Error removing member",
   "team.updateError": "Error updating",
-
   "files.title": "Files",
   "files.upload": "Upload",
   "files.folder": "Folder",
@@ -223,7 +213,6 @@
   "files.gridView": "Switch to grid view",
   "files.treeView": "Switch to tree view",
   "files.toggleView": "Toggle view",
-
   "table.noData": "No data found",
   "table.loadError": "Error loading data",
   "table.truncated": "[... truncated]",
@@ -232,7 +221,6 @@
   "table.prevPage": "Previous page",
   "table.nextPage": "Next page",
   "table.lastPage": "Last page",
-
   "wysiwyg.formatBlock": "Format",
   "wysiwyg.format": "Format",
   "wysiwyg.normal": "Normal",
@@ -251,7 +239,6 @@
   "wysiwyg.normalSize": "Normal",
   "wysiwyg.large": "Large",
   "wysiwyg.xlarge": "Extra Large",
-
   "users.title": "User Management",
   "users.new": "New User",
   "users.newBtn": "+ New User",
@@ -286,7 +273,6 @@
   "users.sendInvite": "Send invitation email",
   "users.inviteConfirm": "Send invitation email to \"{username}\"?",
   "users.inviteSent": "Invitation email sent",
-
   "ldap.title": "LDAP Server Configuration",
   "ldap.server": "Server",
   "ldap.port": "Port",
@@ -316,7 +302,6 @@
   "ldap.groupSelected": "Group \"{name}\" selected. Created: {created}, Updated: {updated}",
   "ldap.syncFailed": "Sync failed",
   "ldap.syncComplete": "Sync completed. Created: {created}, Updated: {updated}, Deactivated: {deactivated}",
-
   "mailAdmin.smtpTitle": "SMTP Server Configuration",
   "mailAdmin.smtpServer": "SMTP Server",
   "mailAdmin.port": "Port",
@@ -354,7 +339,6 @@
   "mailAdmin.event.test": "Test email",
   "mailAdmin.noPlaceholders": "(no placeholders)",
   "mailAdmin.sendError": "Error sending",
-
   "ncAdmin.title": "Nextcloud Connection (WebDAV)",
   "ncAdmin.url": "Nextcloud URL",
   "ncAdmin.username": "Username",
@@ -366,7 +350,6 @@
   "ncAdmin.saved": "Nextcloud configuration saved (connection OK)",
   "ncAdmin.deleteConfirm": "Really delete Nextcloud configuration? All directory mappings will be removed.",
   "ncAdmin.deleted": "Nextcloud configuration deleted",
-
   "ooAdmin.title": "ONLYOFFICE Document Server",
   "ooAdmin.serverUrl": "Server URL",
   "ooAdmin.jwtSecret": "JWT Secret",
@@ -383,7 +366,6 @@
   "ooAdmin.deleteConfirm": "Really delete ONLYOFFICE configuration?",
   "ooAdmin.deleted": "ONLYOFFICE configuration deleted",
   "ooAdmin.setupHint": "Start Docker container with scripts/onlyoffice-setup.sh. The script outputs the URL and JWT Secret.",
-
   "tls.statusTitle": "TLS Status",
   "tls.status": "Status:",
   "tls.active": "Active",
@@ -418,14 +400,12 @@
   "tls.trouble4": "If problems occur: disable TLS and restart services",
   "tls.verifySaved": "Certificate validation saved",
   "tls.validateError": "Validation error",
-
   "allgemein.title": "Server Address",
   "allgemein.serverAddress": "Server Address",
   "allgemein.addressRequired": "Please enter server address",
   "allgemein.saved": "App configuration saved",
   "allgemein.hint": "Protocol (http/https) is automatically derived from TLS settings. This address is used as the app link in emails.",
   "allgemein.placeholder": "e.g. tareas.domain.tld or 192.168.1.100:8504",
-
   "editor.loading": "Loading...",
   "editor.editorLoading": "Loading editor...",
   "editor.edit": "Edit",

@@ -44,13 +44,13 @@
 }
 
 .oo-badge-readonly {
-    background: rgba(231, 76, 60, 0.2);
-    color: #e74c3c;
+    background: var(--danger-soft);
+    color: var(--color-bearish);
 }
 
 .oo-badge-edit {
-    background: rgba(46, 204, 113, 0.2);
-    color: #2ecc71;
+    background: var(--success-soft);
+    color: var(--color-bullish);
 }
 
 .oo-close-btn {

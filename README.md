@@ -1,6 +1,6 @@
 # Tareas
 
-A self-hosted task and project management tool built with **FastAPI** and **Vanilla JavaScript**.
+A self-hosted task and project management tool built with **FastAPI** and **Vanilla JavaScript**. Tareas is optimized for collaboration with AI agents: agents can work with projects, subtasks, notes, dependencies, and assignments through the built-in MCP server while all write actions stay attributable and auditable.
 
 ## Features
 
@@ -12,8 +12,9 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 - **ONLYOFFICE Integration** - Edit Office documents (docx, xlsx, pptx) directly in the browser via WOPI
 - **LDAP/Active Directory** - Authenticate users against AD, automatic sync, group-based access
 - **Email Notifications** - SMTP integration with configurable templates for assignments, status changes, deadlines
+- **AI Agent Collaboration** - Built-in MCP server for project/task automation by AI agents with token-based access
 - **TLS Support** - Optional HTTPS with certificate management via Admin UI
-- **Admin Panel** - Separate admin interface (Port 8505) for user management, LDAP, Nextcloud, ONLYOFFICE, mail, and TLS configuration
+- **Admin Panel** - Separate admin interface (Port 8505) for user management, LDAP, Nextcloud, ONLYOFFICE, mail, TLS, and MCP configuration
 - **Light/Dark Theme** - CSS Custom Properties with persistent preference
 - **APT Package** - Install via `.deb` package on Ubuntu/Debian
 
@@ -84,6 +85,18 @@ All configuration is managed through the **Admin Panel** at `http://localhost:85
 | ONLYOFFICE | ONLYOFFICE | Document Server URL and JWT secret |
 | Mail | Mail | SMTP settings and notification templates |
 | TLS | TLS | HTTPS certificate paths |
+| MCP | MCP | Server status, API tokens, audit log, global kill switch |
+
+### MCP Server
+
+Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents and remote coding assistants. The server is mounted in the main app on port `8504` and uses Streamable HTTP via FastMCP.
+
+- Authentication uses `Authorization: Bearer <token>`.
+- MCP tokens are created in the Admin Panel under **MCP** and are shown only once.
+- Tokens are stored as SHA-256 hashes; revoked tokens stop working immediately.
+- Every token is mapped to its own `mcp` user in the database.
+- Write operations are recorded in the audit log and can be reviewed in the Admin Panel.
+- Available tools cover projects, subtasks, dependencies, notes, users, areas, search, self-assignment, and `whoami`.
 
 ### Default Credentials
 
@@ -101,6 +114,7 @@ Tareas/
 │   ├── app.py              # Main FastAPI app (Port 8504)
 │   ├── admin_app.py         # Admin FastAPI app (Port 8505)
 │   ├── api_*.py             # API routers (tasks, auth, teams, etc.)
+│   ├── mcp_server.py        # MCP tools for AI agents
 │   ├── components/          # Reusable Python components
 │   ├── static/
 │   │   ├── css/             # Stylesheets (theme, components)
@@ -125,6 +139,7 @@ Tareas/
 | File Storage | Nextcloud WebDAV proxy |
 | Documents | ONLYOFFICE via WOPI |
 | Directory | LDAP/Active Directory (ldap3) |
+| AI Agent Interface | MCP via FastMCP, Bearer tokens, audit log |
 
 ## Development
 
@@ -157,6 +172,8 @@ python dashboard/admin_app.py  # Admin app on :8505
 - SQL identifier whitelisting
 - HTML sanitization (XSS prevention)
 - Fernet encryption for stored credentials
+- MCP tokens stored as hashes; global MCP kill switch
+- Audit logging for MCP and relevant write operations
 - Path traversal protection for file operations
 - Systemd hardening (NoNewPrivileges, ProtectSystem, PrivateTmp)
 

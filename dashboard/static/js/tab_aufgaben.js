@@ -155,6 +155,7 @@ function _getCategoryLabel(cat) {
         'zugewiesene': t('category.zugewiesene'),
         'vergebene': t('category.vergebene'),
         'eigene': t('category.eigene'),
+        'mcp': t('category.mcp'),
     };
     return labels[cat] || cat;
 }
@@ -188,7 +189,7 @@ function buildCategoryButtons() {
     const activeSet = aufgabenTable.activeFilters['_category'] || new Set();
 
     // Buttons nur fuer vorhandene Kategorien erzeugen (feste Reihenfolge)
-    const order = ['team', 'zugewiesene', 'vergebene', 'eigene'];
+    const order = ['team', 'zugewiesene', 'vergebene', 'eigene', 'mcp'];
     let html = '';
     order.forEach(cat => {
         if (!counts[cat]) return;
@@ -426,7 +427,7 @@ function renderPriority(value, col, row) {
 
 function renderDeleteAction(value, col, row) {
     const perm = getTaskPermissions(row);
-    if (!perm.isCreator && !perm.isOwnTask && !perm.isLegacy) return '';
+    if (!perm.isCreator && !perm.isOwnTask && !perm.isLegacy && !perm.isAdmin) return '';
     const taskId = row.id;
     return `<button class="row-delete-btn" onclick="event.stopPropagation(); deleteTask(${taskId})" title="${t('common.delete')}">&times;</button>`;
 }
@@ -440,12 +441,14 @@ function getTaskPermissions(row) {
     const isCreator = row.created_by === userId;
     const isAssignee = row.assigned_to === userId;
     const isAssigned = !!row.assigned_to;
-    const isOwnTask = isCreator && !isAssigned;
+    const isDesktop = document.body.classList.contains('desktop-mode');
+    const isOwnTask = isCreator && (!isAssigned || (isDesktop && isAssignee));
     // Altdaten ohne created_by: alles editierbar
     const isLegacy = !row.created_by;
     const isTeamMember = !!row.is_team_member;
+    const isAdmin = !!(currentUser && currentUser.is_admin);
 
-    return { isCreator, isAssignee, isAssigned, isOwnTask, isLegacy, isTeamMember };
+    return { isCreator, isAssignee, isAssigned, isOwnTask, isLegacy, isTeamMember, isAdmin };
 }
 
 // ========================================
@@ -502,7 +505,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
             <h5>${t('detail.myNotes')}</h5>
             <div id="notesEditor_${row.id}"></div>
         </div>`;
-    } else if (perm.isCreator && perm.isAssigned) {
+    } else if (perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
         html += `<div class="notes-section">
             <h5>${t('detail.description')}</h5>
             <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
@@ -563,7 +566,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
         } catch (e) {
             new WysiwygEditor(`notesEditor_${row.id}`, '');
         }
-    } else if (perm.isCreator && perm.isAssigned) {
+    } else if (perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
         // Notizen des Zugewiesenen laden
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
@@ -1026,9 +1029,9 @@ function renderSubTasks(taskId, subtasks) {
                 </select></span>
             </td>` : `<td>${renderAufgabenBadge(statusPct >= 100 ? 'erledigt' : statusPct > 0 ? 'in_arbeit' : 'offen', {field:'status'}, st)}</td>`}`;
 
-        // Delete-Button (nur Ersteller/Legacy)
+        // Delete-Button (Ersteller, Legacy oder Admin)
         html += `<td>`;
-        if (parentPerm.isCreator || parentPerm.isLegacy) {
+        if (parentPerm.isCreator || parentPerm.isLegacy || parentPerm.isAdmin) {
             html += `<div class="subtask-actions">
                     <button class="subtask-btn delete" onclick="event.stopPropagation(); deleteSubTask(${taskId}, ${st.id})">x</button>
                 </div>`;

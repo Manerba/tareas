@@ -244,7 +244,7 @@
     justify-content: center;
     align-items: center;
     min-height: 150px;
-    color: var(--color-bearish, #e74c3c);
+    color: var(--color-bearish, #b91c1c);
     font-size: 13px;
 }
 
@@ -252,7 +252,7 @@
 .fb-drop-zone.fb-drag-over {
     outline: 2px dashed var(--accent-primary, #3498db);
     outline-offset: -4px;
-    background: var(--bg-hover, rgba(52, 152, 219, 0.05));
+    background: var(--bg-hover, #dbeafe);
 }
 
 /* --- Grid Ansicht --- */
@@ -337,7 +337,7 @@
 }
 
 .fb-grid-edit:hover .fb-icon-edit {
-    color: #fff;
+    color: var(--accent-text, #fff);
 }
 
 .fb-icon-edit {
@@ -425,17 +425,17 @@
     height: 24px;
 }
 
-.fb-icon-folder { color: #f0a030; }
+.fb-icon-folder { color: var(--color-unclear, #92400e); }
 .fb-icon-file { color: var(--text-muted, #999); }
-.fb-icon-image { color: #5dade2; }
-.fb-icon-pdf { color: #e74c3c; }
-.fb-icon-word { color: #2e86c1; }
-.fb-icon-excel { color: #27ae60; }
-.fb-icon-ppt { color: #e67e22; }
+.fb-icon-image { color: var(--accent-primary, #3498db); }
+.fb-icon-pdf { color: var(--color-bearish, #b91c1c); }
+.fb-icon-word { color: var(--accent-primary, #3498db); }
+.fb-icon-excel { color: var(--color-bullish, #166534); }
+.fb-icon-ppt { color: var(--color-unclear, #92400e); }
 .fb-icon-text { color: var(--text-secondary, #666); }
-.fb-icon-archive { color: #8e44ad; }
-.fb-icon-video { color: #e74c3c; }
-.fb-icon-audio { color: #2ecc71; }
+.fb-icon-archive { color: var(--project-text, #8e44ad); }
+.fb-icon-video { color: var(--color-bearish, #b91c1c); }
+.fb-icon-audio { color: var(--color-bullish, #166534); }
 
 .fb-icon-btn {
     width: 16px;
@@ -471,7 +471,7 @@
 }
 
 .fb-ctx-danger {
-    color: var(--color-bearish, #e74c3c);
+    color: var(--color-bearish, #b91c1c);
 }
 
 .fb-ctx-sep {
@@ -516,7 +516,7 @@
 .control-btn.nc-active {
     border-color: var(--accent-primary, #3498db);
     color: var(--accent-primary, #3498db);
-    background: rgba(52, 152, 219, 0.08);
+    background: var(--accent-soft);
 }
 
 /* --- Projektverzeichnis-Dialog --- */
@@ -575,7 +575,7 @@
 }
 
 .nc-dir-selected {
-    background: rgba(52, 152, 219, 0.1);
+    background: var(--accent-soft);
     border-color: var(--accent-primary, #3498db);
 }
 
@@ -614,7 +614,7 @@
 .nc-dir-select-btn:hover {
     border-color: var(--accent-primary, #3498db);
     color: var(--accent-primary, #3498db);
-    background: rgba(52, 152, 219, 0.05);
+    background: var(--accent-soft);
 }
 
 .nc-dir-selected .nc-dir-select-btn {

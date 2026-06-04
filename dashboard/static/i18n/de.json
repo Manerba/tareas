@@ -21,14 +21,11 @@
   "common.fillRequired": "Bitte alle Pflichtfelder ausfuellen",
   "common.no": "Nein",
   "common.loading": "Laden...",
-
   "status.offen": "Offen",
   "status.in_arbeit": "In Arbeit",
   "status.erledigt": "Erledigt",
-
   "type.aufgabe": "Aufgabe",
   "type.projekt": "Projekt",
-
   "auth.login": "Anmelden",
   "auth.logout": "Abmelden",
   "auth.username": "Benutzername",
@@ -40,7 +37,6 @@
   "auth.locked": "Gesperrt ({remaining}s)",
   "auth.noAdminAccess": "Kein Admin-Zugriff. Nur Administratoren koennen sich hier anmelden.",
   "auth.adminLogin": "Admin-Anmeldung",
-
   "password.change": "Passwort aendern",
   "password.old": "Altes Passwort",
   "password.new": "Neues Passwort",
@@ -49,12 +45,16 @@
   "password.mismatch": "Neue Passwoerter stimmen nicht ueberein",
   "password.minLength": "Passwort muss mindestens 4 Zeichen haben",
   "password.changed": "Passwort geaendert",
-
   "settings.darkMode": "Dark Mode",
   "settings.mailNotifications": "Mail-Benachrichtigungen",
   "settings.restart": "Restart Dashboard",
   "settings.language": "Sprache",
-
+  "settings.colorScheme": "Farbschema",
+  "settings.scheme.light": "Hell",
+  "settings.scheme.dark": "Dunkel",
+  "settings.scheme.graphit": "Graphit / Cyan",
+  "settings.scheme.slate": "Slate / Emerald",
+  "settings.scheme.ink": "Ink / Indigo",
   "mail.prefs.title": "Mail-Benachrichtigungen",
   "mail.prefs.saved": "Mail-Einstellungen gespeichert",
   "mail.prefs.loadError": "Fehler beim Laden der Einstellungen",
@@ -63,10 +63,8 @@
   "mail.event.status_change": "Status geaendert",
   "mail.event.deadline_reached": "Faelligkeit erreicht",
   "mail.event.deadline_warning": "Faelligkeits-Vorwarnung",
-
   "restart.confirm": "Dashboard wirklich neu starten?",
   "restart.restarting": "Wird neugestartet...",
-
   "nav.aufgaben": "Aufgaben",
   "nav.allgemein": "Allgemein",
   "nav.benutzer": "Benutzerverwaltung",
@@ -75,7 +73,6 @@
   "nav.onlyoffice": "ONLYOFFICE",
   "nav.mail": "Mail",
   "nav.tls": "TLS",
-
   "tasks.title": "Aufgaben",
   "tasks.newTask": "+ Neue Aufgabe",
   "tasks.expandAll": "Alle aufklappen",
@@ -97,7 +94,6 @@
   "tasks.typeLabel": "Typ:",
   "tasks.statusLabel": "Status:",
   "tasks.unassigned": "-- Nicht zugewiesen --",
-
   "tasks.col.name": "Name",
   "tasks.col.type": "Typ",
   "tasks.col.status": "Status",
@@ -106,12 +102,11 @@
   "tasks.col.assignedTo": "Zugewiesen an",
   "tasks.col.created": "Erstellt",
   "tasks.col.deadline": "Deadline",
-
   "category.team": "Team",
   "category.zugewiesene": "Zugewiesen",
   "category.vergebene": "Vergeben",
   "category.eigene": "Eigene",
-
+  "category.mcp": "MCP",
   "subtask.title": "Teilaufgaben",
   "subtask.add": "+ Teilaufgabe",
   "subtask.newName": "Neue Teilaufgabe",
@@ -136,7 +131,6 @@
   "subtask.predExists": "Vorgaenger bereits vorhanden",
   "subtask.predRemoveConfirm": "Vorgaenger wirklich entfernen?",
   "subtask.info": "Teilaufgabe aus Projekt: {name}",
-
   "detail.description": "Beschreibung",
   "detail.descriptionFrom": "Beschreibung von {name}",
   "detail.noDescription": "Keine Beschreibung",
@@ -144,13 +138,12 @@
   "detail.notesFrom": "Notizen von {name}",
   "detail.noNotes": "Keine Notizen vorhanden",
   "detail.loadError": "Fehler beim Laden",
-
   "netzplan.title": "Netzplan",
   "netzplan.noSubtasks": "Keine Teilaufgaben vorhanden",
   "netzplan.fit": "Einpassen",
   "netzplan.auto": "Auto",
   "netzplan.selectTarget": "Klicken Sie auf einen Zielknoten... (ESC = Abbrechen)",
-  "netzplan.removeDep": "Abhaengigkeit \"{from}\" \u2192 \"{to}\" wirklich entfernen?",
+  "netzplan.removeDep": "Abhaengigkeit \"{from}\" → \"{to}\" wirklich entfernen?",
   "netzplan.depRemoved": "Abhaengigkeit entfernt",
   "netzplan.depAdded": "Abhaengigkeit hinzugefuegt",
   "netzplan.invalidConnection": "Ungueltige Verbindung",
@@ -165,7 +158,6 @@
   "netzplan.statusOpen": "Offen",
   "netzplan.statusWip": "In Arbeit",
   "netzplan.statusDone": "Erledigt",
-
   "nc.fileStorage": "Dateiablage",
   "nc.changeConfirm": "Wollen Sie die Dateiablage wirklich aendern?",
   "nc.removeMapping": "Zuordnung entfernen",
@@ -178,7 +170,6 @@
   "nc.selected": "Gewaehlt",
   "nc.select": "Waehlen",
   "nc.loadDirError": "Fehler beim Laden der Verzeichnisse",
-
   "team.title": "Teammitglieder",
   "team.creatorInfo": "Sie sind der Ersteller und haben vollen Zugriff.",
   "team.selectUser": "-- Benutzer auswaehlen --",
@@ -197,7 +188,6 @@
   "team.addError": "Fehler beim Hinzufuegen",
   "team.removeError": "Fehler beim Entfernen",
   "team.updateError": "Fehler beim Aktualisieren",
-
   "files.title": "Dateien",
   "files.upload": "Hochladen",
   "files.folder": "Ordner",
@@ -223,7 +213,6 @@
   "files.gridView": "Zur Grid-Ansicht",
   "files.treeView": "Zur Baumansicht",
   "files.toggleView": "Ansicht wechseln",
-
   "table.noData": "Keine Daten gefunden",
   "table.loadError": "Fehler beim Laden der Daten",
   "table.truncated": "[... gekuerzt]",
@@ -232,7 +221,6 @@
   "table.prevPage": "Vorherige Seite",
   "table.nextPage": "Naechste Seite",
   "table.lastPage": "Letzte Seite",
-
   "wysiwyg.formatBlock": "Formatvorlage",
   "wysiwyg.format": "Format",
   "wysiwyg.normal": "Standard",
@@ -251,7 +239,6 @@
   "wysiwyg.normalSize": "Normal",
   "wysiwyg.large": "Gross",
   "wysiwyg.xlarge": "Sehr Gross",
-
   "users.title": "Benutzerverwaltung",
   "users.new": "Neuer Benutzer",
   "users.newBtn": "+ Neuer Benutzer",
@@ -286,7 +273,6 @@
   "users.sendInvite": "Einladungsmail senden",
   "users.inviteConfirm": "Einladungsmail an \"{username}\" senden?",
   "users.inviteSent": "Einladungsmail gesendet",
-
   "ldap.title": "LDAP-Server Konfiguration",
   "ldap.server": "Server",
   "ldap.port": "Port",
@@ -316,7 +302,6 @@
   "ldap.groupSelected": "Gruppe \"{name}\" ausgewaehlt. Erstellt: {created}, Aktualisiert: {updated}",
   "ldap.syncFailed": "Sync fehlgeschlagen",
   "ldap.syncComplete": "Sync abgeschlossen. Erstellt: {created}, Aktualisiert: {updated}, Deaktiviert: {deactivated}",
-
   "mailAdmin.smtpTitle": "SMTP-Server Konfiguration",
   "mailAdmin.smtpServer": "SMTP-Server",
   "mailAdmin.port": "Port",
@@ -354,7 +339,6 @@
   "mailAdmin.event.test": "Testmail",
   "mailAdmin.noPlaceholders": "(keine Platzhalter)",
   "mailAdmin.sendError": "Fehler beim Senden",
-
   "ncAdmin.title": "Nextcloud-Verbindung (WebDAV)",
   "ncAdmin.url": "Nextcloud-URL",
   "ncAdmin.username": "Benutzername",
@@ -366,7 +350,6 @@
   "ncAdmin.saved": "Nextcloud-Konfiguration gespeichert (Verbindung OK)",
   "ncAdmin.deleteConfirm": "Nextcloud-Konfiguration wirklich loeschen? Alle Verzeichniszuordnungen werden entfernt.",
   "ncAdmin.deleted": "Nextcloud-Konfiguration geloescht",
-
   "ooAdmin.title": "ONLYOFFICE Document Server",
   "ooAdmin.serverUrl": "Server-URL",
   "ooAdmin.jwtSecret": "JWT Secret",
@@ -383,7 +366,6 @@
   "ooAdmin.deleted": "ONLYOFFICE-Konfiguration geloescht",
   "ooAdmin.testFailed": "Verbindungstest fehlgeschlagen",
   "ooAdmin.setupHint": "Docker-Container starten mit scripts/onlyoffice-setup.sh. Das Script gibt die URL und das JWT Secret aus.",
-
   "tls.statusTitle": "TLS-Status",
   "tls.status": "Status:",
   "tls.active": "Aktiv",
@@ -418,14 +400,12 @@
   "tls.trouble4": "Bei Problemen: TLS deaktivieren und Services neu starten",
   "tls.verifySaved": "Zertifikatsvalidierung gespeichert",
   "tls.validateError": "Fehler bei der Validierung",
-
   "allgemein.title": "Server-Adresse",
   "allgemein.serverAddress": "Server-Adresse",
   "allgemein.addressRequired": "Bitte Server-Adresse eingeben",
   "allgemein.saved": "App-Konfiguration gespeichert",
   "allgemein.hint": "Protokoll (http/https) wird automatisch aus den TLS-Einstellungen abgeleitet. Diese Adresse wird in E-Mails als Link zur App verwendet.",
   "allgemein.placeholder": "z.B. tareas.domain.tld oder 192.168.1.100:8504",
-
   "editor.loading": "Wird geladen...",
   "editor.editorLoading": "Editor wird geladen...",
   "editor.edit": "Bearbeiten",
