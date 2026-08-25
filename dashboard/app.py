@@ -42,10 +42,11 @@ for _uv_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, PlainTextResponse
 import uvicorn
 
 from dashboard.database import init_db
+from dashboard.agent_guide import build_agent_guide_markdown, build_agent_metadata
 from dashboard.crypto_utils import migrate_plaintext_credentials
 from dashboard.logging_config import setup_security_logger
 from dashboard.csp_utils import get_onlyoffice_origin
@@ -305,6 +306,22 @@ async def dashboard_info(user=Depends(get_current_user)):
             ],
         },
     }
+
+
+@app.get("/agent-guide.md", response_class=PlainTextResponse)
+async def agent_guide(request: Request):
+    """Tokenfreier Bootstrap-Guide fuer Agenten und neue Projekte."""
+    metadata = build_agent_metadata(request)
+    return PlainTextResponse(
+        build_agent_guide_markdown(metadata),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+@app.get("/.well-known/tareas-agent.json")
+async def agent_well_known(request: Request):
+    """Maschinenlesbare, tokenfreie Agenten-Bootstrap-Information."""
+    return build_agent_metadata(request)
 
 
 # ============================================================

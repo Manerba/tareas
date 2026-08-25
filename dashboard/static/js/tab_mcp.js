@@ -160,12 +160,17 @@ function renderMcpTokensSection() {
 function renderMcpAuditSection() {
     const filterOptions = {
         actor_type: ['', 'mcp', 'user', 'system'],
-        entity_type: ['', 'task', 'sub_task', 'task_note', 'sub_task_note', 'dependency', 'mcp_token', 'mcp_config'],
+        entity_type: ['', 'task', 'sub_task', 'task_note', 'sub_task_note', 'task_handoff', 'sub_task_handoff', 'task_note_entry', 'sub_task_note_entry', 'dependency', 'mcp_token', 'mcp_config'],
         action: ['', 'create', 'update', 'delete', 'status_change', 'revoke'],
+    };
+    const filterLabels = {
+        task_note_entry: 'task_note_entry (legacy)',
+        sub_task_note_entry: 'sub_task_note_entry (legacy)',
     };
     const mkOpt = (k, val) => {
         const sel = mcpAuditFilters[k] === val ? 'selected' : '';
-        return `<option value="${escapeHtml(val)}" ${sel}>${val ? escapeHtml(val) : 'alle'}</option>`;
+        const label = val ? (filterLabels[val] || val) : 'alle';
+        return `<option value="${escapeHtml(val)}" ${sel}>${escapeHtml(label)}</option>`;
     };
 
     let rows = '';

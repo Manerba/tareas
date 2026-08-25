@@ -3,7 +3,6 @@ Tareas - API-Router fuer Aufgaben, Teilaufgaben und Bereiche.
 """
 
 import asyncio
-import heapq
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -14,6 +13,7 @@ from pydantic import BaseModel
 
 from dashboard.audit_log import log_change
 from dashboard.db_utils import db_query, db_transaction
+from dashboard.task_types import normalize_task_type
 from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
@@ -121,6 +121,22 @@ def _format_date(iso_str: Optional[str]) -> str:
         return iso_str or ""
 
 
+def _format_datetime(iso_str: Optional[str]) -> str:
+    """Konvertiert ISO-Datum/-Zeit zu DD.MM.YYYY HH:MM."""
+    if not iso_str:
+        return ""
+    try:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(iso_str.strip(), fmt)
+                return dt.strftime("%d.%m.%Y %H:%M")
+            except ValueError:
+                continue
+        return iso_str.strip()
+    except Exception:
+        return iso_str or ""
+
+
 def _project_status(row) -> str:
     """Berechnet den Projektstatus aus Teilaufgaben-Fortschritt."""
     total = row["subtask_total"] or 0
@@ -148,52 +164,60 @@ def _parse_date_input(date_str: Optional[str]) -> Optional[str]:
     return date_str
 
 
-def _topological_reorder(db, project_id):
-    """Topologische Neuordnung der Teilaufgaben anhand der Abhaengigkeiten (Kahn-Algorithmus)."""
-    rows = db.execute(
-        "SELECT id, position_number FROM sub_tasks WHERE project_id = ?", (project_id,)
-    ).fetchall()
-    if not rows:
-        return {}
+def _require_task_read_access(db, task_id: int, user: dict):
+    """Prueft Leserechte fuer eine Aufgabe/ein Projekt und liefert die Zeile."""
+    task = db.execute(
+        "SELECT id, created_by, assigned_to FROM tasks WHERE id = ?",
+        (task_id,),
+    ).fetchone()
+    if not task:
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
 
-    old_pos = {r["id"]: r["position_number"] for r in rows}
-    all_ids = set(old_pos.keys())
+    if user.get("is_admin"):
+        return task
+    if task["created_by"] is None:
+        return task
+    if task["created_by"] == user["id"] or task["assigned_to"] == user["id"]:
+        return task
 
-    deps = db.execute(
-        "SELECT d.sub_task_id, d.depends_on_id FROM sub_task_dependencies d "
-        "JOIN sub_tasks s ON d.sub_task_id = s.id WHERE s.project_id = ?", (project_id,)
-    ).fetchall()
+    membership = db.execute(
+        "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
+        (task_id, user["id"]),
+    ).fetchone()
+    if membership and membership["can_read"]:
+        return task
 
-    in_degree = defaultdict(int)
-    successors = defaultdict(list)
-    for d in deps:
-        if d["sub_task_id"] in all_ids and d["depends_on_id"] in all_ids:
-            in_degree[d["sub_task_id"]] += 1
-            successors[d["depends_on_id"]].append(d["sub_task_id"])
+    raise HTTPException(status_code=403, detail="Keine Leseberechtigung")
 
-    # Kahn's mit heapq: Tiebreaker = alte position_number
-    heap = []
-    for nid in all_ids:
-        if in_degree[nid] == 0:
-            heapq.heappush(heap, (old_pos.get(nid, 0), nid))
 
-    new_pos = {}
-    pos = 1
-    while heap:
-        _, nid = heapq.heappop(heap)
-        new_pos[nid] = pos
-        pos += 1
-        for succ in successors[nid]:
-            in_degree[succ] -= 1
-            if in_degree[succ] == 0:
-                heapq.heappush(heap, (old_pos.get(succ, 0), succ))
+def _require_subtask_read_access(db, task_id: int, subtask_id: int, user: dict):
+    """Prueft Leserechte fuer eine Teilaufgabe und liefert die Zeile."""
+    row = db.execute(
+        """SELECT st.id, st.project_id, st.assigned_to AS subtask_assigned_to,
+                  t.created_by AS task_created_by
+           FROM sub_tasks st
+           JOIN tasks t ON t.id = st.project_id
+           WHERE st.id = ? AND st.project_id = ?""",
+        (subtask_id, task_id),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
 
-    # Nur geaenderte Positionen aktualisieren
-    for nid, p in new_pos.items():
-        if old_pos.get(nid) != p:
-            db.execute("UPDATE sub_tasks SET position_number = ? WHERE id = ?", (p, nid))
+    if user.get("is_admin"):
+        return row
+    if row["task_created_by"] is None:
+        return row
+    if row["task_created_by"] == user["id"] or row["subtask_assigned_to"] == user["id"]:
+        return row
 
-    return new_pos
+    membership = db.execute(
+        "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
+        (task_id, user["id"]),
+    ).fetchone()
+    if membership and membership["can_read"]:
+        return row
+
+    raise HTTPException(status_code=403, detail="Keine Leseberechtigung")
 
 
 async def _send_assignment_mail(user_id, task_name, actor_name, deadline, priority):
@@ -362,17 +386,22 @@ async def get_tasks(user=Depends(get_current_user)):
 @router.post("/api/tasks")
 async def create_task(task: TaskCreate, user=Depends(get_current_user)):
     """Neue Aufgabe anlegen."""
+    try:
+        task_type = normalize_task_type(task.task_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     with db_transaction() as db:
         deadline = _parse_date_input(task.deadline)
         cursor = db.execute(
             """INSERT INTO tasks (name, deadline, priority, task_type, status, description, created_by)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (task.name, deadline, task.priority, task.task_type, task.status, task.description, user["id"]),
+            (task.name, deadline, task.priority, task_type, task.status, task.description, user["id"]),
         )
         new_id = cursor.lastrowid
     log_change(user, "task", new_id, "create", {
         "name": task.name, "priority": task.priority, "deadline": deadline,
-        "task_type": task.task_type, "status": task.status,
+        "task_type": task_type, "status": task.status,
     })
     return {"id": new_id, "message": "Aufgabe erstellt"}
 
@@ -424,9 +453,13 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
                 values.append(task.priority)
                 changes_diff["priority"] = task.priority
             if task.task_type is not None:
+                try:
+                    task_type = normalize_task_type(task.task_type)
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc))
                 updates.append("task_type = ?")
-                values.append(task.task_type)
-                changes_diff["task_type"] = task.task_type
+                values.append(task_type)
+                changes_diff["task_type"] = task_type
             if task.description is not None:
                 updates.append("description = ?")
                 values.append(task.description)
@@ -860,37 +893,11 @@ async def move_subtask(subtask_id: int, move: SubTaskMove, user=Depends(get_curr
             (cur_pos, neighbor["id"]),
         )
 
-        # Abhaengigkeiten bereinigen: Alle Dependencies im Projekt laden
-        all_subtasks = db.execute(
-            "SELECT id, position_number FROM sub_tasks WHERE project_id = ?",
-            (current["project_id"],),
-        ).fetchall()
-        pos_map = {row["id"]: row["position_number"] for row in all_subtasks}
-
-        all_deps = db.execute(
-            """SELECT d.sub_task_id, d.depends_on_id
-               FROM sub_task_dependencies d
-               JOIN sub_tasks s ON d.sub_task_id = s.id
-               WHERE s.project_id = ?""",
-            (current["project_id"],),
-        ).fetchall()
-
-        removed = []
-        for dep in all_deps:
-            st_pos = pos_map.get(dep["sub_task_id"], 0)
-            dep_pos = pos_map.get(dep["depends_on_id"], 0)
-            # Vorgaenger muss niedrigere Position haben
-            if dep_pos >= st_pos:
-                db.execute(
-                    "DELETE FROM sub_task_dependencies WHERE sub_task_id = ? AND depends_on_id = ?",
-                    (dep["sub_task_id"], dep["depends_on_id"]),
-                )
-                removed.append({
-                    "sub_task_id": dep["sub_task_id"],
-                    "depends_on_id": dep["depends_on_id"],
-                })
-
-        return {"message": "Position getauscht", "removed_dependencies": removed}
+        return {
+            "message": "Position getauscht",
+            "removed_dependencies": [],
+            "dependencies_preserved": True,
+        }
 
 
 # ============================================================
@@ -997,8 +1004,7 @@ async def add_dependency(task_id: int, dep: DependencyAction, user=Depends(get_c
             (dep.to_id, dep.from_id),
         )
 
-        # Topologische Neuordnung
-        new_positions = _topological_reorder(db, task_id)
+        new_positions = {}
 
     log_change(user, "dependency", dep.to_id, "create",
                {"depends_on_id": dep.from_id, "project_id": task_id})
@@ -1035,8 +1041,7 @@ async def remove_dependency(task_id: int, dep: DependencyAction, user=Depends(ge
                 (dep.to_id, dep.from_id),
             )
 
-        # Topologische Neuordnung
-        new_positions = _topological_reorder(db, task_id)
+        new_positions = {}
 
     log_change(user, "dependency", dep.to_id, "delete",
                {"depends_on_id": dep.from_id, "project_id": task_id})
@@ -1104,6 +1109,7 @@ async def get_users_list(user=Depends(get_current_user)):
 async def get_task_notes(task_id: int, user=Depends(get_current_user)):
     """Notizen fuer eine Aufgabe abrufen."""
     with db_query() as db:
+        _require_task_read_access(db, task_id, user)
         rows = db.execute(
             """SELECT tn.*, u.vorname || ' ' || u.nachname AS user_name
                FROM task_notes tn
@@ -1129,6 +1135,7 @@ async def get_task_notes(task_id: int, user=Depends(get_current_user)):
 async def upsert_task_note(task_id: int, note: NoteUpdate, user=Depends(get_current_user)):
     """Eigene Notiz fuer eine Aufgabe erstellen/aktualisieren."""
     with db_transaction() as db:
+        _require_task_read_access(db, task_id, user)
         db.execute(
             """INSERT INTO task_notes (task_id, user_id, content, updated_at)
                VALUES (?, ?, ?, datetime('now'))
@@ -1141,10 +1148,41 @@ async def upsert_task_note(task_id: int, note: NoteUpdate, user=Depends(get_curr
     return {"message": "Notiz gespeichert"}
 
 
+@router.get("/api/tasks/{task_id}/note-entries")
+async def get_task_note_entries(task_id: int, limit: int = 100, user=Depends(get_current_user)):
+    """Append-only Notiz-Eintraege fuer eine Aufgabe abrufen."""
+    limit = max(1, min(limit, 200))
+    with db_query() as db:
+        _require_task_read_access(db, task_id, user)
+        rows = db.execute(
+            """SELECT tne.*, u.vorname || ' ' || u.nachname AS user_name
+               FROM task_note_entries tne
+               JOIN users u ON tne.user_id = u.id
+               WHERE tne.task_id = ?
+               ORDER BY tne.created_at DESC, tne.id DESC
+               LIMIT ?""",
+            (task_id, limit),
+        ).fetchall()
+        return {
+            "items": [
+                {
+                    "id": r["id"],
+                    "task_id": r["task_id"],
+                    "user_id": r["user_id"],
+                    "user_name": (r["user_name"] or "").strip(),
+                    "content": r["content"] or "",
+                    "created_at": _format_datetime(r["created_at"]),
+                }
+                for r in rows
+            ]
+        }
+
+
 @router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/notes")
 async def get_subtask_notes(task_id: int, subtask_id: int, user=Depends(get_current_user)):
     """Notizen fuer eine Teilaufgabe abrufen."""
     with db_query() as db:
+        _require_subtask_read_access(db, task_id, subtask_id, user)
         rows = db.execute(
             """SELECT sn.*, u.vorname || ' ' || u.nachname AS user_name
                FROM sub_task_notes sn
@@ -1170,6 +1208,7 @@ async def get_subtask_notes(task_id: int, subtask_id: int, user=Depends(get_curr
 async def upsert_subtask_note(task_id: int, subtask_id: int, note: NoteUpdate, user=Depends(get_current_user)):
     """Eigene Notiz fuer eine Teilaufgabe erstellen/aktualisieren."""
     with db_transaction() as db:
+        _require_subtask_read_access(db, task_id, subtask_id, user)
         db.execute(
             """INSERT INTO sub_task_notes (sub_task_id, user_id, content, updated_at)
                VALUES (?, ?, ?, datetime('now'))
@@ -1180,6 +1219,37 @@ async def upsert_subtask_note(task_id: int, subtask_id: int, note: NoteUpdate, u
         )
     log_change(user, "sub_task_note", subtask_id, "update", {"content_len": len(note.content)})
     return {"message": "Notiz gespeichert"}
+
+
+@router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/note-entries")
+async def get_subtask_note_entries(task_id: int, subtask_id: int, limit: int = 100, user=Depends(get_current_user)):
+    """Append-only Notiz-Eintraege fuer eine Teilaufgabe abrufen."""
+    limit = max(1, min(limit, 200))
+    with db_query() as db:
+        _require_subtask_read_access(db, task_id, subtask_id, user)
+        rows = db.execute(
+            """SELECT sne.*, u.vorname || ' ' || u.nachname AS user_name
+               FROM sub_task_note_entries sne
+               JOIN users u ON sne.user_id = u.id
+               WHERE sne.sub_task_id = ?
+               ORDER BY sne.created_at DESC, sne.id DESC
+               LIMIT ?""",
+            (subtask_id, limit),
+        ).fetchall()
+        return {
+            "items": [
+                {
+                    "id": r["id"],
+                    "task_id": task_id,
+                    "subtask_id": r["sub_task_id"],
+                    "user_id": r["user_id"],
+                    "user_name": (r["user_name"] or "").strip(),
+                    "content": r["content"] or "",
+                    "created_at": _format_datetime(r["created_at"]),
+                }
+                for r in rows
+            ]
+        }
 
 
 # ============================================================
@@ -1217,6 +1287,10 @@ async def get_tasks_config():
         api_endpoint="/api/tasks",
         expandable=True,
         columns=[
+            Column(
+                "ID", "id", width=52, sortable=True, css_class="task-id-cell",
+                renderer="taskId", align="center", i18n_key="tasks.col.id",
+            ),
             Column("Name", "name", width=0, sortable=True, i18n_key="tasks.col.name"),
             Column("Typ", "task_type", width=90, sortable=True, renderer="badge", i18n_key="tasks.col.type"),
             Column("Status", "status", width=90, sortable=True, renderer="badge", i18n_key="tasks.col.status"),

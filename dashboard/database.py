@@ -160,6 +160,22 @@ def init_db():
             UNIQUE(sub_task_id, user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS task_note_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS sub_task_note_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sub_task_id INTEGER NOT NULL REFERENCES sub_tasks(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS project_members (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -172,6 +188,23 @@ def init_db():
         );
 
     """)
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_note_entries_task_created "
+        "ON task_note_entries(task_id, created_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_note_entries_user "
+        "ON task_note_entries(user_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sub_task_note_entries_subtask_created "
+        "ON sub_task_note_entries(sub_task_id, created_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sub_task_note_entries_user "
+        "ON sub_task_note_entries(user_id)"
+    )
 
     # Migration: subtask_permissions entfernen (nicht mehr benoetigt)
     conn.execute("DROP TABLE IF EXISTS subtask_permissions")

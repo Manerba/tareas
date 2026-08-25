@@ -96,7 +96,17 @@ Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents an
 - Tokens are stored as SHA-256 hashes; revoked tokens stop working immediately.
 - Every token is mapped to its own `mcp` user in the database.
 - Write operations are recorded in the audit log and can be reviewed in the Admin Panel.
-- Available tools cover projects, subtasks, dependencies, notes, users, areas, search, self-assignment, and `whoami`.
+- Available tools cover projects, subtasks, dependencies, editable notes (`note.*`), handoffs/progress history (`handoff.*`), users, areas, search, self-assignment, and `whoami`.
+
+For using Tareas as the planning layer in another repository, see
+[Tareas Agent Guide](docs/tareas-agent-guide.md). The guide includes the
+recommended `AGENTS.md` snippet, Codex/Claude MCP setup, verification steps,
+and secret-handling rules.
+
+Running Tareas instances also expose token-free bootstrap endpoints directly:
+
+- `GET /agent-guide.md` - Markdown guide for agents and humans
+- `GET /.well-known/tareas-agent.json` - machine-readable URLs, MCP metadata, and `AGENTS.md` snippet
 
 ### Default Credentials
 

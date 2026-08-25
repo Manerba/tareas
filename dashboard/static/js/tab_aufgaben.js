@@ -67,6 +67,7 @@ async function initAufgabenTab() {
         // Custom Renderer registrieren
         aufgabenTable.renderers['badge'] = renderAufgabenBadge;
         aufgabenTable.renderers['priority'] = renderPriority;
+        aufgabenTable.renderers['taskId'] = renderTaskId;
         aufgabenTable.renderers['deleteAction'] = renderDeleteAction;
 
         // Prioritaet-Spalte Renderer zuweisen
@@ -226,11 +227,6 @@ function toggleCategoryFilter(category) {
 // Inline-Editing (Haupt-Tabelle)
 // ========================================
 
-/**
- * Zellen-Index-Mapping (nach expand-icon):
- * 0=expand, 1=Name, 2=Typ, 3=Status, 4=Prioritaet, 5=Von, 6=Zugewiesen, 7=Erstellt, 8=Deadline, 9=Actions
- */
-
 function activateInlineEditing(rowId) {
     const wrapper = document.querySelector(`[data-row-id="${rowId}"]`);
     if (!wrapper) return;
@@ -247,21 +243,27 @@ function activateInlineEditing(rowId) {
 
     const cells = tableRow.querySelectorAll('.table-cell');
     if (!cells.length) return;
+    const cellForField = (field) => {
+        const index = aufgabenTable.config.columns.findIndex(col => col.field === field);
+        return index >= 0 ? cells[index] : null;
+    };
 
     const deadlineISO = convertToISO(row.deadline);
 
-    // Cell 1: Name
-    if (cells[0] && !perm.isAssignee && !(perm.isCreator && perm.isAssigned)) {
-        cells[0]._originalHTML = cells[0].innerHTML;
-        cells[0].innerHTML = `<input type="text" class="inline-edit-input" id="inlineName_${row.id}" value="${escapeAttr(row.name)}" onclick="event.stopPropagation()">`;
+    // Name
+    const nameCell = cellForField('name');
+    if (nameCell && !perm.isAssignee && !(perm.isCreator && perm.isAssigned)) {
+        nameCell._originalHTML = nameCell.innerHTML;
+        nameCell.innerHTML = `<input type="text" class="inline-edit-input" id="inlineName_${row.id}" value="${escapeAttr(row.name)}" onclick="event.stopPropagation()">`;
     }
 
-    // Cell 3: Status (nicht bei Projekten)
-    if (cells[2] && row.task_type !== 'projekt') {
+    // Status (nicht bei Projekten)
+    const statusCell = cellForField('status');
+    if (statusCell && row.task_type !== 'projekt') {
         const canEditStatus = perm.isAssignee || perm.isOwnTask || perm.isLegacy;
         if (canEditStatus) {
-            cells[2]._originalHTML = cells[2].innerHTML;
-            cells[2].innerHTML = `<select class="inline-edit-select" id="inlineStatus_${row.id}" onclick="event.stopPropagation()">
+            statusCell._originalHTML = statusCell.innerHTML;
+            statusCell.innerHTML = `<select class="inline-edit-select" id="inlineStatus_${row.id}" onclick="event.stopPropagation()">
                 <option value="offen" ${row.status === 'offen' ? 'selected' : ''}>${t('status.offen')}</option>
                 <option value="in_arbeit" ${row.status === 'in_arbeit' ? 'selected' : ''}>${t('status.in_arbeit')}</option>
                 <option value="erledigt" ${row.status === 'erledigt' ? 'selected' : ''}>${t('status.erledigt')}</option>
@@ -269,24 +271,27 @@ function activateInlineEditing(rowId) {
         }
     }
 
-    // Cell 4: Prioritaet
-    if (cells[3] && !perm.isAssignee) {
-        cells[3]._originalHTML = cells[3].innerHTML;
-        cells[3].innerHTML = `<input type="number" class="inline-edit-input" id="inlinePriority_${row.id}" value="${row.priority}" min="1" max="100" onclick="event.stopPropagation()">`;
+    // Prioritaet
+    const priorityCell = cellForField('priority');
+    if (priorityCell && !perm.isAssignee) {
+        priorityCell._originalHTML = priorityCell.innerHTML;
+        priorityCell.innerHTML = `<input type="number" class="inline-edit-input" id="inlinePriority_${row.id}" value="${row.priority}" min="1" max="100" onclick="event.stopPropagation()">`;
     }
 
-    // Cell 6: Zugewiesen an (nur Ersteller/Legacy)
-    if (cells[5] && (perm.isCreator || perm.isOwnTask || perm.isLegacy)) {
-        cells[5]._originalHTML = cells[5].innerHTML;
-        cells[5].innerHTML = `<select class="inline-edit-select" id="inlineAssigned_${row.id}" onclick="event.stopPropagation()">
+    // Zugewiesen an (nur Ersteller/Legacy)
+    const assignedCell = cellForField('assigned_to_name');
+    if (assignedCell && (perm.isCreator || perm.isOwnTask || perm.isLegacy)) {
+        assignedCell._originalHTML = assignedCell.innerHTML;
+        assignedCell.innerHTML = `<select class="inline-edit-select" id="inlineAssigned_${row.id}" onclick="event.stopPropagation()">
             ${buildUserOptions(row.assigned_to)}
         </select>`;
     }
 
-    // Cell 8: Deadline
-    if (cells[7] && !perm.isAssignee) {
-        cells[7]._originalHTML = cells[7].innerHTML;
-        cells[7].innerHTML = `<input type="date" class="inline-edit-input" id="inlineDeadline_${row.id}" value="${deadlineISO}" onclick="event.stopPropagation()">`;
+    // Deadline
+    const deadlineCell = cellForField('deadline');
+    if (deadlineCell && !perm.isAssignee) {
+        deadlineCell._originalHTML = deadlineCell.innerHTML;
+        deadlineCell.innerHTML = `<input type="date" class="inline-edit-input" id="inlineDeadline_${row.id}" value="${deadlineISO}" onclick="event.stopPropagation()">`;
     }
 
     // Auto-Save auf alle inline inputs wiren
@@ -392,6 +397,11 @@ async function saveTaskFromInline(taskId) {
 // ========================================
 // Custom Renderer
 // ========================================
+
+function renderTaskId(value, col, row) {
+    const displayId = row._type === 'assigned_subtask' ? row._subtask_id : value;
+    return escapeHtml(displayId ?? '-');
+}
 
 function renderAufgabenBadge(value, col, row) {
     if (!value) return '-';
@@ -527,6 +537,11 @@ async function onTaskRowExpanded(rowId, detailElement) {
         html += `<div class="project-detail-resize" id="pdResize_${row.id}"></div>`;
     }
 
+    html += `<div class="notes-section note-entries-list">
+        <h5>${t('detail.noteHistory')}</h5>
+        <div class="subtask-notes-content" id="taskNoteEntries_${row.id}"><em>${t('common.loading')}</em></div>
+    </div>`;
+
     // Dateiablage-Button fuer Aufgaben (nicht-Projekte)
     if (row.task_type !== 'projekt' && ncConfigured && (perm.isCreator || perm.isLegacy)) {
         html += `<div class="subtask-section-actions" style="margin-top:8px;display:flex;justify-content:flex-end">
@@ -560,6 +575,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
         // Notizen-Editor fuer Zugewiesenen: Notiz laden und Editor initialisieren
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
+            if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
             const notesData = await notesResp.json();
             const myNote = (notesData.items || []).find(n => n.user_id === currentUser.id);
             new WysiwygEditor(`notesEditor_${row.id}`, myNote ? myNote.content : '');
@@ -570,6 +586,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
         // Notizen des Zugewiesenen laden
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
+            if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
             const notesData = await notesResp.json();
             const assigneeNote = (notesData.items || []).find(n => n.user_id === row.assigned_to);
             const contentEl = document.getElementById(`assigneeNotesContent_${row.id}`);
@@ -602,6 +619,8 @@ async function onTaskRowExpanded(rowId, detailElement) {
             autoSaveDebounced(`taskNotes_${row.id}`, () => saveTask(row.id, true));
         });
     }
+
+    loadTaskNoteEntries(row.id);
 
     // File Browser initialisieren wenn Verzeichnis zugeordnet
     if (row.nextcloud_path && ncConfigured) {
@@ -777,6 +796,11 @@ async function onSubtaskViewExpanded(row, detailElement) {
         <div id="stViewNotes_${stId}"></div>
     </div>`;
 
+    html += `<div class="notes-section note-entries-list">
+        <h5>${t('detail.noteHistory')}</h5>
+        <div class="subtask-notes-content" id="stViewNoteEntries_${stId}"><em>${t('common.loading')}</em></div>
+    </div>`;
+
     html += `</div>`;
     detailElement.innerHTML = html;
 
@@ -784,6 +808,7 @@ async function onSubtaskViewExpanded(row, detailElement) {
     if (projectId) {
         try {
             const notesResp = await fetch(`/api/tasks/${projectId}/subtasks/${stId}/notes`);
+            if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
             const notesData = await notesResp.json();
             const myNote = (notesData.items || []).find(n => n.user_id === currentUser.id);
             new WysiwygEditor(`stViewNotes_${stId}`, myNote ? myNote.content : '');
@@ -792,6 +817,13 @@ async function onSubtaskViewExpanded(row, detailElement) {
         }
     } else {
         new WysiwygEditor(`stViewNotes_${stId}`, '');
+    }
+
+    if (projectId) {
+        loadSubtaskNoteEntries(projectId, stId, `stViewNoteEntries_${stId}`);
+    } else {
+        const entriesContent = document.getElementById(`stViewNoteEntries_${stId}`);
+        if (entriesContent) entriesContent.innerHTML = `<em>${t('detail.noNoteEntries')}</em>`;
     }
 
     // Auto-Save: Status-Feld
@@ -908,12 +940,13 @@ function renderSubTasks(taskId, subtasks) {
     const parentPerm = parentRow ? getTaskPermissions(parentRow) : { isCreator: false, isLegacy: true };
 
     const areasOptions = buildAreaOptions();
-    const colCount = parentPerm.isCreator ? 12 : 11;
+    const colCount = 12;
 
     let html = `<table class="subtask-table">
         <thead>
             <tr>
                 <th class="pos-cell">${t('subtask.col.pos')}</th>
+                <th class="subtask-id-cell">${t('subtask.col.id')}</th>
                 <th>${t('subtask.col.name')}</th>
                 <th>${t('subtask.col.predecessor')}</th>
                 <th>${t('subtask.col.area')}</th>
@@ -950,8 +983,9 @@ function renderSubTasks(taskId, subtasks) {
         const stStatusROClass = stStatusRO ? 'field-readonly' : '';
         const dlISO = convertToISO(st.deadline);
 
-        // Vorgaenger-Optionen und Chips (nur niedrigere Positionen, keine transitiven Abhaengigkeiten)
+        // Vorgaenger-Optionen und Chips (positionsunabhaengig, aber ohne Zyklen/Redundanz)
         const transitivePreds = getTransitivePredecessors(st.id, subtasks);
+        const transitiveSuccessors = getTransitiveSuccessors(st.id, subtasks);
         let predOptions = '';
         // "Pos 0: Projekt" nur anbieten wenn keine Vorgaenger vorhanden
         if (predIds.length === 0) {
@@ -961,8 +995,8 @@ function renderSubTasks(taskId, subtasks) {
         predOptions += subtasks
             .filter(other =>
                 other.id !== st.id &&
-                other.position_number < st.position_number &&
-                !transitivePreds.has(other.id)
+                !transitivePreds.has(other.id) &&
+                !transitiveSuccessors.has(other.id)
             )
             .map(other => `<option value="${other.id}">Pos. ${other.position_number}: ${escapeHtml(other.name)}</option>`)
             .join('');
@@ -976,6 +1010,7 @@ function renderSubTasks(taskId, subtasks) {
         // Daten-Zeile mit Dual-Content (Text + verstecktes Input)
         html += `<tr class="subtask-row" data-subtask-id="${st.id}" onclick="toggleSubTaskDetail(${taskId}, ${st.id})">
             <td class="pos-cell"><span class="subtask-expand-icon">&#9654;</span><span class="pos-number">${st.position_number || ''}</span><span class="pos-arrows st-cell-edit"><button class="pos-arrow up" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'up')" title="Nach oben">&#9650;</button><button class="pos-arrow down" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'down')" title="Nach unten">&#9660;</button></span></td>
+            <td class="subtask-id-cell">${st.id}</td>
             ${!stNameRO ? `<td>
                 <span class="st-cell-text">${escapeHtml(st.name)}</span>
                 <span class="st-cell-edit"><input type="text" id="stEditName_${st.id}" value="${escapeAttr(st.name)}" class="subtask-name-input" onclick="event.stopPropagation()"></span>
@@ -1046,15 +1081,21 @@ function renderSubTasks(taskId, subtasks) {
         // WYSIWYG oder Readonly-Beschreibung
         if (isSubCreator && isSubAssigned) {
             html += `<div class="description-readonly">${sanitizeHtml(st.description) || `<em>${t('detail.noDescription')}</em>`}</div>`;
-            html += `<div class="notes-section" id="stAssigneeNotes_${st.id}">
-                <h5>${t('detail.notesFrom', { name: escapeHtml(st.assigned_to_name || 'Zugewiesenem') })}</h5>
-                <div class="description-readonly" id="stAssigneeNotesContent_${st.id}"><em>${t('common.loading')}</em></div>
-            </div>`;
         } else if (canEdit) {
             html += `<div id="stWysiwyg_${st.id}"></div>`;
         } else {
             html += `<div class="description-readonly">${sanitizeHtml(st.description) || `<em>${t('detail.noDescription')}</em>`}</div>`;
         }
+
+        html += `<div class="notes-section subtask-notes-list">
+            <h5>${t('detail.notes')}</h5>
+            <div class="subtask-notes-content" id="stAllNotesContent_${st.id}"><em>${t('common.loading')}</em></div>
+        </div>`;
+
+        html += `<div class="notes-section note-entries-list">
+            <h5>${t('detail.noteHistory')}</h5>
+            <div class="subtask-notes-content" id="stNoteEntriesContent_${st.id}"><em>${t('common.loading')}</em></div>
+        </div>`;
 
         html += `</div>
             </td>
@@ -1073,6 +1114,90 @@ function renderSubTasks(taskId, subtasks) {
     }
 
     container.innerHTML = html;
+}
+
+function renderSubTaskNotesList(notes) {
+    if (!notes || notes.length === 0) {
+        return `<em>${t('detail.noNotes')}</em>`;
+    }
+
+    return notes.map(note => {
+        const userName = note.user_name || `User ${note.user_id}`;
+        const updatedAt = note.updated_at ? `<span>${escapeHtml(note.updated_at)}</span>` : '';
+        return `<div class="subtask-note-item">
+            <div class="subtask-note-meta">
+                <strong>${escapeHtml(userName)}</strong>
+                ${updatedAt}
+            </div>
+            <div class="subtask-note-body">${sanitizeHtml(note.content || '') || `<em>${t('detail.noNotes')}</em>`}</div>
+        </div>`;
+    }).join('');
+}
+
+function getNoteEntryPreview(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    // Zeilen- und Blockgrenzen als Leerzeichen erhalten, damit Woerter aus
+    // aufeinanderfolgenden Absaetzen in der Vorschau nicht zusammenlaufen.
+    doc.body.querySelectorAll('br, p, div, pre, h1, h2, h3, li').forEach(node => {
+        node.after(doc.createTextNode(' '));
+    });
+
+    return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function renderNoteEntriesList(entries) {
+    if (!entries || entries.length === 0) {
+        return `<em>${t('detail.noNoteEntries')}</em>`;
+    }
+
+    return entries.map(entry => {
+        const userName = entry.user_name || `User ${entry.user_id}`;
+        const createdAt = entry.created_at ? `<span>${escapeHtml(entry.created_at)}</span>` : '';
+        const sanitizedContent = sanitizeHtml(entry.content || '');
+        const emptyText = t('detail.noNoteEntries');
+        const preview = getNoteEntryPreview(sanitizedContent) || emptyText;
+        const body = sanitizedContent || `<em>${emptyText}</em>`;
+        return `<details class="subtask-note-item note-entry-item">
+            <summary class="note-entry-summary">
+                <span class="subtask-note-meta">
+                    <strong>${escapeHtml(userName)}</strong>
+                    <span class="note-entry-meta-end">
+                        ${createdAt}
+                        <span class="note-entry-toggle-icon" aria-hidden="true">&#9660;</span>
+                    </span>
+                </span>
+                <span class="note-entry-preview">${escapeHtml(preview)}</span>
+            </summary>
+            <div class="subtask-note-body">${body}</div>
+        </details>`;
+    }).join('');
+}
+
+async function loadTaskNoteEntries(taskId) {
+    const entriesContent = document.getElementById(`taskNoteEntries_${taskId}`);
+    if (!entriesContent) return;
+    try {
+        const resp = await fetch(`/api/tasks/${taskId}/note-entries`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        entriesContent.innerHTML = renderNoteEntriesList(data.items || []);
+    } catch (e) {
+        entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
+    }
+}
+
+async function loadSubtaskNoteEntries(taskId, subtaskId, elementId) {
+    const entriesContent = document.getElementById(elementId);
+    if (!entriesContent) return;
+    try {
+        const resp = await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}/note-entries`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        entriesContent.innerHTML = renderNoteEntriesList(data.items || []);
+    } catch (e) {
+        entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
+    }
 }
 
 async function toggleSubTaskDetail(taskId, subtaskId) {
@@ -1106,23 +1231,24 @@ async function toggleSubTaskDetail(taskId, subtaskId) {
             editorContainer._editorInit = true;
         }
 
-        // Zugewiesenen-Notizen lazy laden (fuer Creator mit zugewiesener Subtask)
-        const notesContent = document.getElementById(`stAssigneeNotesContent_${subtaskId}`);
+        // Alle Teilaufgaben-Notizen lazy laden, inkl. MCP-/Agent-Notizen.
+        const notesContent = document.getElementById(`stAllNotesContent_${subtaskId}`);
         if (notesContent && !notesContent._loaded) {
             notesContent._loaded = true;
             try {
                 const notesResp = await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}/notes`);
+                if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
                 const notesData = await notesResp.json();
-                const container = document.getElementById(`subtaskContainer_${taskId}`);
-                const subtasks = container?._subtasksData || [];
-                const st = subtasks.find(s => s.id === subtaskId);
-                const assigneeNote = (notesData.items || []).find(n => n.user_id === st?.assigned_to);
-                notesContent.innerHTML = assigneeNote && assigneeNote.content
-                    ? sanitizeHtml(assigneeNote.content)
-                    : `<em>${t('detail.noNotes')}</em>`;
+                notesContent.innerHTML = renderSubTaskNotesList(notesData.items || []);
             } catch (e) {
                 notesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
             }
+        }
+
+        const entriesContent = document.getElementById(`stNoteEntriesContent_${subtaskId}`);
+        if (entriesContent && !entriesContent._loaded) {
+            entriesContent._loaded = true;
+            loadSubtaskNoteEntries(taskId, subtaskId, `stNoteEntriesContent_${subtaskId}`);
         }
 
         // Auto-Save: Inline-Felder (in der Daten-Zeile) bei Aenderung sofort speichern
@@ -1356,6 +1482,21 @@ function getTransitivePredecessors(subtaskId, subtasks) {
         if (pred && pred.predecessor_ids) {
             queue.push(...pred.predecessor_ids);
         }
+    }
+    return visited;
+}
+
+function getTransitiveSuccessors(subtaskId, subtasks) {
+    const visited = new Set();
+    const queue = [subtaskId];
+    while (queue.length > 0) {
+        const id = queue.shift();
+        subtasks.forEach(st => {
+            if ((st.predecessor_ids || []).includes(id) && !visited.has(st.id)) {
+                visited.add(st.id);
+                queue.push(st.id);
+            }
+        });
     }
     return visited;
 }
@@ -1735,6 +1876,27 @@ let netzplanNetwork = null;
 let _netzplanLinkState = null;
 let _netzplanRebuilding = false;
 
+const NETZPLAN_NODE_METRICS = {
+    taskMaxLineChars: 24,
+    projectMaxLineChars: 28,
+    taskCharWidth: 7.2,
+    projectCharWidth: 7.8,
+    taskLineHeight: 17,
+    projectLineHeight: 18,
+    marginX: 24,
+    marginY: 16,
+    minTaskWidth: 110,
+    maxTaskWidth: 210,
+    minProjectWidth: 120,
+    maxProjectWidth: 240,
+    levelGap: 90,
+    compactLevelGap: 76,
+    verticalGap: 34,
+    compactVerticalGap: 22,
+    horizontalGap: 44,
+    topDownLevelGap: 96,
+};
+
 function getNetzplanColors() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     return {
@@ -1751,6 +1913,125 @@ function getNodeColor(statusPercent, colors) {
     if (statusPercent >= 100) return colors.nodeErledigt;
     if (statusPercent > 0) return colors.nodeArbeit;
     return colors.nodeOffen;
+}
+
+function _splitNetzplanLongWord(word, maxLineChars) {
+    const chunks = [];
+    let remaining = String(word || '');
+    while (remaining.length > maxLineChars) {
+        chunks.push(remaining.slice(0, maxLineChars));
+        remaining = remaining.slice(maxLineChars);
+    }
+    if (remaining) chunks.push(remaining);
+    return chunks;
+}
+
+function _wrapNetzplanLabel(text, maxLineChars = NETZPLAN_NODE_METRICS.taskMaxLineChars) {
+    const words = String(text || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .flatMap(word => word.length > maxLineChars ? _splitNetzplanLongWord(word, maxLineChars) : [word]);
+
+    if (words.length === 0) return '';
+
+    const lines = [];
+    let current = '';
+    words.forEach(word => {
+        if (!current) {
+            current = word;
+            return;
+        }
+        if ((current.length + 1 + word.length) <= maxLineChars) {
+            current += ` ${word}`;
+        } else {
+            lines.push(current);
+            current = word;
+        }
+    });
+    if (current) lines.push(current);
+    return lines.join('\n');
+}
+
+function _measureNetzplanNode(label, {
+    charWidth,
+    lineHeight,
+    minWidth,
+    maxWidth,
+} = {}) {
+    const lines = String(label || '').split('\n');
+    const maxChars = Math.max(1, ...lines.map(line => Array.from(line).length));
+    const rawWidth = maxChars * charWidth + NETZPLAN_NODE_METRICS.marginX;
+    return {
+        width: Math.max(minWidth, Math.min(maxWidth, rawWidth)),
+        height: Math.max(lineHeight + NETZPLAN_NODE_METRICS.marginY, lines.length * lineHeight + NETZPLAN_NODE_METRICS.marginY),
+    };
+}
+
+function _getNetzplanTaskMeta(st) {
+    const posLabel = st.position_number ? `${st.position_number}: ` : '';
+    const rawLabel = `${posLabel}${st.name || ''}`;
+    const label = _wrapNetzplanLabel(rawLabel, NETZPLAN_NODE_METRICS.taskMaxLineChars);
+    return {
+        rawLabel,
+        label,
+        ..._measureNetzplanNode(label, {
+            charWidth: NETZPLAN_NODE_METRICS.taskCharWidth,
+            lineHeight: NETZPLAN_NODE_METRICS.taskLineHeight,
+            minWidth: NETZPLAN_NODE_METRICS.minTaskWidth,
+            maxWidth: NETZPLAN_NODE_METRICS.maxTaskWidth,
+        }),
+    };
+}
+
+function _getNetzplanProjectMeta(projectName) {
+    const rawLabel = projectName || 'Projekt';
+    const label = _wrapNetzplanLabel(rawLabel, NETZPLAN_NODE_METRICS.projectMaxLineChars);
+    return {
+        rawLabel,
+        label,
+        ..._measureNetzplanNode(label, {
+            charWidth: NETZPLAN_NODE_METRICS.projectCharWidth,
+            lineHeight: NETZPLAN_NODE_METRICS.projectLineHeight,
+            minWidth: NETZPLAN_NODE_METRICS.minProjectWidth,
+            maxWidth: NETZPLAN_NODE_METRICS.maxProjectWidth,
+        }),
+    };
+}
+
+function _stackNetzplanLevel(group, positionMap, nodeMeta, x, verticalGap, centered) {
+    const totalHeight = group.reduce((sum, st) => sum + nodeMeta[st.id].height, 0)
+        + Math.max(0, group.length - 1) * verticalGap;
+    let cursor = centered ? -totalHeight / 2 : 0;
+    group.forEach(st => {
+        const height = nodeMeta[st.id].height;
+        positionMap[st.id] = {
+            x,
+            y: cursor + height / 2,
+        };
+        cursor += height + verticalGap;
+    });
+}
+
+function _rowNetzplanLevel(group, positionMap, nodeMeta, y, horizontalGap, centered) {
+    const totalWidth = group.reduce((sum, st) => sum + nodeMeta[st.id].width, 0)
+        + Math.max(0, group.length - 1) * horizontalGap;
+    let cursor = centered ? -totalWidth / 2 : 0;
+    group.forEach(st => {
+        const width = nodeMeta[st.id].width;
+        positionMap[st.id] = {
+            x: cursor + width / 2,
+            y,
+        };
+        cursor += width + horizontalGap;
+    });
+}
+
+function _getNetzplanEdgeDirection(fromId, toId, positionMap) {
+    const from = positionMap[fromId];
+    const to = positionMap[toId];
+    if (!from || !to) return 'horizontal';
+    return Math.abs(to.y - from.y) > Math.abs(to.x - from.x) ? 'vertical' : 'horizontal';
 }
 
 function _computeValidNetzplanTargets(sourceId, subtasks) {
@@ -1806,6 +2087,129 @@ function _computeValidNetzplanTargets(sourceId, subtasks) {
     return valid;
 }
 
+function _netzplanValue(value) {
+    if (value === null || value === undefined || value === '') {
+        return '<span class="netzplan-detail-empty">-</span>';
+    }
+    return escapeHtml(value);
+}
+
+function _netzplanDetailField(label, value) {
+    return `
+        <div class="netzplan-detail-field">
+            <span class="netzplan-detail-label">${escapeHtml(label)}</span>
+            <span class="netzplan-detail-value">${value}</span>
+        </div>
+    `;
+}
+
+function _netzplanStatusFromPercent(percent) {
+    const pct = parseInt(percent, 10) || 0;
+    if (pct >= 100) return { key: 'erledigt', label: t('status.erledigt') };
+    if (pct > 0) return { key: 'in_arbeit', label: t('status.in_arbeit') };
+    return { key: 'offen', label: t('status.offen') };
+}
+
+function _netzplanRenderPredecessors(st, subtasks, projectName) {
+    const predIds = st.predecessor_ids || [];
+    if (predIds.length === 0) return '<span class="netzplan-detail-empty">-</span>';
+    return predIds.map(pid => {
+        if (pid === 0) {
+            return `<span class="netzplan-detail-chip">Pos. 0: ${escapeHtml(projectName || 'Projekt')}</span>`;
+        }
+        const pred = subtasks.find(s => s.id === pid);
+        if (!pred) return `<span class="netzplan-detail-chip">#${escapeHtml(pid)}</span>`;
+        return `<span class="netzplan-detail-chip">Pos. ${escapeHtml(pred.position_number || '?')}: ${escapeHtml(pred.name || '')}</span>`;
+    }).join('');
+}
+
+function _openNetzplanNodeDetails(nodeId, parentRow, subtasks, projectName) {
+    if (nodeId === 0) {
+        const statusKey = parentRow?.status || '';
+        const statusLabel = statusKey ? t(`status.${statusKey}`) : '-';
+        const typeKey = parentRow?.task_type || 'projekt';
+        const typeLabel = t(`type.${typeKey}`);
+        const subtaskTotal = parentRow?.subtask_total ?? subtasks.length;
+        const subtaskDone = parentRow?.subtask_done ?? subtasks.filter(st => (st.status_percent || 0) >= 100).length;
+        const description = sanitizeHtml(parentRow?.description || '') || `<em>${t('detail.noDescription')}</em>`;
+
+        createModal({
+            title: `${escapeHtml(typeLabel)} - Details`,
+            cssClass: 'modal-wide netzplan-detail-dialog',
+            maxWidth: '760px',
+            body: `
+                <div class="netzplan-detail-menu">
+                    <div class="netzplan-detail-summary">
+                        <span class="netzplan-detail-badge">Pos. 0</span>
+                        <div>
+                            <div class="netzplan-detail-name">${escapeHtml(projectName || parentRow?.name || 'Projekt')}</div>
+                            <div class="netzplan-detail-subline">${escapeHtml(typeLabel)}</div>
+                        </div>
+                    </div>
+                    <div class="netzplan-detail-grid">
+                        ${_netzplanDetailField(t('tasks.col.status'), _netzplanValue(statusLabel))}
+                        ${_netzplanDetailField(t('tasks.col.priority'), _netzplanValue(parentRow?.priority))}
+                        ${_netzplanDetailField(t('tasks.col.deadline'), _netzplanValue(parentRow?.deadline))}
+                        ${_netzplanDetailField(t('tasks.col.created'), _netzplanValue(parentRow?.created_at))}
+                        ${_netzplanDetailField(t('tasks.col.from'), _netzplanValue(parentRow?.created_by_name))}
+                        ${_netzplanDetailField(t('tasks.col.assignedTo'), _netzplanValue(parentRow?.assigned_to_name))}
+                        ${_netzplanDetailField(t('subtask.title'), _netzplanValue(`${subtaskDone}/${subtaskTotal}`))}
+                    </div>
+                    <div class="netzplan-detail-section">
+                        <div class="netzplan-detail-section-title">${t('detail.description')}</div>
+                        <div class="description-readonly">${description}</div>
+                    </div>
+                </div>
+            `,
+            footer: `<button class="action-btn" onclick="closeModal()">${t('common.close')}</button>`,
+        });
+        return;
+    }
+
+    const st = subtasks.find(s => s.id === nodeId);
+    if (!st) return;
+
+    const status = _netzplanStatusFromPercent(st.status_percent);
+    const statusHtml = `<span class="netzplan-detail-status status-${status.key}">${escapeHtml(status.label)} (${escapeHtml(st.status_percent || 0)}%)</span>`;
+    const predecessorHtml = _netzplanRenderPredecessors(st, subtasks, projectName);
+    const description = sanitizeHtml(st.description || '') || `<em>${t('detail.noDescription')}</em>`;
+
+    createModal({
+        title: `${t('subtask.title')} - Details`,
+        cssClass: 'modal-wide netzplan-detail-dialog',
+        maxWidth: '760px',
+        body: `
+            <div class="netzplan-detail-menu">
+                <div class="netzplan-detail-summary">
+                    <span class="netzplan-detail-badge">Pos. ${escapeHtml(st.position_number || '-')}</span>
+                    <div>
+                        <div class="netzplan-detail-name">${escapeHtml(st.name || '')}</div>
+                        <div class="netzplan-detail-subline">${escapeHtml(projectName || '')}</div>
+                    </div>
+                </div>
+                <div class="netzplan-detail-grid">
+                    ${_netzplanDetailField(t('subtask.col.status'), statusHtml)}
+                    ${_netzplanDetailField(t('subtask.col.area'), _netzplanValue(st.area_name))}
+                    ${_netzplanDetailField(t('subtask.col.priority'), _netzplanValue(st.priority))}
+                    ${_netzplanDetailField(t('subtask.col.deadline'), _netzplanValue(st.deadline))}
+                    ${_netzplanDetailField(t('subtask.col.created'), _netzplanValue(st.created_at))}
+                    ${_netzplanDetailField(t('subtask.col.from'), _netzplanValue(st.created_by_name))}
+                    ${_netzplanDetailField(t('subtask.col.assignedTo'), _netzplanValue(st.assigned_to_name))}
+                </div>
+                <div class="netzplan-detail-section">
+                    <div class="netzplan-detail-section-title">${t('subtask.col.predecessor')}</div>
+                    <div class="netzplan-detail-chip-list">${predecessorHtml}</div>
+                </div>
+                <div class="netzplan-detail-section">
+                    <div class="netzplan-detail-section-title">${t('detail.description')}</div>
+                    <div class="description-readonly">${description}</div>
+                </div>
+            </div>
+        `,
+        footer: `<button class="action-btn" onclick="closeModal()">${t('common.close')}</button>`,
+    });
+}
+
 function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, layoutType = 'barycenter') {
     const nodesArr = [];
     const edgesArr = [];
@@ -1831,14 +2235,17 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
     }
     subtasks.forEach(st => computeLevel(st));
 
-    // Positionen berechnen: X nach Level, Y gleichmaessig verteilt pro Level
-    const levelSeparation = 220;
-    const nodeSpacing = 90;
+    // Positionen berechnen: X nach Level, Y kollisionsfrei nach Knotenhoehe
     const levelGroups = {};
     subtasks.forEach(st => {
         const lvl = levelMap[st.id];
         if (!levelGroups[lvl]) levelGroups[lvl] = [];
         levelGroups[lvl].push(st);
+    });
+
+    const nodeMeta = { 0: _getNetzplanProjectMeta(projectName) };
+    subtasks.forEach(st => {
+        nodeMeta[st.id] = _getNetzplanTaskMeta(st);
     });
 
     // Successor-Map aufbauen: nodeId -> [IDs der abhaengigen Knoten]
@@ -1893,42 +2300,70 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
 
     // Positionen aus optimierter Reihenfolge berechnen
     const positionMap = {};
+    const levelWidths = {};
+    const levelHeights = {};
+    levels.forEach(lvl => {
+        const group = levelGroups[lvl];
+        levelWidths[lvl] = Math.max(
+            NETZPLAN_NODE_METRICS.minTaskWidth,
+            ...group.map(st => nodeMeta[st.id].width),
+        );
+        levelHeights[lvl] = Math.max(
+            NETZPLAN_NODE_METRICS.taskLineHeight + NETZPLAN_NODE_METRICS.marginY,
+            ...group.map(st => nodeMeta[st.id].height),
+        );
+    });
 
-    if (layoutType === 'compact') {
-        // Kompakt: Gleiche Barycenter-Reihenfolge, aber geringerer Abstand
-        const compactSpacing = 55;
+    const levelGap = layoutType === 'compact'
+        ? NETZPLAN_NODE_METRICS.compactLevelGap
+        : NETZPLAN_NODE_METRICS.levelGap;
+    const verticalGap = layoutType === 'compact'
+        ? NETZPLAN_NODE_METRICS.compactVerticalGap
+        : NETZPLAN_NODE_METRICS.verticalGap;
+    const levelX = {};
+    levels.forEach((lvl, idx) => {
+        if (idx === 0) {
+            levelX[lvl] = 0;
+            return;
+        }
+        const prevLvl = levels[idx - 1];
+        levelX[lvl] = levelX[prevLvl] + (levelWidths[prevLvl] + levelWidths[lvl]) / 2 + levelGap;
+    });
+
+    if (layoutType === 'topDown') {
+        const levelY = {};
+        levels.forEach((lvl, idx) => {
+            if (idx === 0) {
+                levelY[lvl] = 0;
+                return;
+            }
+            const prevLvl = levels[idx - 1];
+            levelY[lvl] = levelY[prevLvl]
+                + (levelHeights[prevLvl] + levelHeights[lvl]) / 2
+                + NETZPLAN_NODE_METRICS.topDownLevelGap;
+        });
+
         levels.forEach(lvl => {
             const group = levelGroups[lvl];
-            const totalHeight = (group.length - 1) * compactSpacing;
-            group.forEach((st, idx) => {
-                positionMap[st.id] = {
-                    x: lvl * 180,
-                    y: -totalHeight / 2 + idx * compactSpacing,
-                };
-            });
+            _rowNetzplanLevel(group, positionMap, nodeMeta, levelY[lvl], NETZPLAN_NODE_METRICS.horizontalGap, true);
+        });
+    } else if (layoutType === 'compact') {
+        // Kompakt: Gleiche Barycenter-Reihenfolge, aber geringerer Abstand ohne Ueberlappung
+        levels.forEach(lvl => {
+            const group = levelGroups[lvl];
+            _stackNetzplanLevel(group, positionMap, nodeMeta, levelX[lvl], verticalGap, true);
         });
     } else if (layoutType === 'topAligned') {
         // Oben ausgerichtet: Alle Knoten starten bei y=0 (oben)
         levels.forEach(lvl => {
             const group = levelGroups[lvl];
-            group.forEach((st, idx) => {
-                positionMap[st.id] = {
-                    x: lvl * levelSeparation,
-                    y: idx * nodeSpacing,
-                };
-            });
+            _stackNetzplanLevel(group, positionMap, nodeMeta, levelX[lvl], verticalGap, false);
         });
     } else {
-        // Barycenter (Standard): Zentriert
+        // Barycenter (Standard): Zentriert und kollisionsfrei gestapelt
         levels.forEach(lvl => {
             const group = levelGroups[lvl];
-            const totalHeight = (group.length - 1) * nodeSpacing;
-            group.forEach((st, idx) => {
-                positionMap[st.id] = {
-                    x: lvl * levelSeparation,
-                    y: -totalHeight / 2 + idx * nodeSpacing,
-                };
-            });
+            _stackNetzplanLevel(group, positionMap, nodeMeta, levelX[lvl], verticalGap, true);
         });
     }
 
@@ -1937,7 +2372,25 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
     const projY = projSuccs.length > 0
         ? projSuccs.reduce((sum, sid) => sum + positionMap[sid].y, 0) / projSuccs.length
         : 0;
-    positionMap[0] = { x: -levelSeparation, y: projY };
+    const firstLevel = levels[0] ?? 0;
+    const firstLevelX = levelX[firstLevel] ?? 0;
+    const firstLevelWidth = levelWidths[firstLevel] ?? NETZPLAN_NODE_METRICS.minTaskWidth;
+    if (layoutType === 'topDown') {
+        const projX = projSuccs.length > 0
+            ? projSuccs.reduce((sum, sid) => sum + positionMap[sid].x, 0) / projSuccs.length
+            : 0;
+        const firstLevelY = positionMap[levelGroups[firstLevel]?.[0]?.id]?.y ?? 0;
+        const firstLevelHeight = levelHeights[firstLevel] ?? nodeMeta[0].height;
+        positionMap[0] = {
+            x: projX,
+            y: firstLevelY - (nodeMeta[0].height + firstLevelHeight) / 2 - NETZPLAN_NODE_METRICS.topDownLevelGap,
+        };
+    } else {
+        positionMap[0] = {
+            x: firstLevelX - (nodeMeta[0].width + firstLevelWidth) / 2 - levelGap,
+            y: projY,
+        };
+    }
 
     // Gespeicherte Positionen ueberschreiben (falls vorhanden)
     if (savedPositions) {
@@ -1954,7 +2407,7 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
     const projectPos = positionMap[0];
     nodesArr.push({
         id: 0,
-        label: projectName || 'Projekt',
+        label: nodeMeta[0].label,
         x: projectPos.x,
         y: projectPos.y,
         color: {
@@ -1965,6 +2418,7 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
         font: { color: pc.font, size: 14, bold: true, face: "'Segoe UI', Arial, sans-serif" },
         shape: 'diamond',
         size: 25,
+        widthConstraint: { maximum: NETZPLAN_NODE_METRICS.maxProjectWidth },
         borderWidth: 2,
         borderWidthSelected: 3,
         title: projectName || 'Projekt',
@@ -1973,13 +2427,12 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
     subtasks.forEach(st => {
         const statusPct = st.status_percent || 0;
         const nodeColor = getNodeColor(statusPct, colors);
-        const posLabel = st.position_number ? `${st.position_number}: ` : '';
-        const label = `${posLabel}${st.name}`;
         const pos = positionMap[st.id];
+        const meta = nodeMeta[st.id];
 
         nodesArr.push({
             id: st.id,
-            label: label,
+            label: meta.label,
             x: pos.x,
             y: pos.y,
             color: {
@@ -1990,6 +2443,10 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
             font: { color: nodeColor.font, size: 13, face: "'Segoe UI', Arial, sans-serif" },
             shape: 'box',
             margin: { top: 8, right: 12, bottom: 8, left: 12 },
+            widthConstraint: {
+                minimum: NETZPLAN_NODE_METRICS.minTaskWidth,
+                maximum: NETZPLAN_NODE_METRICS.maxTaskWidth,
+            },
             borderWidth: 2,
             borderWidthSelected: 3,
             title: `${st.name}\n${t('tasks.status')}: ${statusPct}%${st.deadline ? '\n' + t('subtask.col.deadline') + ': ' + st.deadline : ''}${st.area_name ? '\n' + t('subtask.col.area') + ': ' + st.area_name : ''}`,
@@ -1998,12 +2455,13 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
         // Kanten fuer Vorgaenger
         const predIds = st.predecessor_ids || [];
         predIds.forEach(pid => {
+            const edgeDirection = _getNetzplanEdgeDirection(pid, st.id, positionMap);
             edgesArr.push({
                 from: pid,
                 to: st.id,
                 arrows: { to: { enabled: true, scaleFactor: 0.8 } },
                 color: { color: colors.edge, highlight: colors.highlight.border },
-                smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 },
+                smooth: { type: 'cubicBezier', forceDirection: edgeDirection, roundness: 0.5 },
                 width: 1.5,
             });
         });
@@ -2126,6 +2584,7 @@ function openNetzplan(taskId) {
                         <button data-layout="barycenter">Barycenter (Standard)</button>
                         <button data-layout="compact">Kompakt</button>
                         <button data-layout="topAligned">Oben ausgerichtet</button>
+                        <button data-layout="topDown">Von oben nach unten</button>
                     </div>
                 </div>
                 <button class="netzplan-toolbar-btn" id="netzplanFitBtn">${t('netzplan.fit')}</button>
@@ -2467,8 +2926,10 @@ function openNetzplan(taskId) {
         netzplanNetwork.redraw();
     });
 
-    // click-Handler auf Network
-    netzplanNetwork.on('click', async (params) => {
+    let _netzplanClickTimer = null;
+    const NETZPLAN_CLICK_DELAY_MS = 220;
+
+    async function _handleNetzplanClick(params) {
         if (_netzplanRebuilding) return;
 
         const clickedNodeId = params.nodes && params.nodes.length > 0 ? params.nodes[0] : null;
@@ -2556,6 +3017,28 @@ function openNetzplan(taskId) {
                 showNotification(t('netzplan.invalidConnection'), 'error');
             }
         }
+    }
+
+    netzplanNetwork.on('click', (params) => {
+        if (_netzplanClickTimer) clearTimeout(_netzplanClickTimer);
+        _netzplanClickTimer = setTimeout(() => {
+            _netzplanClickTimer = null;
+            _handleNetzplanClick(params);
+        }, NETZPLAN_CLICK_DELAY_MS);
+    });
+
+    netzplanNetwork.on('doubleClick', (params) => {
+        if (_netzplanClickTimer) {
+            clearTimeout(_netzplanClickTimer);
+            _netzplanClickTimer = null;
+        }
+        if (_netzplanRebuilding) return;
+
+        const clickedNodeId = params.nodes && params.nodes.length > 0 ? params.nodes[0] : null;
+        if (clickedNodeId === null) return;
+
+        if (_netzplanLinkState) exitLinkingMode();
+        _openNetzplanNodeDetails(clickedNodeId, parentRow, subtasks, projectName);
     });
 
     // Theme-Wechsel: Graph-Farben aktualisieren
@@ -2678,6 +3161,10 @@ function openNetzplan(taskId) {
     // Schliessen-Logik (mit komplettem Cleanup)
     const closeOverlay = () => {
         _netzplanLinkState = null;
+        if (_netzplanClickTimer) {
+            clearTimeout(_netzplanClickTimer);
+            _netzplanClickTimer = null;
+        }
         document.removeEventListener('themeChanged', themeHandler);
         document.removeEventListener('keydown', keyHandler);
         if (netzplanNetwork) {
@@ -2688,6 +3175,7 @@ function openNetzplan(taskId) {
     };
 
     const keyHandler = (e) => {
+        if (document.querySelector('.modal-overlay')) return;
         if (e.key === 'Escape') {
             if (_netzplanLinkState) {
                 exitLinkingMode();
