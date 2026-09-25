@@ -809,14 +809,15 @@ async function openMailPreferencesModal() {
  * @param {string} [config.footer] - HTML fuer den Footer (Buttons). Standard: Abbrechen-Button
  * @param {string} [config.maxWidth] - Max-Breite (z.B. '500px', '700px')
  * @param {string} [config.cssClass] - Zusaetzliche CSS-Klasse fuer modal-content (z.B. 'modal-wide')
+ * @param {boolean} [config.closeOnBackdrop=true] - Durch Klick auf den Hintergrund schliessen
+ * @param {boolean} [config.closeOnEscape=true] - Durch Escape schliessen
  * @param {Function} [config.onOpen] - Callback nach dem Oeffnen (erhaelt overlay-Element)
  * @param {Function} [config.onClose] - Callback beim Schliessen
  * @returns {HTMLElement} Das Overlay-Element
  */
 function createModal(config) {
     // Bestehendes Modal entfernen
-    const existing = document.querySelector('.modal-overlay');
-    if (existing) existing.remove();
+    closeModal();
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -836,17 +837,19 @@ function createModal(config) {
 
     // Click-Outside schliessen
     overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeModal();
+        if (config.closeOnBackdrop !== false && e.target === overlay) closeModal();
     });
 
     document.body.appendChild(overlay);
 
     // ESC-Handler
-    const escHandler = (e) => {
-        if (e.key === 'Escape') closeModal();
-    };
-    document.addEventListener('keydown', escHandler);
-    overlay._escHandler = escHandler;
+    if (config.closeOnEscape !== false) {
+        const escHandler = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
+        document.addEventListener('keydown', escHandler);
+        overlay._escHandler = escHandler;
+    }
 
     if (config.onClose) overlay._onClose = config.onClose;
     if (config.onOpen) config.onOpen(overlay);

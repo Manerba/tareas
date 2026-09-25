@@ -1031,7 +1031,7 @@ function renderSubTasks(taskId, subtasks) {
         }).join('');
 
         // Daten-Zeile mit Dual-Content (Text + verstecktes Input)
-        html += `<tr class="subtask-row" data-subtask-id="${st.id}" onclick="toggleSubTaskDetail(${taskId}, ${st.id})">
+        html += `<tr class="subtask-row" data-subtask-id="${st.id}" onpointerdown="ExpandableTable.trackRowPointerDown(event)" onclick="if (ExpandableTable.shouldToggleRow(event)) toggleSubTaskDetail(${taskId}, ${st.id})">
             <td class="pos-cell"><span class="subtask-expand-icon">&#9654;</span><span class="pos-number">${st.position_number || ''}</span><span class="pos-arrows st-cell-edit"><button class="pos-arrow up" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'up')" title="Nach oben">&#9650;</button><button class="pos-arrow down" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'down')" title="Nach unten">&#9660;</button></span></td>
             <td class="subtask-id-cell">${st.id}</td>
             ${!stNameRO ? `<td>

@@ -1,6 +1,7 @@
 # Changelog
 
 Zeitstempel;Version;Kategorie;Beschreibung
+25.09.2026 15:21;0.0.1+117;Bugfix;Einmalige MCP-Token-Anzeige schliesst nur ueber den Schliessen-Button, nicht per Hintergrundklick oder Escape. Textmarkierungen aus Eingabefeldern heraus klappen Aufgaben-, Projekt- und Teilaufgabenzeilen nicht mehr ein. Modal-Escape-Handler werden beim Ersetzen eines Dialogs aufgeraeumt
 25.09.2026 15:02;0.0.1+116;Bugfix;Datenbankinitialisierung von Haupt-App, Admin und Schedulern durch gemeinsame Dateisperre serialisiert. Gleichzeitige Erststarts und Schema-Migrationen kollidieren nicht mehr, Verbindungen und Sperren werden auch bei Fehlern freigegeben. Regressionstests fuer parallele Starts, bestehende Daten und Prozessabbrueche ergaenzt
 13.09.2026 05:28;0.0.1+115;Bugfix;Teilaufgaben zeigen in Projektlisten und zugewiesenen Ansichten den genauen Prozentwert. Numerische Eingabe von 0 bis 100 ersetzt die Statusauswahl, bewahrt Zwischenwerte beim Speichern und aktualisiert die Anzeige unmittelbar
 12.09.2026 19:57;0.0.1+114;Feature;Aufgaben und Projekte koennen per Statusauswahl abgebrochen und wieder aufgenommen werden. Inhalte und Teilaufgaben bleiben erhalten, Abbruch hat Vorrang vor dem Projektfortschritt. Statusfilter, sieben Sprachen, Team-Bearbeitungsrechte und Fristerinnerungen angepasst

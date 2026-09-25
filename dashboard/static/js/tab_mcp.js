@@ -370,6 +370,8 @@ function showTokenOnce(data) {
             <button class="action-btn" onclick="copyTokenToClipboard()">Token kopieren</button>
             <button class="action-btn primary" onclick="closeModal()">Schliessen</button>`,
         cssClass: 'modal-wide',
+        closeOnBackdrop: false,
+        closeOnEscape: false,
     });
 }
 

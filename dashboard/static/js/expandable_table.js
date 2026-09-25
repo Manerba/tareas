@@ -7,6 +7,22 @@
  */
 
 class ExpandableTable {
+    static rowControlSelector = 'input, textarea, select, button, a, label, [contenteditable], [role="button"]';
+
+    static trackRowPointerDown(event) {
+        // Nach einer Textauswahl kann der Browser den Klick an die gemeinsame
+        // Elternzelle statt an das Input schicken. Deshalb den Beginn merken.
+        event.currentTarget._pointerDownInControl = !!event.target.closest(this.rowControlSelector);
+    }
+
+    static shouldToggleRow(event) {
+        const startedInControl = event.currentTarget._pointerDownInControl;
+        event.currentTarget._pointerDownInControl = false;
+        if (event.target.closest(this.rowControlSelector)) return false;
+        // Tastatur-/programmatische Klicks haben detail=0 und keinen Pointer-Beginn.
+        return !(event.detail > 0 && startedInControl);
+    }
+
     constructor(config, containerId, options = {}) {
         this.config = config;
         this.containerId = containerId;
@@ -591,7 +607,7 @@ class ExpandableTable {
 
         // Haupt-Zeile
         const clickHandler = this.config.expandable
-            ? `onclick="tables['${escapeAttr(this.config.id)}'].toggleRow('${safeRowId}')"`
+            ? `onpointerdown="ExpandableTable.trackRowPointerDown(event)" onclick="if (ExpandableTable.shouldToggleRow(event)) tables['${escapeAttr(this.config.id)}'].toggleRow('${safeRowId}')"`
             : '';
         const cursorClass = this.config.expandable ? 'clickable' : '';
 
