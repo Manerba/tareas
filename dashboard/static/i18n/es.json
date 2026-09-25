@@ -24,6 +24,7 @@
   "status.offen": "Abierto",
   "status.in_arbeit": "En Progreso",
   "status.erledigt": "Completado",
+  "status.abgebrochen": "Cancelado",
   "type.aufgabe": "Tarea",
   "type.projekt": "Proyecto",
   "auth.login": "Iniciar sesion",

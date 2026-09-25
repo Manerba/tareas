@@ -24,6 +24,7 @@
   "status.offen": "Deschis",
   "status.in_arbeit": "In lucru",
   "status.erledigt": "Finalizat",
+  "status.abgebrochen": "Anulat",
   "type.aufgabe": "Sarcina",
   "type.projekt": "Proiect",
   "auth.login": "Autentificare",

@@ -135,6 +135,15 @@
     border: 1px solid var(--color-bullish);
 }
 
+.badge-abgebrochen {
+    background-color: var(--danger-soft);
+    color: var(--color-bearish);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    border: 1px solid var(--color-bearish);
+}
+
 .badge-aufgabe {
     background-color: var(--bg-secondary);
     color: var(--text-secondary);

@@ -24,6 +24,7 @@
   "status.offen": "Открыто",
   "status.in_arbeit": "В работе",
   "status.erledigt": "Выполнено",
+  "status.abgebrochen": "Отменено",
   "type.aufgabe": "Задача",
   "type.projekt": "Проект",
   "auth.login": "Вход",

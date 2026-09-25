@@ -24,6 +24,7 @@
   "status.offen": "Open",
   "status.in_arbeit": "In Progress",
   "status.erledigt": "Done",
+  "status.abgebrochen": "Cancelled",
   "type.aufgabe": "Task",
   "type.projekt": "Project",
   "auth.login": "Login",

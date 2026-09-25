@@ -5,6 +5,7 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 ## Features
 
 - **Task & Project Management** - Create tasks, organize them into projects with subtasks, dependencies, and deadlines
+- **Cancellation** - Keep cancelled tasks and projects with their content, filter by status, and resume them when needed
 - **Interactive Network Diagram** - Visualize project dependencies as an interactive graph (vis-network)
 - **Team Collaboration** - Assign tasks, manage team permissions (read/edit/create), notes system
 - **WYSIWYG Editor** - Rich text descriptions for tasks and subtasks

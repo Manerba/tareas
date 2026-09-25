@@ -24,6 +24,7 @@
   "status.offen": "Відкрито",
   "status.in_arbeit": "В роботі",
   "status.erledigt": "Виконано",
+  "status.abgebrochen": "Скасовано",
   "type.aufgabe": "Завдання",
   "type.projekt": "Проєкт",
   "auth.login": "Увійти",

@@ -138,7 +138,9 @@ def _format_datetime(iso_str: Optional[str]) -> str:
 
 
 def _project_status(row) -> str:
-    """Berechnet den Projektstatus aus Teilaufgaben-Fortschritt."""
+    """Ein Abbruch hat Vorrang vor dem berechneten Teilaufgaben-Fortschritt."""
+    if row["status"] == "abgebrochen":
+        return "abgebrochen"
     total = row["subtask_total"] or 0
     done = row["subtask_done"] or 0
     if total == 0:
@@ -235,7 +237,10 @@ async def _send_assignment_mail(user_id, task_name, actor_name, deadline, priori
 
 async def _send_status_mail(user_id, task_name, actor_name, new_status):
     """Sendet Status-Aenderungs-Mail (non-blocking)."""
-    status_labels = {"offen": "Offen", "in_arbeit": "In Arbeit", "erledigt": "Erledigt"}
+    status_labels = {
+        "offen": "Offen", "in_arbeit": "In Arbeit",
+        "erledigt": "Erledigt", "abgebrochen": "Abgebrochen",
+    }
     try:
         notify_event("status_change", user_id, {
             "task_name": task_name,
@@ -262,12 +267,13 @@ async def get_tasks(user=Depends(get_current_user)):
                           uc.vorname || ' ' || uc.nachname AS created_by_name,
                           uc.auth_source AS created_by_auth_source,
                           ua.vorname || ' ' || ua.nachname AS assigned_to_name,
-                          (SELECT 1 FROM project_members pm WHERE pm.project_id = t.id AND pm.user_id = ?) AS is_team_member,
+                          pm.id AS is_team_member, pm.can_edit AS team_can_edit,
                           (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
                           (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
                    FROM tasks t
                    LEFT JOIN users uc ON t.created_by = uc.id
                    LEFT JOIN users ua ON t.assigned_to = ua.id
+                   LEFT JOIN project_members pm ON pm.project_id = t.id AND pm.user_id = ?
                    ORDER BY t.priority ASC, t.created_at DESC""",
                 (user["id"],),
             ).fetchall()
@@ -277,12 +283,13 @@ async def get_tasks(user=Depends(get_current_user)):
                           uc.vorname || ' ' || uc.nachname AS created_by_name,
                           uc.auth_source AS created_by_auth_source,
                           ua.vorname || ' ' || ua.nachname AS assigned_to_name,
-                          (SELECT 1 FROM project_members pm WHERE pm.project_id = t.id AND pm.user_id = ?) AS is_team_member,
+                          pm.id AS is_team_member, pm.can_edit AS team_can_edit,
                           (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
                           (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
                    FROM tasks t
                    LEFT JOIN users uc ON t.created_by = uc.id
                    LEFT JOIN users ua ON t.assigned_to = ua.id
+                   LEFT JOIN project_members pm ON pm.project_id = t.id AND pm.user_id = ?
                    WHERE t.created_by = ? OR t.assigned_to = ? OR t.created_by IS NULL
                       OR t.id IN (SELECT project_id FROM project_members WHERE user_id = ? AND can_read = 1)
                    ORDER BY t.priority ASC, t.created_at DESC""",
@@ -330,6 +337,10 @@ async def get_tasks(user=Depends(get_current_user)):
                 "created_by_name": (row["created_by_name"] or "").strip(),
                 "assigned_to_name": (row["assigned_to_name"] or "").strip(),
                 "is_team_member": bool(row["is_team_member"]),
+                "can_edit_status": (
+                    created_by is None or created_by == user["id"]
+                    or assigned_to == user["id"] or bool(row["team_can_edit"])
+                ),
                 "nextcloud_path": row["nextcloud_path"] or "",
                 "subtask_total": row["subtask_total"] or 0,
                 "subtask_done": row["subtask_done"] or 0,
@@ -1293,7 +1304,7 @@ async def get_tasks_config():
             ),
             Column("Name", "name", width=0, sortable=True, i18n_key="tasks.col.name"),
             Column("Typ", "task_type", width=90, sortable=True, renderer="badge", i18n_key="tasks.col.type"),
-            Column("Status", "status", width=90, sortable=True, renderer="badge", i18n_key="tasks.col.status"),
+            Column("Status", "status", width=120, sortable=True, renderer="badge", i18n_key="tasks.col.status"),
             Column("Prioritaet", "priority", width=80, sortable=True, align="center", i18n_key="tasks.col.priority"),
             Column("Von", "created_by_name", width=120, sortable=True, i18n_key="tasks.col.from"),
             Column("Zugewiesen an", "assigned_to_name", width=140, sortable=True, i18n_key="tasks.col.assignedTo"),
@@ -1325,6 +1336,7 @@ async def get_tasks_config():
                     {"value": "offen", "label": "Offen"},
                     {"value": "in_arbeit", "label": "In Arbeit"},
                     {"value": "erledigt", "label": "Erledigt"},
+                    {"value": "abgebrochen", "label": "Abgebrochen"},
                 ],
             ),
             Filter(

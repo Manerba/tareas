@@ -24,6 +24,7 @@
   "status.offen": "Ouvert",
   "status.in_arbeit": "En cours",
   "status.erledigt": "Termine",
+  "status.abgebrochen": "Annulé",
   "type.aufgabe": "Tache",
   "type.projekt": "Projet",
   "auth.login": "Connexion",

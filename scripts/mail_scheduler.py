@@ -36,7 +36,7 @@ def main():
             """SELECT t.id, t.name, t.assigned_to, t.created_by
                FROM tasks t
                WHERE date(t.deadline) = date(?)
-                 AND t.status != 'erledigt'""",
+                 AND t.status NOT IN ('erledigt', 'abgebrochen')""",
             (today,),
         ).fetchall()
 
@@ -80,7 +80,7 @@ def main():
                 """SELECT t.id, t.name, t.deadline
                    FROM tasks t
                    WHERE date(t.deadline) = date(?)
-                     AND t.status != 'erledigt'
+                     AND t.status NOT IN ('erledigt', 'abgebrochen')
                      AND (t.assigned_to = ? OR t.created_by = ?)""",
                 (target_date, uid, uid),
             ).fetchall()

@@ -24,6 +24,7 @@
   "status.offen": "Offen",
   "status.in_arbeit": "In Arbeit",
   "status.erledigt": "Erledigt",
+  "status.abgebrochen": "Abgebrochen",
   "type.aufgabe": "Aufgabe",
   "type.projekt": "Projekt",
   "auth.login": "Anmelden",

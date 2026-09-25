@@ -141,7 +141,7 @@ def get_agent_guide() -> dict:
 
 @mcp.tool
 def list_projects(status: str | None = None) -> list[dict]:
-    """Listet alle Projekte (Top-Level-Aufgaben). Optionaler Statusfilter (z.B. 'offen', 'erledigt')."""
+    """Listet alle Projekte (Top-Level-Aufgaben). Statusfilter: offen, in_arbeit, erledigt, abgebrochen."""
     with db_query() as db:
         if status:
             rows = db.execute(
@@ -226,7 +226,12 @@ def update_project(
     status: str | None = None,
     assigned_to: int | None = None,
 ) -> dict:
-    """Aktualisiert ein Projekt. Nur uebergebene Felder werden geaendert."""
+    """Aktualisiert ein Projekt. Nur uebergebene Felder werden geaendert.
+
+    status='abgebrochen' bricht Aufgaben/Projekte ab, ohne Inhalte zu loeschen.
+    Mit status='offen' wird ein abgebrochenes Projekt wieder aufgenommen;
+    die Weboberflaeche berechnet seinen Status dann wieder aus den Teilaufgaben.
+    """
     user = _user()
     with db_transaction() as db:
         before = db.execute("SELECT * FROM tasks WHERE id = ?", (project_id,)).fetchone()
