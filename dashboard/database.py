@@ -3,7 +3,9 @@ Tareas - SQLite Datenbank
 Schema, Initialisierung und Verbindungsmanagement.
 """
 
+import fcntl
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 DB_DIR = Path(__file__).parent.parent / "data"
@@ -21,10 +23,22 @@ def get_db() -> sqlite3.Connection:
 
 
 def init_db():
-    """Erstellt Tabellen und Default-Daten beim App-Startup."""
+    """Initialisiert die DB exklusiv gegenueber anderen App-/Scheduler-Prozessen."""
     DB_DIR.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    # Vor dem ersten SQLite-Zugriff sperren, auch journal_mode=WAL kann kollidieren.
+    # Eine DB-Transaktion reicht nicht: executescript() committet zwischendurch.
+    # Die Datei bleibt bestehen, damit alle Prozesse denselben Inode sperren.
+    lock_path = DB_PATH.with_suffix(DB_PATH.suffix + ".init.lock")
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        with closing(sqlite3.connect(str(DB_PATH))) as conn:
+            _initialize_db(conn)
+    # close() gibt die Sperre auch bei Fehlern automatisch frei.
+
+
+def _initialize_db(conn: sqlite3.Connection):
+    """Schema, Migrationen und Default-Daten unter der Initialisierungssperre."""
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
 
@@ -414,4 +428,3 @@ def init_db():
         )
 
     conn.commit()
-    conn.close()
