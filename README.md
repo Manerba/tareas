@@ -7,8 +7,8 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 - **Task & Project Management** - Create tasks, organize them into projects with subtasks, dependencies, and deadlines
 - **Cancellation** - Keep cancelled tasks and projects with their content, filter by status, and resume them when needed
 - **Interactive Network Diagram** - Visualize project dependencies as an interactive graph (vis-network)
-- **Team Collaboration** - Assign tasks, manage team permissions (read/edit/create), notes system
-- **WYSIWYG Editor** - Rich text descriptions for tasks and subtasks
+- **Team Collaboration** - Assign tasks, manage team permissions (read/edit/create), notes system. Admins can edit all projects, tasks, notes and handoffs regardless of ownership.
+- **Markdown Descriptions & Notes** - Formatted reading view with source editing, lists, tables, and code blocks
 - **File Storage** - Nextcloud/WebDAV integration with tree view, drag & drop upload, context menus
 - **ONLYOFFICE Integration** - Edit Office documents (docx, xlsx, pptx) directly in the browser via WOPI
 - **LDAP/Active Directory** - Authenticate users against AD, automatic sync, group-based access
@@ -96,7 +96,7 @@ Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents an
 - MCP tokens are created in the Admin Panel under **MCP** and are shown only once.
 - Tokens are stored as SHA-256 hashes; revoked tokens stop working immediately.
 - Every token is mapped to its own `mcp` user in the database.
-- Write operations are recorded in the audit log and can be reviewed in the Admin Panel.
+- Write operations are recorded in the audit log and can be reviewed in the Admin Panel. Admin-only `note.update` and `handoff.update` correct existing content while preserving its author and creation time.
 - Available tools cover projects, subtasks, dependencies, editable notes (`note.*`), handoffs/progress history (`handoff.*`), users, areas, search, self-assignment, and `whoami`.
 
 For using Tareas as the planning layer in another repository, see
@@ -173,7 +173,7 @@ python dashboard/admin_app.py  # Admin app on :8505
 
 - **ExpandableTable** - Sortable, filterable table with expandable detail rows
 - **KPI Cards** - Dashboard widgets with KPI cards and sections
-- **WYSIWYG Editor** - ContentEditable-based rich text editor with HTML sanitization
+- **Markdown Editor** - Formatted reading view, source editing, and sanitized rendering. The legacy WYSIWYG component remains in the codebase.
 
 ## Security
 

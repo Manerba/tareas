@@ -119,7 +119,9 @@ def build_agent_metadata(request: Request | None = None) -> dict[str, Any]:
             "Use Tareas MCP as the single point of truth for project planning.",
             "If MCP tools are missing, configure MCP instead of creating a local shadow database.",
             "Use descriptions for scope and acceptance criteria; use handoff.add for progress, handoffs, and decisions.",
+            "Write descriptions, notes, and handoffs as Markdown source, not rendered HTML.",
             "note.write is an upsert for the current user's one editable note and overwrites that note on repeated calls.",
+            "Admins can correct existing content with note.update and handoff.update; author and creation time are preserved.",
             "note.delete removes only the current user's editable note.",
             "handoff.add creates a separate history item; handoff.delete removes a handoff by handoff_id.",
             "handoff_id is typed, e.g. task:123 or subtask:456; never pass a bare numeric entry id.",
@@ -147,11 +149,16 @@ Arbeitsregeln:
 - Vor Schreiboperationen den aktuellen Projektstand per MCP lesen.
 - `description` enthaelt Scope, Implementierungsbriefing, Akzeptanzkriterien
   und Definition of Done.
+- Beschreibungen, Notizen und Handoffs als Markdown-Quelltext schreiben,
+  nicht als gerendertes HTML.
 - `handoff.add` dokumentiert Fortschritt, Handoffs, Entscheidungen,
   Testergebnisse, Blocker und Audit-Zusammenfassungen als neuen Verlaufseintrag.
 - `handoff.list` liest diese Verlaufseintraege; `handoff.delete` loescht einen
   Handoff anhand seiner typisierten `handoff_id` (`task:123` oder
   `subtask:456`).
+- Admins koennen bestehende Inhalte mit `note.update` (Autor-`user_id`) und
+  `handoff.update` (typisierte `handoff_id`) korrigieren. Autor und
+  Erstellungszeit bleiben erhalten; der Admin wird im Audit protokolliert.
 - `note.write` aktualisiert nur die eine aktuelle Notiz des aufrufenden Users;
   wiederholte Aufrufe ueberschreiben diese Notiz.
 - `note.list` liest editierbare User-Notizen; `note.delete` loescht nur die
@@ -242,9 +249,11 @@ mcp__tareas__whoami
 mcp__tareas__list_projects
 mcp__tareas__get_project
 mcp__tareas__note.write
+mcp__tareas__note.update
 mcp__tareas__note.delete
 mcp__tareas__handoff.add
 mcp__tareas__handoff.list
+mcp__tareas__handoff.update
 mcp__tareas__handoff.delete
 ```
 

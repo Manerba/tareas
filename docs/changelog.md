@@ -1,6 +1,10 @@
 # Changelog
 
 Zeitstempel;Version;Kategorie;Beschreibung
+26.09.2026 17:12;0.0.1+118;Feature;Markdown als Standard fuer Beschreibungen, Notizen und Handoffs mit formatierter Ansicht und Bearbeiten-/Speichern-/Abbrechen-Buttons. Listen, Tabellen und Codebloecke werden sicher dargestellt, Entwuerfe bleiben beim Zuklappen erhalten
+26.09.2026 17:12;0.0.1+118;Aenderung;WYSIWYG-Funktionen in der Oberflaeche ausgeblendet, vorhandener Editor-Code bleibt erhalten. Bestehende HTML-Inhalte werden unveraendert als Legacy markiert und erst beim Bearbeiten in Markdown uebernommen. Sprachdateien und Agent-Dokumentation aktualisiert
+26.09.2026 17:12;0.0.1+118;Feature;Admins koennen alle Aufgaben und Projekte unabhaengig von Ersteller, Zuweisung oder Teamrechten bearbeiten, einschliesslich Beschreibungen, Teilaufgaben, Abhaengigkeiten, Reihenfolge, Netzplan, Teams und Dateiablagen
+26.09.2026 17:12;0.0.1+118;Feature;Admin-Bearbeitung vorhandener Notizen und Handoffs in der UI sowie ueber MCP note.update und handoff.update. Autor und Erstellungszeit bleiben erhalten, Aenderungen und Teamverwaltung werden mit dem handelnden Admin im Audit protokolliert
 25.09.2026 15:21;0.0.1+117;Bugfix;Einmalige MCP-Token-Anzeige schliesst nur ueber den Schliessen-Button, nicht per Hintergrundklick oder Escape. Textmarkierungen aus Eingabefeldern heraus klappen Aufgaben-, Projekt- und Teilaufgabenzeilen nicht mehr ein. Modal-Escape-Handler werden beim Ersetzen eines Dialogs aufgeraeumt
 25.09.2026 15:02;0.0.1+116;Bugfix;Datenbankinitialisierung von Haupt-App, Admin und Schedulern durch gemeinsame Dateisperre serialisiert. Gleichzeitige Erststarts und Schema-Migrationen kollidieren nicht mehr, Verbindungen und Sperren werden auch bei Fehlern freigegeben. Regressionstests fuer parallele Starts, bestehende Daten und Prozessabbrueche ergaenzt
 13.09.2026 05:28;0.0.1+115;Bugfix;Teilaufgaben zeigen in Projektlisten und zugewiesenen Ansichten den genauen Prozentwert. Numerische Eingabe von 0 bis 100 ersetzt die Statusauswahl, bewahrt Zwischenwerte beim Speichern und aktualisiert die Anzeige unmittelbar

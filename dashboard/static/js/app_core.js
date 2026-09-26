@@ -652,18 +652,24 @@ function escapeAttr(text) {
 }
 
 /**
- * HTML-Sanitizer: Nur Tags/Attribute aus WYSIWYG-Editor-Allowlist durchlassen.
+ * HTML-Sanitizer fuer Beschreibungen, Markdown und den bisherigen WYSIWYG-Editor.
  * Unerlaubte Tags werden unwrapped (Textinhalt bleibt), Attribute entfernt.
  */
 function sanitizeHtml(html) {
     if (!html) return '';
     const ALLOWED_TAGS = new Set([
-        'p', 'br', 'div', 'pre', 'h1', 'h2', 'h3',
+        'p', 'br', 'div', 'pre', 'code', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'b', 'strong', 'i', 'em', 'u',
         'ol', 'ul', 'li',
-        'font',
+        'font', 'blockquote', 'hr', 'del', 's', 'a', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
     ]);
-    const ALLOWED_ATTRS = {'font': new Set(['size'])};
+    const ALLOWED_ATTRS = {
+        font: new Set(['size']),
+        a: new Set(['href', 'title']),
+        img: new Set(['src', 'alt', 'title']),
+        ol: new Set(['start']),
+    };
 
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
@@ -679,7 +685,17 @@ function sanitizeHtml(html) {
             } else {
                 const allowed = ALLOWED_ATTRS[tag];
                 for (const a of Array.from(node.attributes)) {
-                    if (!allowed || !allowed.has(a.name)) node.removeAttribute(a.name);
+                    if (!allowed || !allowed.has(a.name)) {
+                        node.removeAttribute(a.name);
+                    } else if (a.name === 'href' || a.name === 'src') {
+                        try {
+                            const url = new URL(a.value, window.location.href);
+                            const protocols = a.name === 'href' ? ['http:', 'https:', 'mailto:'] : ['http:', 'https:'];
+                            if (!protocols.includes(url.protocol)) node.removeAttribute(a.name);
+                        } catch (_) {
+                            node.removeAttribute(a.name);
+                        }
+                    }
                 }
             }
         }

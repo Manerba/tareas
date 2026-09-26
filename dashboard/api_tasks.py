@@ -18,6 +18,7 @@ from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
 from dashboard.mail_service import notify_event
+from dashboard.note_service import update_note_as_admin
 
 logger = logging.getLogger(__name__)
 
@@ -332,13 +333,14 @@ async def get_tasks(user=Depends(get_current_user)):
                 "task_type": row["task_type"],
                 "status": _project_status(row) if row["task_type"] == "projekt" else row["status"],
                 "description": row["description"] or "",
+                "description_format": row["description_format"],
                 "created_by": row["created_by"],
                 "assigned_to": row["assigned_to"],
                 "created_by_name": (row["created_by_name"] or "").strip(),
                 "assigned_to_name": (row["assigned_to_name"] or "").strip(),
                 "is_team_member": bool(row["is_team_member"]),
                 "can_edit_status": (
-                    created_by is None or created_by == user["id"]
+                    bool(user.get("is_admin")) or created_by is None or created_by == user["id"]
                     or assigned_to == user["id"] or bool(row["team_can_edit"])
                 ),
                 "nextcloud_path": row["nextcloud_path"] or "",
@@ -384,6 +386,7 @@ async def get_tasks(user=Depends(get_current_user)):
                 "task_type": "aufgabe",
                 "status": st_status,
                 "description": st["description"] or "",
+                "description_format": st["description_format"],
                 "created_by": st["created_by"],
                 "assigned_to": st["assigned_to"],
                 "created_by_name": (st["created_by_name"] or "").strip(),
@@ -432,7 +435,7 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
         is_legacy = existing["created_by"] is None
         is_assignee = existing["assigned_to"] == user["id"]
         has_team_edit = False
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             membership = db.execute(
                 "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
                 (task_id, user["id"]),
@@ -441,7 +444,7 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
 
         # MCP-Assignees haben volle Edit-Rechte (im Gegensatz zu menschlichen Assignees)
         mcp_assignee_full = (user.get("auth_source") == "mcp") and is_assignee
-        can_full_edit = is_creator or is_legacy or has_team_edit or mcp_assignee_full
+        can_full_edit = bool(user.get("is_admin")) or is_creator or is_legacy or has_team_edit or mcp_assignee_full
         if not can_full_edit and not is_assignee:
             raise HTTPException(status_code=403, detail="Keine Berechtigung zum Bearbeiten")
 
@@ -472,6 +475,7 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
                 values.append(task_type)
                 changes_diff["task_type"] = task_type
             if task.description is not None:
+                updates.append("description_format = 'markdown'")
                 updates.append("description = ?")
                 values.append(task.description)
                 changes_diff["description_len"] = len(task.description)
@@ -610,11 +614,8 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
         items = []
         for row in rows:
             # Effektive Berechtigungen berechnen
-            if is_creator or is_legacy:
+            if is_admin or is_creator or is_legacy:
                 permissions = {"can_read": True, "can_edit": True, "can_create": True}
-            elif is_admin:
-                # Admins sehen alle Subtasks (read), Edits bleiben dem Creator vorbehalten
-                permissions = {"can_read": True, "can_edit": False, "can_create": False}
             elif membership:
                 permissions = {
                     "can_read": bool(membership["can_read"]),
@@ -649,6 +650,7 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
                 "predecessor_ids": pred_ids,
                 "predecessors_display": ", ".join(str(p) for p in pred_positions if p),
                 "description": row["description"] or "",
+                "description_format": row["description_format"],
                 "created_by": row["created_by"],
                 "assigned_to": row["assigned_to"],
                 "created_by_name": (row["created_by_name"] or "").strip(),
@@ -675,10 +677,10 @@ async def create_subtask(task_id: int, subtask: SubTaskCreate, user=Depends(get_
         if not existing:
             raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
 
-        # Berechtigung pruefen: Ersteller, Legacy, oder Teammitglied mit can_create
+        # Berechtigung pruefen: Admin, Ersteller, Legacy oder Teammitglied mit can_create
         is_creator = existing["created_by"] == user["id"]
         is_legacy = existing["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             membership = db.execute(
                 "SELECT can_create FROM project_members WHERE project_id = ? AND user_id = ?",
                 (task_id, user["id"]),
@@ -731,7 +733,7 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
         ).fetchone()
         is_creator = task and task["created_by"] == user["id"]
         is_legacy = task and task["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             membership = db.execute(
                 "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
                 (existing["project_id"], user["id"]),
@@ -770,6 +772,7 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
             updates.append("position_number = ?")
             values.append(subtask.position_number)
         if subtask.description is not None:
+            updates.append("description_format = 'markdown'")
             updates.append("description = ?")
             values.append(subtask.description)
 
@@ -868,7 +871,7 @@ async def move_subtask(subtask_id: int, move: SubTaskMove, user=Depends(get_curr
         ).fetchone()
         is_creator = task and task["created_by"] == user["id"]
         is_legacy = task and task["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
 
         # Nachbar finden
@@ -927,7 +930,7 @@ async def add_dependency(task_id: int, dep: DependencyAction, user=Depends(get_c
         # Berechtigung pruefen
         is_creator = task["created_by"] == user["id"]
         is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
 
         # Spezialfall: Projektknoten als Vorgaenger
@@ -1034,7 +1037,7 @@ async def remove_dependency(task_id: int, dep: DependencyAction, user=Depends(ge
         # Berechtigung pruefen
         is_creator = task["created_by"] == user["id"]
         is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
 
         # Spezialfall: Projektknoten-Abhaengigkeit entfernen
@@ -1071,7 +1074,7 @@ async def save_netzplan_positions(task_id: int, payload: NetzplanPositionsSave, 
 
         is_creator = task["created_by"] == user["id"]
         is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             membership = db.execute(
                 "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
                 (task_id, user["id"]),
@@ -1135,6 +1138,7 @@ async def get_task_notes(task_id: int, user=Depends(get_current_user)):
                     "user_id": r["user_id"],
                     "user_name": (r["user_name"] or "").strip(),
                     "content": r["content"] or "",
+                    "content_format": r["content_format"],
                     "updated_at": _format_date(r["updated_at"]),
                 }
                 for r in rows
@@ -1151,7 +1155,7 @@ async def upsert_task_note(task_id: int, note: NoteUpdate, user=Depends(get_curr
             """INSERT INTO task_notes (task_id, user_id, content, updated_at)
                VALUES (?, ?, ?, datetime('now'))
                ON CONFLICT(task_id, user_id) DO UPDATE SET
-                   content = excluded.content,
+                   content_format = 'markdown', content = excluded.content,
                    updated_at = datetime('now')""",
             (task_id, user["id"], note.content),
         )
@@ -1161,7 +1165,7 @@ async def upsert_task_note(task_id: int, note: NoteUpdate, user=Depends(get_curr
 
 @router.get("/api/tasks/{task_id}/note-entries")
 async def get_task_note_entries(task_id: int, limit: int = 100, user=Depends(get_current_user)):
-    """Append-only Notiz-Eintraege fuer eine Aufgabe abrufen."""
+    """Notiz-Verlaufseintraege fuer eine Aufgabe abrufen."""
     limit = max(1, min(limit, 200))
     with db_query() as db:
         _require_task_read_access(db, task_id, user)
@@ -1182,11 +1186,32 @@ async def get_task_note_entries(task_id: int, limit: int = 100, user=Depends(get
                     "user_id": r["user_id"],
                     "user_name": (r["user_name"] or "").strip(),
                     "content": r["content"] or "",
+                    "content_format": r["content_format"],
                     "created_at": _format_datetime(r["created_at"]),
                 }
                 for r in rows
             ]
         }
+
+
+@router.put("/api/tasks/{task_id}/notes/{note_user_id}")
+async def admin_update_task_note(task_id: int, note_user_id: int, note: NoteUpdate, user=Depends(get_current_user)):
+    return update_note_as_admin(task_id, note.content, user, note_user_id=note_user_id)
+
+
+@router.put("/api/tasks/{task_id}/note-entries/{entry_id}")
+async def admin_update_task_handoff(task_id: int, entry_id: int, note: NoteUpdate, user=Depends(get_current_user)):
+    return update_note_as_admin(task_id, note.content, user, entry_id=entry_id)
+
+
+@router.put("/api/tasks/{task_id}/subtasks/{subtask_id}/notes/{note_user_id}")
+async def admin_update_subtask_note(task_id: int, subtask_id: int, note_user_id: int, note: NoteUpdate, user=Depends(get_current_user)):
+    return update_note_as_admin(task_id, note.content, user, subtask_id=subtask_id, note_user_id=note_user_id)
+
+
+@router.put("/api/tasks/{task_id}/subtasks/{subtask_id}/note-entries/{entry_id}")
+async def admin_update_subtask_handoff(task_id: int, subtask_id: int, entry_id: int, note: NoteUpdate, user=Depends(get_current_user)):
+    return update_note_as_admin(task_id, note.content, user, subtask_id=subtask_id, entry_id=entry_id)
 
 
 @router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/notes")
@@ -1208,6 +1233,7 @@ async def get_subtask_notes(task_id: int, subtask_id: int, user=Depends(get_curr
                     "user_id": r["user_id"],
                     "user_name": (r["user_name"] or "").strip(),
                     "content": r["content"] or "",
+                    "content_format": r["content_format"],
                     "updated_at": _format_date(r["updated_at"]),
                 }
                 for r in rows
@@ -1224,7 +1250,7 @@ async def upsert_subtask_note(task_id: int, subtask_id: int, note: NoteUpdate, u
             """INSERT INTO sub_task_notes (sub_task_id, user_id, content, updated_at)
                VALUES (?, ?, ?, datetime('now'))
                ON CONFLICT(sub_task_id, user_id) DO UPDATE SET
-                   content = excluded.content,
+                   content_format = 'markdown', content = excluded.content,
                    updated_at = datetime('now')""",
             (subtask_id, user["id"], note.content),
         )
@@ -1234,7 +1260,7 @@ async def upsert_subtask_note(task_id: int, subtask_id: int, note: NoteUpdate, u
 
 @router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/note-entries")
 async def get_subtask_note_entries(task_id: int, subtask_id: int, limit: int = 100, user=Depends(get_current_user)):
-    """Append-only Notiz-Eintraege fuer eine Teilaufgabe abrufen."""
+    """Notiz-Verlaufseintraege fuer eine Teilaufgabe abrufen."""
     limit = max(1, min(limit, 200))
     with db_query() as db:
         _require_subtask_read_access(db, task_id, subtask_id, user)
@@ -1256,6 +1282,7 @@ async def get_subtask_note_entries(task_id: int, subtask_id: int, limit: int = 1
                     "user_id": r["user_id"],
                     "user_name": (r["user_name"] or "").strip(),
                     "content": r["content"] or "",
+                    "content_format": r["content_format"],
                     "created_at": _format_datetime(r["created_at"]),
                 }
                 for r in rows

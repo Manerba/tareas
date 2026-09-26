@@ -253,7 +253,7 @@ function activateInlineEditing(rowId) {
 
     // Name
     const nameCell = cellForField('name');
-    if (nameCell && !perm.isAssignee && !(perm.isCreator && perm.isAssigned)) {
+    if (nameCell && (perm.isAdmin || (!perm.isAssignee && !(perm.isCreator && perm.isAssigned)))) {
         nameCell._originalHTML = nameCell.innerHTML;
         nameCell.innerHTML = `<input type="text" class="inline-edit-input" id="inlineName_${row.id}" value="${escapeAttr(row.name)}" onclick="event.stopPropagation()">`;
     }
@@ -261,7 +261,7 @@ function activateInlineEditing(rowId) {
     // Projekte koennen zwischen berechnetem Fortschritt und Abgebrochen wechseln.
     const statusCell = cellForField('status');
     if (statusCell) {
-        const canEditStatus = row.can_edit_status ?? (perm.isCreator || perm.isAssignee || perm.isLegacy);
+        const canEditStatus = perm.isAdmin || (row.can_edit_status ?? (perm.isCreator || perm.isAssignee || perm.isLegacy));
         if (canEditStatus) {
             const isProject = row.task_type === 'projekt';
             const progressStatus = row.subtask_total > 0 && row.subtask_done >= row.subtask_total
@@ -282,14 +282,14 @@ function activateInlineEditing(rowId) {
 
     // Prioritaet
     const priorityCell = cellForField('priority');
-    if (priorityCell && !perm.isAssignee) {
+    if (priorityCell && (perm.isAdmin || !perm.isAssignee)) {
         priorityCell._originalHTML = priorityCell.innerHTML;
         priorityCell.innerHTML = `<input type="number" class="inline-edit-input" id="inlinePriority_${row.id}" value="${row.priority}" min="1" max="100" onclick="event.stopPropagation()">`;
     }
 
-    // Zugewiesen an (nur Ersteller/Legacy)
+    // Zugewiesen an (Admin/Ersteller/Legacy)
     const assignedCell = cellForField('assigned_to_name');
-    if (assignedCell && (perm.isCreator || perm.isOwnTask || perm.isLegacy)) {
+    if (assignedCell && (perm.isAdmin || perm.isCreator || perm.isOwnTask || perm.isLegacy)) {
         assignedCell._originalHTML = assignedCell.innerHTML;
         assignedCell.innerHTML = `<select class="inline-edit-select" id="inlineAssigned_${row.id}" onclick="event.stopPropagation()">
             ${buildUserOptions(row.assigned_to)}
@@ -298,7 +298,7 @@ function activateInlineEditing(rowId) {
 
     // Deadline
     const deadlineCell = cellForField('deadline');
-    if (deadlineCell && !perm.isAssignee) {
+    if (deadlineCell && (perm.isAdmin || !perm.isAssignee)) {
         deadlineCell._originalHTML = deadlineCell.innerHTML;
         deadlineCell.innerHTML = `<input type="date" class="inline-edit-input" id="inlineDeadline_${row.id}" value="${deadlineISO}" onclick="event.stopPropagation()">`;
     }
@@ -498,6 +498,28 @@ function buildUserOptions(selectedId) {
 // Detail-Bereich: Aufgabe/Projekt aufgeklappt
 // ========================================
 
+function createMarkdownField(containerId, content, options) {
+    const field = options.field || 'description';
+    return new MarkdownEditor(containerId, content, {
+        format: options.model?.[`${field}_format`] || 'markdown',
+        label: options.label,
+        readOnly: options.readOnly,
+        onSave: async source => {
+            const response = await fetch(options.url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [field]: source }),
+            });
+            if (!response.ok) throw new Error(t('common.saveError'));
+            if (options.model) {
+                options.model[field] = source;
+                options.model[`${field}_format`] = 'markdown';
+            }
+            options.onSaved?.(source);
+        },
+    });
+}
+
 async function onTaskRowExpanded(rowId, detailElement) {
     if (!detailElement || !aufgabenTable) return;
 
@@ -524,24 +546,24 @@ async function onTaskRowExpanded(rowId, detailElement) {
         html += `<div class="project-detail-left">`;
     }
 
-    // Beschreibung: WYSIWYG fuer Ersteller/eigene, readonly fuer Zugewiesene
-    if (perm.isAssignee && !perm.isCreator) {
+    // Beschreibung: Markdown-Ansicht, Bearbeiten nach bestehenden Berechtigungen
+    if (!perm.isAdmin && perm.isAssignee && !perm.isCreator) {
         html += `<div class="notes-section">
             <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
-            <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
+            <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
         </div>`;
         html += `<div class="notes-section">
             <h5>${t('detail.myNotes')}</h5>
             <div id="notesEditor_${row.id}"></div>
         </div>`;
-    } else if (perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
+    } else if (!perm.isAdmin && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
         html += `<div class="notes-section">
             <h5>${t('detail.description')}</h5>
-            <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
+            <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
         </div>`;
         html += `<div class="notes-section" id="assigneeNotes_${row.id}">
             <h5>${t('detail.notesFrom', { name: escapeHtml(row.assigned_to_name || 'Zugewiesenem') })}</h5>
-            <div class="description-readonly" id="assigneeNotesContent_${row.id}"><em>${t('common.loading')}</em></div>
+            <div class="description-readonly markdown-body" id="assigneeNotesContent_${row.id}"><em>${t('common.loading')}</em></div>
         </div>`;
     } else {
         html += `<div id="wysiwygEditor_${row.id}"></div>`;
@@ -556,13 +578,20 @@ async function onTaskRowExpanded(rowId, detailElement) {
         html += `<div class="project-detail-resize" id="pdResize_${row.id}"></div>`;
     }
 
+    if (perm.isAdmin) {
+        html += `<div class="notes-section subtask-notes-list">
+            <h5>${t('detail.notes')}</h5>
+            <div class="subtask-notes-content" id="taskAllNotes_${row.id}"><em>${t('common.loading')}</em></div>
+        </div>`;
+    }
+
     html += `<div class="notes-section note-entries-list">
         <h5>${t('detail.noteHistory')}</h5>
         <div class="subtask-notes-content" id="taskNoteEntries_${row.id}"><em>${t('common.loading')}</em></div>
     </div>`;
 
     // Dateiablage-Button fuer Aufgaben (nicht-Projekte)
-    if (row.task_type !== 'projekt' && ncConfigured && (perm.isCreator || perm.isLegacy)) {
+    if (row.task_type !== 'projekt' && ncConfigured && (perm.isAdmin || perm.isCreator || perm.isLegacy)) {
         html += `<div class="subtask-section-actions" style="margin-top:8px;display:flex;justify-content:flex-end">
             <button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>
         </div>`;
@@ -575,8 +604,8 @@ async function onTaskRowExpanded(rowId, detailElement) {
                 <h4>${t('subtask.title')}</h4>
                 <div class="subtask-section-actions">
                     <button class="control-btn" onclick="event.stopPropagation(); openNetzplan(${row.id})">${t('netzplan.title')}</button>
-                    ${perm.isCreator ? `<button class="team-btn" onclick="event.stopPropagation(); openTeamDialog(${row.id})">${t('team.title')}</button>` : ''}
-                    ${ncConfigured && (perm.isCreator || perm.isLegacy) ? `<button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>` : ''}
+                    ${(perm.isAdmin || perm.isCreator) ? `<button class="team-btn" onclick="event.stopPropagation(); openTeamDialog(${row.id})">${t('team.title')}</button>` : ''}
+                    ${ncConfigured && (perm.isAdmin || perm.isCreator || perm.isLegacy) ? `<button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>` : ''}
                 </div>
             </div>
             <div id="subtaskContainer_${row.id}">
@@ -590,18 +619,20 @@ async function onTaskRowExpanded(rowId, detailElement) {
     detailElement.innerHTML = html;
 
     // Editoren initialisieren
-    if (perm.isAssignee && !perm.isCreator) {
+    if (!perm.isAdmin && perm.isAssignee && !perm.isCreator) {
         // Notizen-Editor fuer Zugewiesenen: Notiz laden und Editor initialisieren
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
             if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
             const notesData = await notesResp.json();
             const myNote = (notesData.items || []).find(n => n.user_id === currentUser.id);
-            new WysiwygEditor(`notesEditor_${row.id}`, myNote ? myNote.content : '');
+            createMarkdownField(`notesEditor_${row.id}`, myNote?.content || '', {
+                url: `/api/tasks/${row.id}/notes`, field: 'content', model: myNote, label: t('detail.myNotes'),
+            });
         } catch (e) {
-            new WysiwygEditor(`notesEditor_${row.id}`, '');
+            document.getElementById(`notesEditor_${row.id}`).textContent = t('detail.loadError');
         }
-    } else if (perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
+    } else if (!perm.isAdmin && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
         // Notizen des Zugewiesenen laden
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
@@ -611,7 +642,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
             const contentEl = document.getElementById(`assigneeNotesContent_${row.id}`);
             if (contentEl) {
                 contentEl.innerHTML = assigneeNote && assigneeNote.content
-                    ? sanitizeHtml(assigneeNote.content)
+                    ? renderMarkdown(assigneeNote.content, assigneeNote.content_format)
                     : `<em>${t('detail.noNotes')}</em>`;
             }
         } catch (e) {
@@ -619,8 +650,15 @@ async function onTaskRowExpanded(rowId, detailElement) {
             if (contentEl) contentEl.innerHTML = `<em>${t('detail.loadError')}</em>`;
         }
     } else {
-        // WYSIWYG-Editor fuer Beschreibung
-        new WysiwygEditor(`wysiwygEditor_${row.id}`, row.description || '');
+        // Markdown startet in der formatierten Ansicht
+        createMarkdownField(`wysiwygEditor_${row.id}`, row.description || '', {
+            url: `/api/tasks/${row.id}`, model: row,
+            readOnly: !(perm.isAdmin || perm.isOwnTask || perm.isLegacy || (perm.isTeamMember && row.can_edit_status)),
+        });
+    }
+
+    if (perm.isAdmin) {
+        loadAdminNotes(`/api/tasks/${row.id}/notes`, `taskAllNotes_${row.id}`);
     }
 
     // Auto-Save: WYSIWYG-Editor mit Debounce
@@ -743,7 +781,7 @@ async function saveTask(taskId, silent = false) {
         if (!resp.ok) throw new Error(t('common.saveError'));
 
         // Notizen separat speichern (fuer Zugewiesene)
-        if (perm.isAssignee && !perm.isCreator) {
+        if (!perm.isAdmin && perm.isAssignee && !perm.isCreator) {
             const notesContainer = document.getElementById(`notesEditor_${taskId}`);
             const notesContent = notesContainer?.querySelector('.wysiwyg-content');
             if (notesContent) {
@@ -773,43 +811,55 @@ async function onSubtaskViewExpanded(row, detailElement) {
     const stId = row._subtask_id || Math.abs(row.id);
     const projectId = row._project_id;
     const deadlineISO = convertToISO(row.deadline);
+    const isAdmin = !!currentUser?.is_admin;
+    const fieldAccess = isAdmin ? '' : 'disabled class="field-readonly"';
 
     let html = `<div class="detail-edit" data-task-id="${row.id}">`;
 
     // Info-Hinweis
     html += `<div class="subtask-view-info">${t('subtask.info', { name: escapeHtml(row._project_name) })}</div>`;
 
-    // Header-Felder (alle readonly ausser Status)
+    // Admins bearbeiten auch zugewiesene Teilaufgaben vollstaendig.
     html += `<div class="detail-edit-header">
         <div class="detail-edit-field flex-grow">
             <label>${t('subtask.col.name')}</label>
-            <input type="text" value="${escapeAttr(row.name)}" disabled class="field-readonly">
+            <input type="text" id="stViewName_${stId}" value="${escapeAttr(row.name)}" ${fieldAccess}>
         </div>
         <div class="detail-edit-field">
             <label>${t('subtask.col.deadline')}</label>
-            <input type="date" value="${deadlineISO}" disabled class="field-readonly">
+            <input type="date" id="stViewDeadline_${stId}" value="${deadlineISO}" ${fieldAccess}>
         </div>
         <div class="detail-edit-field">
             <label>${t('subtask.col.priority')}</label>
-            <input type="number" value="${row.priority}" disabled class="field-readonly" style="width:70px">
+            <input type="number" id="stViewPriority_${stId}" value="${row.priority}" min="1" max="100" ${fieldAccess} style="width:70px">
         </div>
         <div class="detail-edit-field">
             <label>${t('subtask.col.status')}</label>
             <input type="number" id="stViewStatus_${stId}" value="${escapeAttr(row._status_percent ?? 0)}" min="0" max="100" step="1" required style="width:70px">
         </div>
+        ${isAdmin ? `<div class="detail-edit-field">
+            <label>${t('subtask.col.assignedTo')}</label>
+            <select id="stViewAssigned_${stId}">${buildUserOptions(row.assigned_to)}</select>
+        </div>` : ''}
     </div>`;
 
-    // Beschreibung readonly
-    html += `<div class="notes-section">
+    html += isAdmin ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
         <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
-        <div class="description-readonly">${sanitizeHtml(row.description) || `<em>${t('detail.noDescription')}</em>`}</div>
+        <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
     </div>`;
 
-    // Eigene Notizen (WYSIWYG)
+    // Eigene Notizen (Markdown)
     html += `<div class="notes-section">
         <h5>${t('detail.myNotes')}</h5>
         <div id="stViewNotes_${stId}"></div>
     </div>`;
+
+    if (isAdmin) {
+        html += `<div class="notes-section subtask-notes-list">
+            <h5>${t('detail.notes')}</h5>
+            <div class="subtask-notes-content" id="stViewAllNotes_${stId}"></div>
+        </div>`;
+    }
 
     html += `<div class="notes-section note-entries-list">
         <h5>${t('detail.noteHistory')}</h5>
@@ -819,6 +869,13 @@ async function onSubtaskViewExpanded(row, detailElement) {
     html += `</div>`;
     detailElement.innerHTML = html;
 
+    if (isAdmin) {
+        createMarkdownField(`stViewDescription_${stId}`, row.description || '', {
+            url: `/api/subtasks/${stId}`, model: row,
+        });
+        if (projectId) loadAdminNotes(`/api/tasks/${projectId}/subtasks/${stId}/notes`, `stViewAllNotes_${stId}`, currentUser.id);
+    }
+
     // Notizen laden und Editor initialisieren
     if (projectId) {
         try {
@@ -826,12 +883,14 @@ async function onSubtaskViewExpanded(row, detailElement) {
             if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
             const notesData = await notesResp.json();
             const myNote = (notesData.items || []).find(n => n.user_id === currentUser.id);
-            new WysiwygEditor(`stViewNotes_${stId}`, myNote ? myNote.content : '');
+            createMarkdownField(`stViewNotes_${stId}`, myNote?.content || '', {
+                url: `/api/tasks/${projectId}/subtasks/${stId}/notes`, field: 'content', model: myNote, label: t('detail.myNotes'),
+            });
         } catch (e) {
-            new WysiwygEditor(`stViewNotes_${stId}`, '');
+            document.getElementById(`stViewNotes_${stId}`).textContent = t('detail.loadError');
         }
     } else {
-        new WysiwygEditor(`stViewNotes_${stId}`, '');
+        document.getElementById(`stViewNotes_${stId}`).textContent = t('detail.loadError');
     }
 
     if (projectId) {
@@ -841,11 +900,11 @@ async function onSubtaskViewExpanded(row, detailElement) {
         if (entriesContent) entriesContent.innerHTML = `<em>${t('detail.noNoteEntries')}</em>`;
     }
 
-    // Auto-Save: Status-Feld
-    const stViewStatusEl = document.getElementById(`stViewStatus_${stId}`);
-    if (stViewStatusEl) {
-        stViewStatusEl.addEventListener('change', () => saveSubtaskView(row, true));
-    }
+    // Auto-Save: nur bearbeitbare Felder
+    ['stViewStatus', 'stViewName', 'stViewDeadline', 'stViewPriority', 'stViewAssigned'].forEach(prefix => {
+        const input = document.getElementById(`${prefix}_${stId}`);
+        if (input && !input.disabled) input.addEventListener('change', () => saveSubtaskView(row, true));
+    });
 
     // Auto-Save: Notizen-Editor mit Debounce
     const stViewNotesContent = document.querySelector(`#stViewNotes_${stId} .wysiwyg-content`);
@@ -866,17 +925,39 @@ async function saveSubtaskView(row, silent = false) {
         // 1. Prozentwert speichern und auch in der Haupttabelle aktualisieren.
         if (statusInput) {
             const statusPercent = statusInput.valueAsNumber;
+            const body = { status_percent: statusPercent };
+            if (currentUser?.is_admin) {
+                body.name = document.getElementById(`stViewName_${stId}`).value;
+                body.deadline = document.getElementById(`stViewDeadline_${stId}`).value;
+                body.priority = document.getElementById(`stViewPriority_${stId}`).valueAsNumber || 50;
+                body.assigned_to = Number(document.getElementById(`stViewAssigned_${stId}`).value) || 0;
+            }
             const resp = await fetch(`/api/subtasks/${stId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status_percent: statusPercent }),
+                body: JSON.stringify(body),
             });
             if (!resp.ok) throw new Error(t('common.saveError'));
+            if (currentUser?.is_admin) {
+                row.name = body.name;
+                row.priority = body.priority;
+                row.deadline = body.deadline ? body.deadline.split('-').reverse().join('.') : '';
+                row.assigned_to = body.assigned_to || null;
+                const assignee = cachedUsers.find(u => u.id === row.assigned_to);
+                row.assigned_to_name = assignee ? `${assignee.vorname} ${assignee.nachname}`.trim() : '';
+            }
             row._status_percent = statusPercent;
             row.status = statusPercent >= 100 ? 'erledigt' : statusPercent > 0 ? 'in_arbeit' : 'offen';
             const statusIndex = aufgabenTable.config.columns.findIndex(col => col.field === 'status');
             const cells = document.querySelector(`[data-row-id="${row.id}"] .table-row`)?.querySelectorAll('.table-cell');
             if (cells?.[statusIndex]) cells[statusIndex].innerHTML = renderSubtaskProgress(statusPercent);
+            if (currentUser?.is_admin && cells) {
+                aufgabenTable.config.columns.forEach((col, index) => {
+                    if (cells[index] && ['name', 'priority', 'deadline', 'assigned_to_name'].includes(col.field)) {
+                        cells[index].innerHTML = aufgabenTable.renderCell(row[col.field], col, row);
+                    }
+                });
+            }
         }
 
         // 2. Notizen speichern (nur wenn project_id bekannt)
@@ -961,7 +1042,7 @@ function renderSubTasks(taskId, subtasks) {
 
     // Parent-Task Permissions bestimmen
     const parentRow = aufgabenTable.filteredData.find(r => String(r.id) === String(taskId));
-    const parentPerm = parentRow ? getTaskPermissions(parentRow) : { isCreator: false, isLegacy: true };
+    const parentPerm = parentRow ? getTaskPermissions(parentRow) : { isCreator: false, isLegacy: true, isAdmin: !!currentUser?.is_admin };
 
     const areasOptions = buildAreaOptions();
     const colCount = 12;
@@ -990,12 +1071,12 @@ function renderSubTasks(taskId, subtasks) {
         const predDisplay = st.predecessors_display || '';
         const statusPct = st.status_percent || 0;
         const stPerms = st.permissions || { can_read: true, can_edit: true, can_create: true };
-        const canEdit = stPerms.can_edit;
+        const canEdit = parentPerm.isAdmin || stPerms.can_edit;
         const isSubAssigned = !!st.assigned_to;
         const isSubCreator = parentPerm.isCreator || parentPerm.isLegacy;
 
         // Readonly-Logik pro Feld
-        const stNameRO = (!canEdit || (isSubCreator && isSubAssigned)) ? 'disabled' : '';
+        const stNameRO = (!canEdit || (!parentPerm.isAdmin && isSubCreator && isSubAssigned)) ? 'disabled' : '';
         const stNameROClass = stNameRO ? 'field-readonly' : '';
         const fieldRO = !canEdit ? 'disabled' : '';
         const fieldROClass = !canEdit ? 'field-readonly' : '';
@@ -1003,7 +1084,7 @@ function renderSubTasks(taskId, subtasks) {
         const stDeadlineROClass = stDeadlineRO ? 'field-readonly' : '';
         const stPrioRO = !canEdit ? 'disabled' : '';
         const stPrioROClass = stPrioRO ? 'field-readonly' : '';
-        const stStatusRO = (!canEdit || (isSubCreator && isSubAssigned)) ? 'disabled' : '';
+        const stStatusRO = (!canEdit || (!parentPerm.isAdmin && isSubCreator && isSubAssigned)) ? 'disabled' : '';
         const dlISO = convertToISO(st.deadline);
 
         // Vorgaenger-Optionen und Chips (positionsunabhaengig, aber ohne Zyklen/Redundanz)
@@ -1061,7 +1142,7 @@ function renderSubTasks(taskId, subtasks) {
                 </span>
             </td>` : `<td>${escapeHtml(st.area_name || '-')}</td>`}
             <td>${escapeHtml(st.created_by_name || '-')}</td>
-            ${(parentPerm.isCreator || parentPerm.isLegacy) ? `<td>
+            ${(parentPerm.isAdmin || parentPerm.isCreator || parentPerm.isLegacy) ? `<td>
                 <span class="st-cell-text">${escapeHtml(st.assigned_to_name || '-')}</span>
                 <span class="st-cell-edit">
                     <select id="stEditAssigned_${st.id}" onclick="event.stopPropagation()">
@@ -1098,12 +1179,12 @@ function renderSubTasks(taskId, subtasks) {
                 <div class="subtask-detail-content">`;
 
         // WYSIWYG oder Readonly-Beschreibung
-        if (isSubCreator && isSubAssigned) {
-            html += `<div class="description-readonly">${sanitizeHtml(st.description) || `<em>${t('detail.noDescription')}</em>`}</div>`;
+        if (!parentPerm.isAdmin && isSubCreator && isSubAssigned) {
+            html += `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
         } else if (canEdit) {
             html += `<div id="stWysiwyg_${st.id}"></div>`;
         } else {
-            html += `<div class="description-readonly">${sanitizeHtml(st.description) || `<em>${t('detail.noDescription')}</em>`}</div>`;
+            html += `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
         }
 
         html += `<div class="notes-section subtask-notes-list">
@@ -1123,9 +1204,9 @@ function renderSubTasks(taskId, subtasks) {
 
     html += `</tbody></table>`;
 
-    // "+ Teilaufgabe"-Button: nur fuer Ersteller, Legacy, oder Teammitglieder mit can_create
+    // "+ Teilaufgabe"-Button: Admin, Ersteller, Legacy oder Teammitglieder mit can_create
     const firstSt = subtasks[0];
-    const canCreate = parentPerm.isCreator || parentPerm.isLegacy || (firstSt && firstSt.permissions && firstSt.permissions.can_create);
+    const canCreate = parentPerm.isAdmin || parentPerm.isCreator || parentPerm.isLegacy || (firstSt && firstSt.permissions && firstSt.permissions.can_create);
     if (canCreate || subtasks.length === 0) {
         html += `<div class="subtask-add-row">
             <button class="control-btn" onclick="addSubTask(${taskId})">${t('subtask.add')}</button>
@@ -1148,9 +1229,47 @@ function renderSubTaskNotesList(notes) {
                 <strong>${escapeHtml(userName)}</strong>
                 ${updatedAt}
             </div>
-            <div class="subtask-note-body">${sanitizeHtml(note.content || '') || `<em>${t('detail.noNotes')}</em>`}</div>
+            <div class="subtask-note-body markdown-body">${renderMarkdown(note.content || '', note.content_format) || `<em>${t('detail.noNotes')}</em>`}</div>
         </div>`;
     }).join('');
+}
+
+function mountAdminNoteEditors(container, items, url, isHandoff = false) {
+    if (!currentUser?.is_admin) return;
+    const bodies = container.querySelectorAll('.subtask-note-body');
+    items.forEach((item, index) => {
+        const body = bodies[index];
+        if (!body) return;
+        const id = isHandoff ? item.id : item.user_id;
+        const editorId = `${container.id}_editor_${id}`;
+        body.classList.remove('markdown-body');
+        body.innerHTML = `<div id="${editorId}"></div>`;
+        createMarkdownField(editorId, item.content || '', {
+            url: `${url}/${id}`, field: 'content', model: item,
+            label: t(isHandoff ? 'detail.noteHistory' : 'detail.notes'),
+            onSaved: source => {
+                if (isHandoff) {
+                    const preview = body.closest('.note-entry-item')?.querySelector('.note-entry-preview');
+                    if (preview) preview.textContent = getNoteEntryPreview(renderMarkdown(source)) || t('detail.noNoteEntries');
+                }
+            },
+        });
+    });
+}
+
+async function loadAdminNotes(url, elementId, excludeUserId = null) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const notes = (data.items || []).filter(note => note.user_id !== excludeUserId);
+        container.innerHTML = renderSubTaskNotesList(notes);
+        mountAdminNoteEditors(container, notes, url);
+    } catch (error) {
+        container.innerHTML = `<em>${t('detail.loadError')}</em>`;
+    }
 }
 
 function getNoteEntryPreview(html) {
@@ -1158,7 +1277,7 @@ function getNoteEntryPreview(html) {
 
     // Zeilen- und Blockgrenzen als Leerzeichen erhalten, damit Woerter aus
     // aufeinanderfolgenden Absaetzen in der Vorschau nicht zusammenlaufen.
-    doc.body.querySelectorAll('br, p, div, pre, h1, h2, h3, li').forEach(node => {
+    doc.body.querySelectorAll('br, p, div, pre, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, hr').forEach(node => {
         node.after(doc.createTextNode(' '));
     });
 
@@ -1173,7 +1292,7 @@ function renderNoteEntriesList(entries) {
     return entries.map(entry => {
         const userName = entry.user_name || `User ${entry.user_id}`;
         const createdAt = entry.created_at ? `<span>${escapeHtml(entry.created_at)}</span>` : '';
-        const sanitizedContent = sanitizeHtml(entry.content || '');
+        const sanitizedContent = renderMarkdown(entry.content || '', entry.content_format);
         const emptyText = t('detail.noNoteEntries');
         const preview = getNoteEntryPreview(sanitizedContent) || emptyText;
         const body = sanitizedContent || `<em>${emptyText}</em>`;
@@ -1188,7 +1307,7 @@ function renderNoteEntriesList(entries) {
                 </span>
                 <span class="note-entry-preview">${escapeHtml(preview)}</span>
             </summary>
-            <div class="subtask-note-body">${body}</div>
+            <div class="subtask-note-body markdown-body">${body}</div>
         </details>`;
     }).join('');
 }
@@ -1201,6 +1320,7 @@ async function loadTaskNoteEntries(taskId) {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         entriesContent.innerHTML = renderNoteEntriesList(data.items || []);
+        mountAdminNoteEditors(entriesContent, data.items || [], `/api/tasks/${taskId}/note-entries`, true);
     } catch (e) {
         entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
     }
@@ -1214,6 +1334,7 @@ async function loadSubtaskNoteEntries(taskId, subtaskId, elementId) {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         entriesContent.innerHTML = renderNoteEntriesList(data.items || []);
+        mountAdminNoteEditors(entriesContent, data.items || [], `/api/tasks/${taskId}/subtasks/${subtaskId}/note-entries`, true);
     } catch (e) {
         entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
     }
@@ -1244,8 +1365,10 @@ async function toggleSubTaskDetail(taskId, subtaskId) {
             const subtasks = container?._subtasksData || [];
             const st = subtasks.find(s => s.id === subtaskId);
             const stPerms = st?.permissions || { can_edit: true };
-            if (stPerms.can_edit) {
-                new WysiwygEditor(`stWysiwyg_${subtaskId}`, st?.description || '');
+            if (currentUser?.is_admin || stPerms.can_edit) {
+                createMarkdownField(`stWysiwyg_${subtaskId}`, st?.description || '', {
+                    url: `/api/subtasks/${subtaskId}`, model: st,
+                });
             }
             editorContainer._editorInit = true;
         }
@@ -1259,6 +1382,7 @@ async function toggleSubTaskDetail(taskId, subtaskId) {
                 if (!notesResp.ok) throw new Error(`HTTP ${notesResp.status}`);
                 const notesData = await notesResp.json();
                 notesContent.innerHTML = renderSubTaskNotesList(notesData.items || []);
+                mountAdminNoteEditors(notesContent, notesData.items || [], `/api/tasks/${taskId}/subtasks/${subtaskId}/notes`);
             } catch (e) {
                 notesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
             }
@@ -2153,7 +2277,7 @@ function _openNetzplanNodeDetails(nodeId, parentRow, subtasks, projectName) {
         const typeLabel = t(`type.${typeKey}`);
         const subtaskTotal = parentRow?.subtask_total ?? subtasks.length;
         const subtaskDone = parentRow?.subtask_done ?? subtasks.filter(st => (st.status_percent || 0) >= 100).length;
-        const description = sanitizeHtml(parentRow?.description || '') || `<em>${t('detail.noDescription')}</em>`;
+        const description = renderMarkdown(parentRow?.description || '', parentRow?.description_format) || `<em>${t('detail.noDescription')}</em>`;
 
         createModal({
             title: `${escapeHtml(typeLabel)} - Details`,
@@ -2179,7 +2303,7 @@ function _openNetzplanNodeDetails(nodeId, parentRow, subtasks, projectName) {
                     </div>
                     <div class="netzplan-detail-section">
                         <div class="netzplan-detail-section-title">${t('detail.description')}</div>
-                        <div class="description-readonly">${description}</div>
+                        <div class="description-readonly markdown-body">${description}</div>
                     </div>
                 </div>
             `,
@@ -2194,7 +2318,7 @@ function _openNetzplanNodeDetails(nodeId, parentRow, subtasks, projectName) {
     const status = _netzplanStatusFromPercent(st.status_percent);
     const statusHtml = `<span class="netzplan-detail-status status-${status.key}">${escapeHtml(status.label)} (${escapeHtml(st.status_percent || 0)}%)</span>`;
     const predecessorHtml = _netzplanRenderPredecessors(st, subtasks, projectName);
-    const description = sanitizeHtml(st.description || '') || `<em>${t('detail.noDescription')}</em>`;
+    const description = renderMarkdown(st.description || '', st.description_format) || `<em>${t('detail.noDescription')}</em>`;
 
     createModal({
         title: `${t('subtask.title')} - Details`,
@@ -2224,7 +2348,7 @@ function _openNetzplanNodeDetails(nodeId, parentRow, subtasks, projectName) {
                 </div>
                 <div class="netzplan-detail-section">
                     <div class="netzplan-detail-section-title">${t('detail.description')}</div>
-                    <div class="description-readonly">${description}</div>
+                    <div class="description-readonly markdown-body">${description}</div>
                 </div>
             </div>
         `,

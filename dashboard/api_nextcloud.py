@@ -221,10 +221,10 @@ def _get_task_nextcloud_path(task_id: int, user: dict) -> str:
         if not task["nextcloud_path"]:
             raise HTTPException(status_code=400, detail="Kein Nextcloud-Verzeichnis zugeordnet")
 
-        # Zugriffspruefung: Ersteller, Legacy oder Teammitglied
+        # Zugriffspruefung: Admin, Ersteller, Legacy oder Teammitglied
         is_creator = task["created_by"] == user["id"]
         is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy:
+        if not is_creator and not is_legacy and not user.get("is_admin"):
             membership = db.execute(
                 "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
                 (task_id, user["id"]),

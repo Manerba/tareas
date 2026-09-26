@@ -388,6 +388,35 @@ def _initialize_db(conn: sqlite3.Connection):
         INSERT OR IGNORE INTO mcp_config (id, enabled) VALUES (1, 1);
     """)
 
+    # Alte Inhalte unveraendert behalten; neue Inhalte sind Markdown. Die Markierung
+    # ist noetig, damit Markdown mit HTML-Codebeispielen nie als Alt-HTML gilt.
+    # DDL und Markierung gemeinsam committen, auch nach einem abgebrochenen Upgrade.
+    with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        for info_sql, column, alter_sql, mark_sql in (
+            ("PRAGMA table_info(tasks)", "description_format",
+             "ALTER TABLE tasks ADD COLUMN description_format TEXT NOT NULL DEFAULT 'markdown'",
+             "UPDATE tasks SET description_format = 'legacy'"),
+            ("PRAGMA table_info(sub_tasks)", "description_format",
+             "ALTER TABLE sub_tasks ADD COLUMN description_format TEXT NOT NULL DEFAULT 'markdown'",
+             "UPDATE sub_tasks SET description_format = 'legacy'"),
+            ("PRAGMA table_info(task_notes)", "content_format",
+             "ALTER TABLE task_notes ADD COLUMN content_format TEXT NOT NULL DEFAULT 'markdown'",
+             "UPDATE task_notes SET content_format = 'legacy'"),
+            ("PRAGMA table_info(sub_task_notes)", "content_format",
+             "ALTER TABLE sub_task_notes ADD COLUMN content_format TEXT NOT NULL DEFAULT 'markdown'",
+             "UPDATE sub_task_notes SET content_format = 'legacy'"),
+            ("PRAGMA table_info(task_note_entries)", "content_format",
+             "ALTER TABLE task_note_entries ADD COLUMN content_format TEXT NOT NULL DEFAULT 'markdown'",
+             "UPDATE task_note_entries SET content_format = 'legacy'"),
+            ("PRAGMA table_info(sub_task_note_entries)", "content_format",
+             "ALTER TABLE sub_task_note_entries ADD COLUMN content_format TEXT NOT NULL DEFAULT 'markdown'",
+             "UPDATE sub_task_note_entries SET content_format = 'legacy'"),
+        ):
+            if column not in {r[1] for r in conn.execute(info_sql)}:
+                conn.execute(alter_sql)
+                conn.execute(mark_sql)
+
     # Default-Mail-Templates einfuegen (nur wenn Tabelle leer)
     tmpl_count = conn.execute("SELECT COUNT(*) FROM mail_templates").fetchone()[0]
     if tmpl_count == 0:

@@ -17,11 +17,13 @@ from contextvars import ContextVar
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastapi import HTTPException
 
 from dashboard.agent_guide import build_agent_guide_markdown, build_agent_metadata
 from dashboard.audit_log import log_change, diff_fields
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.task_types import normalize_task_type
+from dashboard.note_service import update_note_as_admin
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ def _task_to_dict(row) -> dict:
         "id": row["id"],
         "name": row["name"],
         "description": row["description"] or "",
+        "description_format": row["description_format"],
         "status": row["status"],
         "priority": row["priority"],
         "task_type": row["task_type"],
@@ -63,6 +66,7 @@ def _subtask_to_dict(row) -> dict:
         "project_id": row["project_id"],
         "name": row["name"],
         "description": row["description"] or "",
+        "description_format": row["description_format"],
         "area_id": row["area_id"],
         "deadline": row["deadline"],
         "priority": row["priority"],
@@ -242,6 +246,7 @@ def update_project(
         if name is not None:
             updates.append("name = ?"); values.append(name); new_vals["name"] = name
         if description is not None:
+            updates.append("description_format = 'markdown'")
             updates.append("description = ?"); values.append(description); new_vals["description"] = description
         if deadline is not None:
             updates.append("deadline = ?"); values.append(deadline); new_vals["deadline"] = deadline
@@ -401,6 +406,7 @@ def update_subtask(
         if name is not None:
             updates.append("name = ?"); values.append(name); new_vals["name"] = name
         if description is not None:
+            updates.append("description_format = 'markdown'")
             updates.append("description = ?"); values.append(description); new_vals["description"] = description
         if area_id is not None:
             updates.append("area_id = ?"); values.append(area_id); new_vals["area_id"] = area_id
@@ -771,7 +777,7 @@ def note_list(task_id: int, subtask_id: int | None = None) -> list[dict]:
         if subtask_id is not None:
             _require_subtask_read_access(db, task_id, subtask_id, user)
             rows = db.execute(
-                """SELECT sn.user_id, sn.content, sn.updated_at,
+                """SELECT sn.user_id, sn.content, sn.content_format, sn.updated_at,
                           u.vorname || ' ' || u.nachname AS user_name,
                           u.auth_source
                    FROM sub_task_notes sn
@@ -783,7 +789,7 @@ def note_list(task_id: int, subtask_id: int | None = None) -> list[dict]:
         else:
             _require_task_read_access(db, task_id, user)
             rows = db.execute(
-                """SELECT tn.user_id, tn.content, tn.updated_at,
+                """SELECT tn.user_id, tn.content, tn.content_format, tn.updated_at,
                           u.vorname || ' ' || u.nachname AS user_name,
                           u.auth_source
                    FROM task_notes tn
@@ -798,6 +804,7 @@ def note_list(task_id: int, subtask_id: int | None = None) -> list[dict]:
                 "user_name": (r["user_name"] or "").strip(),
                 "auth_source": r["auth_source"] or "local",
                 "content": r["content"] or "",
+                "content_format": r["content_format"],
                 "updated_at": r["updated_at"],
             }
             for r in rows
@@ -819,7 +826,7 @@ def note_write(task_id: int, content: str, subtask_id: int | None = None) -> dic
                 """INSERT INTO sub_task_notes (sub_task_id, user_id, content, updated_at)
                    VALUES (?, ?, ?, datetime('now'))
                    ON CONFLICT(sub_task_id, user_id) DO UPDATE SET
-                       content = excluded.content, updated_at = datetime('now')""",
+                       content_format = 'markdown', content = excluded.content, updated_at = datetime('now')""",
                 (subtask_id, user["id"], content),
             )
             entity_id = subtask_id
@@ -830,13 +837,25 @@ def note_write(task_id: int, content: str, subtask_id: int | None = None) -> dic
                 """INSERT INTO task_notes (task_id, user_id, content, updated_at)
                    VALUES (?, ?, ?, datetime('now'))
                    ON CONFLICT(task_id, user_id) DO UPDATE SET
-                       content = excluded.content, updated_at = datetime('now')""",
+                       content_format = 'markdown', content = excluded.content, updated_at = datetime('now')""",
                 (task_id, user["id"], content),
             )
             entity_id = task_id
             entity_type = "task_note"
     log_change(user, entity_type, entity_id, "update", {"content_len": len(content)})
     return {"saved": True, "task_id": task_id, "subtask_id": subtask_id}
+
+
+@mcp.tool(name="note.update")
+def note_update(task_id: int, user_id: int, content: str, subtask_id: int | None = None) -> dict:
+    """Admin: bestehende Notiz eines Users bearbeiten, ohne den Autor zu aendern.
+
+    user_id stammt aus note.list. Fuer die eigene Notiz weiterhin note.write nutzen.
+    """
+    try:
+        return update_note_as_admin(task_id, content, _user(), subtask_id=subtask_id, note_user_id=user_id)
+    except HTTPException as exc:
+        raise ToolError(exc.detail) from exc
 
 
 @mcp.tool(name="note.delete")
@@ -891,7 +910,7 @@ def handoff_list(task_id: int, subtask_id: int | None = None, limit: int = 100) 
         if subtask_id is not None:
             _require_subtask_read_access(db, task_id, subtask_id, user)
             rows = db.execute(
-                """SELECT sne.id, sne.sub_task_id, sne.user_id, sne.content, sne.created_at,
+                """SELECT sne.id, sne.sub_task_id, sne.user_id, sne.content, sne.content_format, sne.created_at,
                           u.vorname || ' ' || u.nachname AS user_name,
                           u.auth_source
                    FROM sub_task_note_entries sne
@@ -904,7 +923,7 @@ def handoff_list(task_id: int, subtask_id: int | None = None, limit: int = 100) 
         else:
             _require_task_read_access(db, task_id, user)
             rows = db.execute(
-                """SELECT tne.id, tne.task_id, tne.user_id, tne.content, tne.created_at,
+                """SELECT tne.id, tne.task_id, tne.user_id, tne.content, tne.content_format, tne.created_at,
                           u.vorname || ' ' || u.nachname AS user_name,
                           u.auth_source
                    FROM task_note_entries tne
@@ -924,6 +943,7 @@ def handoff_list(task_id: int, subtask_id: int | None = None, limit: int = 100) 
                 "user_name": (r["user_name"] or "").strip(),
                 "auth_source": r["auth_source"] or "local",
                 "content": r["content"] or "",
+                "content_format": r["content_format"],
                 "created_at": r["created_at"],
             }
             for r in rows
@@ -979,6 +999,35 @@ def handoff_add(task_id: int, content: str, subtask_id: int | None = None) -> di
         "task_id": task_id,
         "subtask_id": subtask_id,
     }
+
+
+@mcp.tool(name="handoff.update")
+def handoff_update(task_id: int, handoff_id: str, content: str, subtask_id: int | None = None) -> dict:
+    """Admin: Handoff-Inhalt korrigieren; Autor und Erstellungszeit bleiben erhalten.
+
+    handoff_id stammt aus handoff.list ('task:123' oder 'subtask:456').
+    Eine angegebene subtask_id muss zum Handoff und zum Projekt gehoeren.
+    """
+    user = _user()
+    if not user.get("is_admin"):
+        raise ToolError("Nur Admins duerfen Handoffs bearbeiten")
+    scope, local_id = _parse_handoff_id(handoff_id)
+    if scope == "task" and subtask_id is not None:
+        raise ToolError("task-Handoff darf nicht mit subtask_id bearbeitet werden")
+    if scope == "subtask" and subtask_id is None:
+        with db_query() as db:
+            row = db.execute(
+                """SELECT sne.sub_task_id FROM sub_task_note_entries sne
+                   JOIN sub_tasks st ON st.id = sne.sub_task_id
+                   WHERE sne.id = ? AND st.project_id = ?""", (local_id, task_id),
+            ).fetchone()
+            if not row:
+                raise ToolError("Handoff nicht gefunden")
+            subtask_id = row["sub_task_id"]
+    try:
+        return update_note_as_admin(task_id, content, user, subtask_id=subtask_id, entry_id=local_id)
+    except HTTPException as exc:
+        raise ToolError(exc.detail) from exc
 
 
 @mcp.tool(name="handoff.delete")

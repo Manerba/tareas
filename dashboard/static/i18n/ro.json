@@ -418,5 +418,9 @@
   "editor.readonly": "Doar citire",
   "editor.missingParams": "Parametri lipsa (taskId, path)",
   "editor.configError": "Eroare la incarcarea configurarii editorului",
-  "editor.apiError": "Nu s-a putut incarca API-ul ONLYOFFICE"
+  "editor.apiError": "Nu s-a putut incarca API-ul ONLYOFFICE",
+  "markdown.edit": "Editează",
+  "markdown.source": "Sursă Markdown",
+  "markdown.hint": "Markdown: # Titlu, **aldin**, - listă, ``` bloc de cod. Apasă Salvare pentru a aplica modificările.",
+  "markdown.empty": "Încă nu există conținut."
 }

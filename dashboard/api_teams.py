@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.auth import get_current_user
+from dashboard.audit_log import log_change
 
 router = APIRouter()
 
@@ -36,7 +37,7 @@ class MemberUpdate(BaseModel):
 # ============================================================
 
 def _check_project_creator(db, task_id: int, user: dict):
-    """Prueft: Task existiert, ist Projekt, User ist Ersteller. Wirft 404/400/403."""
+    """Prueft: Task existiert, ist Projekt, User ist Ersteller oder Admin. Wirft 404/400/403."""
     task = db.execute(
         "SELECT id, task_type, created_by FROM tasks WHERE id = ?", (task_id,)
     ).fetchone()
@@ -44,13 +45,13 @@ def _check_project_creator(db, task_id: int, user: dict):
         raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     if task["task_type"] != "projekt":
         raise HTTPException(status_code=400, detail="Nur Projekte koennen Teams haben")
-    if task["created_by"] != user["id"]:
-        raise HTTPException(status_code=403, detail="Nur der Ersteller kann das Team verwalten")
+    if task["created_by"] != user["id"] and not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Nur der Ersteller oder ein Admin kann das Team verwalten")
     return task
 
 
 # ============================================================
-# Team-Endpoints (nur fuer Projekt-Ersteller)
+# Team-Endpoints (Projekt-Ersteller und Admins)
 # ============================================================
 
 @router.get("/api/tasks/{task_id}/members")
@@ -87,15 +88,15 @@ async def get_members(task_id: int, user=Depends(get_current_user)):
 async def add_member(task_id: int, member: MemberAdd, user=Depends(get_current_user)):
     """Mitglied zum Projekt-Team hinzufuegen."""
     with db_transaction() as db:
-        _check_project_creator(db, task_id, user)
+        task = _check_project_creator(db, task_id, user)
 
         # User existiert?
         target = db.execute("SELECT id FROM users WHERE id = ?", (member.user_id,)).fetchone()
         if not target:
             raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
 
-        # Nicht sich selbst hinzufuegen
-        if member.user_id == user["id"]:
+        # Der Ersteller braucht keine Mitgliedschaft, auch wenn ein Admin verwaltet.
+        if member.user_id == task["created_by"]:
             raise HTTPException(status_code=400, detail="Ersteller kann sich nicht selbst als Mitglied hinzufuegen")
 
         # Duplikat?
@@ -111,7 +112,8 @@ async def add_member(task_id: int, member: MemberAdd, user=Depends(get_current_u
                VALUES (?, ?, ?, ?, ?)""",
             (task_id, member.user_id, int(member.can_read), int(member.can_edit), int(member.can_create)),
         )
-        return {"message": "Mitglied hinzugefuegt"}
+    log_change(user, "project_member", task_id, "create", member.model_dump())
+    return {"message": "Mitglied hinzugefuegt"}
 
 
 @router.put("/api/tasks/{task_id}/members/{member_user_id}")
@@ -132,7 +134,8 @@ async def update_member(task_id: int, member_user_id: int, member: MemberUpdate,
                WHERE project_id = ? AND user_id = ?""",
             (int(member.can_read), int(member.can_edit), int(member.can_create), task_id, member_user_id),
         )
-        return {"message": "Berechtigungen aktualisiert"}
+    log_change(user, "project_member", task_id, "update", {"user_id": member_user_id, **member.model_dump()})
+    return {"message": "Berechtigungen aktualisiert"}
 
 
 @router.delete("/api/tasks/{task_id}/members/{member_user_id}")
@@ -152,4 +155,5 @@ async def remove_member(task_id: int, member_user_id: int, user=Depends(get_curr
             "DELETE FROM project_members WHERE project_id = ? AND user_id = ?",
             (task_id, member_user_id),
         )
-        return {"message": "Mitglied entfernt"}
+    log_change(user, "project_member", task_id, "delete", {"user_id": member_user_id})
+    return {"message": "Mitglied entfernt"}

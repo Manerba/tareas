@@ -418,5 +418,9 @@
   "editor.readonly": "Nur Lesen",
   "editor.missingParams": "Fehlende Parameter (taskId, path)",
   "editor.configError": "Fehler beim Laden der Editor-Konfiguration",
-  "editor.apiError": "ONLYOFFICE API konnte nicht geladen werden"
+  "editor.apiError": "ONLYOFFICE API konnte nicht geladen werden",
+  "markdown.edit": "Bearbeiten",
+  "markdown.source": "Markdown-Quelltext",
+  "markdown.hint": "Markdown: # Überschrift, **fett**, - Liste, ``` Codeblock. Änderungen mit Speichern übernehmen.",
+  "markdown.empty": "Noch kein Inhalt."
 }

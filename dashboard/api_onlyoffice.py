@@ -225,7 +225,7 @@ def _validate_callback_url(url: str) -> bool:
 
 
 def _check_user_can_edit(task_id: int, user: dict) -> bool:
-    """Schreibrecht pruefen (Ersteller/Legacy/Teammitglied mit can_edit)."""
+    """Schreibrecht pruefen (Admin/Ersteller/Legacy/Teammitglied mit can_edit)."""
     with db_query() as db:
         task = db.execute(
             "SELECT created_by FROM tasks WHERE id = ?", (task_id,)
@@ -233,8 +233,8 @@ def _check_user_can_edit(task_id: int, user: dict) -> bool:
         if not task:
             return False
 
-        # Ersteller oder Legacy (kein created_by)
-        if task["created_by"] == user["id"] or task["created_by"] is None:
+        # Admin, Ersteller oder Legacy (kein created_by)
+        if user.get("is_admin") or task["created_by"] == user["id"] or task["created_by"] is None:
             return True
 
         # Teammitglied mit Edit-Recht

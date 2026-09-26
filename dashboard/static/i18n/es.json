@@ -418,5 +418,9 @@
   "editor.readonly": "Solo lectura",
   "editor.missingParams": "Parametros faltantes (taskId, path)",
   "editor.configError": "Error al cargar la configuracion del editor",
-  "editor.apiError": "No se pudo cargar la API de ONLYOFFICE"
+  "editor.apiError": "No se pudo cargar la API de ONLYOFFICE",
+  "markdown.edit": "Editar",
+  "markdown.source": "Código Markdown",
+  "markdown.hint": "Markdown: # Título, **negrita**, - lista, ``` bloque de código. Pulsa Guardar para aplicar los cambios.",
+  "markdown.empty": "Aún no hay contenido."
 }

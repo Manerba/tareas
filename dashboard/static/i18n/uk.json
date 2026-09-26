@@ -418,5 +418,9 @@
   "editor.readonly": "Лише читання",
   "editor.missingParams": "Відсутні параметри (taskId, path)",
   "editor.configError": "Помилка завантаження конфігурації редактора",
-  "editor.apiError": "Не вдалося завантажити ONLYOFFICE API"
+  "editor.apiError": "Не вдалося завантажити ONLYOFFICE API",
+  "markdown.edit": "Редагувати",
+  "markdown.source": "Вихідний текст Markdown",
+  "markdown.hint": "Markdown: # Заголовок, **жирний**, - список, ``` блок коду. Натисніть «Зберегти», щоб застосувати зміни.",
+  "markdown.empty": "Вмісту ще немає."
 }

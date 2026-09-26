@@ -418,5 +418,9 @@
   "editor.readonly": "Read Only",
   "editor.missingParams": "Missing parameters (taskId, path)",
   "editor.configError": "Error loading editor configuration",
-  "editor.apiError": "Could not load ONLYOFFICE API"
+  "editor.apiError": "Could not load ONLYOFFICE API",
+  "markdown.edit": "Edit",
+  "markdown.source": "Markdown source",
+  "markdown.hint": "Markdown: # Heading, **bold**, - list, ``` code block. Use Save to apply changes.",
+  "markdown.empty": "No content yet."
 }

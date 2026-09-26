@@ -167,12 +167,14 @@ class TaskCancellationTests(unittest.TestCase):
         finally:
             mcp_server.current_mcp_user.reset(token)
 
-    def test_admin_can_see_cancelled_projects_without_gaining_edit_rights(self):
+    def test_admin_can_see_and_edit_cancelled_projects(self):
         task_id = self.create_task("projekt", status="abgebrochen")
         self.user = {**self.users["outsider"], "is_admin": True}
         row = self.task(task_id)
         self.assertEqual(row["status"], "abgebrochen")
-        self.assertFalse(row["can_edit_status"])
+        self.assertTrue(row["can_edit_status"])
+        self.set_status(task_id, "offen")
+        self.assertEqual(self.task(task_id)["status"], "offen")
 
     def test_status_filter_and_notification_include_cancelled(self):
         config = self.client.get("/api/tasks/config").json()
