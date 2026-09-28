@@ -27,7 +27,6 @@ from dashboard.auth import get_admin_user, get_current_user
 from dashboard.file_storage import get_task_storage, safe_rel_path
 from dashboard.audit_log import log_change
 from dashboard.tls_utils import get_tls_verify_config
-from dashboard.csp_utils import invalidate_onlyoffice_cache
 from dashboard.logging_config import get_security_logger
 
 logger = logging.getLogger(__name__)
@@ -290,9 +289,6 @@ async def save_config(data: OnlyOfficeConfigRequest, user=Depends(get_admin_user
             "jwt_secret": jwt_secret,
         })
 
-    # CSP-Cache invalidieren (Origin koennte sich geaendert haben)
-    invalidate_onlyoffice_cache()
-
     security_log.info("CONFIG_CHANGED section=onlyoffice by=%s", user["username"])
     return {"message": "ONLYOFFICE-Konfiguration gespeichert"}
 
@@ -302,9 +298,6 @@ async def delete_config(user=Depends(get_admin_user)):
     """ONLYOFFICE-Konfiguration loeschen."""
     with db_transaction() as db:
         db.execute("DELETE FROM onlyoffice_config WHERE id = 1")
-
-    # CSP-Cache invalidieren (Origin wurde entfernt)
-    invalidate_onlyoffice_cache()
 
     security_log.info("CONFIG_CHANGED section=onlyoffice_deleted by=%s", user["username"])
     return {"message": "ONLYOFFICE-Konfiguration geloescht"}

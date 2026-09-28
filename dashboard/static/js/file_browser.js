@@ -14,6 +14,7 @@ class FileBrowser {
         this.treeCache = {}; // Pfad -> Items (Lazy-Load Cache)
         this._contextMenu = null;
         this.canWrite = false;
+        this.onlyOfficeConfigured = false;
         this.onConfigure = typeof options.onConfigure === 'function' ? options.onConfigure : null;
 
         this.render();
@@ -189,6 +190,7 @@ class FileBrowser {
             }
             const data = await resp.json();
             this.canWrite = data.can_write === true;
+            this.onlyOfficeConfigured = data.onlyoffice_configured === true;
             for (const action of ['upload', 'mkdir']) {
                 const button = document.getElementById(`fb-${action}-${this.taskId}`);
                 if (button) button.hidden = !this.canWrite;
@@ -254,7 +256,7 @@ class FileBrowser {
         this.items.forEach(item => {
             const icon = this._getFileIcon(item);
             const sizeStr = item.type === 'directory' ? '' : this._formatSize(item.size);
-            const isEditable = item.type === 'file' && typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(item.name);
+            const isEditable = item.type === 'file' && typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(item.name, this.onlyOfficeConfigured);
             const editIcon = isEditable
                 ? `<div class="fb-grid-edit" data-edit-path="${escapeAttr(this.currentPath ? this.currentPath + '/' + item.name : item.name)}" title="${t('files.openInEditor')}">${this._iconEdit()}</div>`
                 : '';
@@ -340,6 +342,7 @@ class FileBrowser {
                     if (resp.ok) {
                         const data = await resp.json();
                         this.treeCache[path] = data.items || [];
+                        this.onlyOfficeConfigured = data.onlyoffice_configured === true;
                     }
                 } catch (e) { /* ignore */ }
             }
@@ -382,7 +385,7 @@ class FileBrowser {
                 ? (parentPath ? `${parentPath}/${name}` : name)
                 : (this.currentPath ? `${this.currentPath}/${name}` : name);
 
-            if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name)) {
+            if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured)) {
                 openOnlyOfficeEditor(this.taskId, filePath);
             } else if (this._isImageFile(name)) {
                 this.openFileInline(filePath);
@@ -405,7 +408,7 @@ class FileBrowser {
 
         let html = '<div class="fb-ctx-menu">';
         if (type === 'file') {
-            if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name)) {
+            if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured)) {
                 html += `<div class="fb-ctx-item" data-action="edit" data-path="${escapeAttr(fullPath)}">${t('files.openInEditor')}</div>`;
             }
             if (this._isImageFile(name)) {

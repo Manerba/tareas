@@ -11,10 +11,10 @@ const OO_EDITABLE_EXTENSIONS = new Set([
 ]);
 
 /**
- * Pruefen ob Dateiformat von ONLYOFFICE unterstuetzt wird.
+ * Pruefen ob ONLYOFFICE konfiguriert ist und das Dateiformat unterstuetzt wird.
  */
-function isOnlyOfficeEditable(fileName) {
-    if (!fileName) return false;
+function isOnlyOfficeEditable(fileName, configured = false) {
+    if (!configured || !fileName) return false;
     const ext = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '';
     return OO_EDITABLE_EXTENSIONS.has(ext);
 }

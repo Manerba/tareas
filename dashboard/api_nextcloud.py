@@ -18,6 +18,7 @@ from dashboard.auth import get_admin_user, get_current_user, get_file_user
 from dashboard import webdav
 from dashboard.audit_log import log_change
 from dashboard.file_storage import get_task_storage, safe_rel_path as _safe_rel_path, safe_filename as _safe_filename
+from dashboard.csp_utils import get_onlyoffice_origin
 from dashboard.logging_config import get_security_logger
 
 logger = logging.getLogger(__name__)
@@ -198,7 +199,8 @@ async def list_task_files(task_id: int, path: str = "", user=Depends(get_file_us
     storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path)
     items = await _file_operation(storage.list_directory, path)
-    return {"items": items, "path": path, "storage_type": storage.kind, "can_write": storage.can_write}
+    return {"items": items, "path": path, "storage_type": storage.kind, "can_write": storage.can_write,
+            "onlyoffice_configured": get_onlyoffice_origin() is not None}
 
 
 @files_router.get("/api/tasks/{task_id}/files/download")
