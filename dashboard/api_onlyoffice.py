@@ -24,7 +24,8 @@ from dashboard.db_utils import db_query, db_transaction, upsert_singleton_config
 from dashboard.crypto_utils import encrypt, decrypt
 from dashboard.user_utils import get_display_name
 from dashboard.auth import get_admin_user, get_current_user
-from dashboard import webdav
+from dashboard.file_storage import get_task_storage, safe_rel_path
+from dashboard.audit_log import log_change
 from dashboard.tls_utils import get_tls_verify_config
 from dashboard.csp_utils import invalidate_onlyoffice_cache
 from dashboard.logging_config import get_security_logger
@@ -110,7 +111,7 @@ def _validate_wopi_token(token: str) -> dict | None:
     """Token validieren + User-Daten joinen. Gibt dict oder None zurueck."""
     with db_query() as db:
         row = db.execute(
-            """SELECT wt.*, u.username, u.vorname, u.nachname
+            """SELECT wt.*, u.username, u.vorname, u.nachname, u.is_admin
                FROM wopi_tokens wt
                JOIN users u ON wt.user_id = u.id
                WHERE wt.token = ? AND wt.expires_at > datetime('now')""",
@@ -121,6 +122,7 @@ def _validate_wopi_token(token: str) -> dict | None:
         return {
             "token_id": row["id"],
             "user_id": row["user_id"],
+            "is_admin": bool(row["is_admin"]),
             "task_id": row["task_id"],
             "file_path": row["file_path"],
             "permissions": row["permissions"],
@@ -225,35 +227,17 @@ def _validate_callback_url(url: str) -> bool:
 
 
 def _check_user_can_edit(task_id: int, user: dict) -> bool:
-    """Schreibrecht pruefen (Admin/Ersteller/Legacy/Teammitglied mit can_edit)."""
-    with db_query() as db:
-        task = db.execute(
-            "SELECT created_by FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
-        if not task:
-            return False
-
-        # Admin, Ersteller oder Legacy (kein created_by)
-        if user.get("is_admin") or task["created_by"] == user["id"] or task["created_by"] is None:
-            return True
-
-        # Teammitglied mit Edit-Recht
-        membership = db.execute(
-            "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
-            (task_id, user["id"]),
-        ).fetchone()
-        return bool(membership and membership["can_edit"])
+    try:
+        return get_task_storage(task_id, user).can_write
+    except HTTPException:
+        return False
 
 
-def _get_task_nc_path(task_id: int) -> str | None:
-    """Nextcloud-Pfad fuer eine Aufgabe ermitteln."""
-    with db_query() as db:
-        task = db.execute(
-            "SELECT nextcloud_path FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
-        if not task or not task["nextcloud_path"]:
-            return None
-        return task["nextcloud_path"]
+def _storage_for_token(token_data: dict, *, write: bool = False):
+    if write and token_data["permissions"] != "edit":
+        raise HTTPException(status_code=403, detail="Keine Schreibrechte")
+    user = {"id": token_data["user_id"], "is_admin": token_data["is_admin"]}
+    return get_task_storage(token_data["task_id"], user, write=write)
 
 
 # ============================================================
@@ -375,16 +359,12 @@ async def wopi_check_file_info(file_id: str, access_token: str = Query(...)):
     if token_data["task_id"] != task_id or token_data["file_path"] != file_path:
         raise HTTPException(status_code=403, detail="Token passt nicht zur Datei")
 
-    nc_path = _get_task_nc_path(task_id)
-    if not nc_path:
-        raise HTTPException(status_code=404, detail="Kein Nextcloud-Verzeichnis zugeordnet")
-
-    full_path = f"{nc_path}/{file_path.strip('/')}"
+    storage = _storage_for_token(token_data)
     filename = file_path.rsplit("/", 1)[-1] if "/" in file_path else file_path
 
     # Dateigroesse und Hash ermitteln
     try:
-        content, content_type = await asyncio.to_thread(webdav.get_file, full_path)
+        content, content_type = await asyncio.to_thread(storage.get_file, file_path)
         file_size = len(content)
         sha256_hash = hashlib.sha256(content).digest()
         sha256_b64 = base64.b64encode(sha256_hash).decode()
@@ -396,7 +376,7 @@ async def wopi_check_file_info(file_id: str, access_token: str = Query(...)):
 
     user_friendly_name = get_display_name(token_data)
 
-    can_write = token_data["permissions"] == "edit"
+    can_write = token_data["permissions"] == "edit" and storage.can_write
 
     return {
         "BaseFileName": filename,
@@ -426,14 +406,10 @@ async def wopi_get_file(file_id: str, access_token: str = Query(...)):
     if token_data["task_id"] != task_id or token_data["file_path"] != file_path:
         raise HTTPException(status_code=403, detail="Token passt nicht zur Datei")
 
-    nc_path = _get_task_nc_path(task_id)
-    if not nc_path:
-        raise HTTPException(status_code=404, detail="Kein Nextcloud-Verzeichnis zugeordnet")
-
-    full_path = f"{nc_path}/{file_path.strip('/')}"
+    storage = _storage_for_token(token_data)
 
     try:
-        content, content_type = await asyncio.to_thread(webdav.get_file, full_path)
+        content, content_type = await asyncio.to_thread(storage.get_file, file_path)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
     except Exception as e:
@@ -445,7 +421,7 @@ async def wopi_get_file(file_id: str, access_token: str = Query(...)):
 
 @wopi_router.post("/api/wopi/files/{file_id}/contents")
 async def wopi_put_file(file_id: str, request: Request, access_token: str = Query(...)):
-    """WOPI PutFile - Geaenderten Inhalt via WebDAV zurueckschreiben."""
+    """WOPI PutFile - Geaenderten Inhalt in die zugeordnete Ablage zurueckschreiben."""
     token_data = _validate_wopi_token(access_token)
     if not token_data:
         raise HTTPException(status_code=401, detail="Ungueltiger oder abgelaufener Token")
@@ -461,21 +437,19 @@ async def wopi_put_file(file_id: str, request: Request, access_token: str = Quer
     if token_data["task_id"] != task_id or token_data["file_path"] != file_path:
         raise HTTPException(status_code=403, detail="Token passt nicht zur Datei")
 
-    nc_path = _get_task_nc_path(task_id)
-    if not nc_path:
-        raise HTTPException(status_code=404, detail="Kein Nextcloud-Verzeichnis zugeordnet")
-
-    full_path = f"{nc_path}/{file_path.strip('/')}"
+    storage = _storage_for_token(token_data, write=True)
 
     # Dateiinhalt aus Request-Body lesen
     content = await request.body()
 
     try:
-        await asyncio.to_thread(webdav.upload_file, full_path, content)
+        await asyncio.to_thread(storage.upload_file, file_path, content)
     except Exception as e:
         logger.exception("Fehler beim Speichern der Datei (WOPI PutFile)")
         raise HTTPException(status_code=500, detail="Datei konnte nicht gespeichert werden")
 
+    log_change({"id": token_data["user_id"], "username": token_data["username"]},
+               "task", task_id, "file_edit", {"path": file_path, "storage_type": storage.kind})
     return Response(status_code=200)
 
 
@@ -614,7 +588,7 @@ async def wopi_lock(file_id: str, request: Request, access_token: str = Query(..
 # ============================================================
 
 @wopi_router.post("/api/onlyoffice/callback")
-async def onlyoffice_callback(request: Request):
+async def onlyoffice_callback(request: Request, access_token: str = Query("")):
     """
     Callback von ONLYOFFICE nach Bearbeitungsende.
     Status 2 = Dokument bereit zum Speichern
@@ -670,35 +644,30 @@ async def onlyoffice_callback(request: Request):
         if not file_key:
             return {"error": 0}
 
-        # Download-URL kann von ONLYOFFICE-internem Netzwerk kommen
+        # An die freigegebene Datei und Ablage binden. Ein Ablagewechsel widerruft Tokens.
+        token_data = _validate_wopi_token(access_token)
+        if not token_data or token_data["permissions"] != "edit":
+            return {"error": 1}
+        try:
+            task_id, file_path = _decode_file_id(file_key.rsplit("_", 1)[0])
+            if token_data["task_id"] != task_id or token_data["file_path"] != file_path:
+                return {"error": 1}
+            storage = _storage_for_token(token_data, write=True)
+        except (ValueError, HTTPException):
+            return {"error": 1}
+
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), verify=config.get("verify", False)) as client:
                 resp = await client.get(download_url)
                 if resp.status_code != 200:
-                    logger.error(f"ONLYOFFICE Callback: Download fehlgeschlagen: {resp.status_code}")
                     return {"error": 1}
                 content = resp.content
-        except Exception as e:
-            logger.error(f"ONLYOFFICE Callback: Download-Fehler: {e}")
+            await asyncio.to_thread(storage.upload_file, file_path, content)
+            log_change({"id": token_data["user_id"], "username": token_data["username"]},
+                       "task", task_id, "file_edit", {"path": file_path, "storage_type": storage.kind})
+        except Exception:
+            logger.exception("ONLYOFFICE Callback: Speichern fehlgeschlagen")
             return {"error": 1}
-
-        # file_key Format: file_id_timestamp - extrahiere file_id
-        # Wir verwenden file_id direkt als key (ohne Timestamp)
-        try:
-            task_id, file_path = _decode_file_id(file_key.rsplit("_", 1)[0] if "_" in file_key else file_key)
-        except (ValueError, Exception):
-            logger.error(f"ONLYOFFICE Callback: Ungueltige file_key: {file_key}")
-            return {"error": 0}
-
-        nc_path = _get_task_nc_path(task_id)
-        if nc_path:
-            full_path = f"{nc_path}/{file_path.strip('/')}"
-            try:
-                await asyncio.to_thread(webdav.upload_file, full_path, content)
-                logger.info(f"ONLYOFFICE Callback: Datei gespeichert: {full_path}")
-            except Exception as e:
-                logger.error(f"ONLYOFFICE Callback: Speichern fehlgeschlagen: {e}")
-                return {"error": 1}
 
     return {"error": 0}
 
@@ -722,10 +691,9 @@ async def open_editor(
     if not oo_config:
         raise HTTPException(status_code=400, detail="ONLYOFFICE ist nicht konfiguriert")
 
-    # Nextcloud-Pfad pruefen
-    nc_path = _get_task_nc_path(task_id)
-    if not nc_path:
-        raise HTTPException(status_code=400, detail="Kein Nextcloud-Verzeichnis zugeordnet")
+    # Leserecht und Pfad auch fuer reine Ansichts-Tokens pruefen.
+    storage = get_task_storage(task_id, user)
+    path = safe_rel_path(path, allow_empty=False)
 
     # Dateiname und Extension pruefen
     filename = path.rsplit("/", 1)[-1] if "/" in path else path
@@ -736,7 +704,7 @@ async def open_editor(
     document_type = DOCUMENT_TYPE_MAP.get(ext, "word")
 
     # Bearbeitungsrechte pruefen
-    can_edit = _check_user_can_edit(task_id, user)
+    can_edit = storage.can_write
     permissions = "edit" if can_edit else "view"
 
     # WOPI-Token generieren
@@ -771,7 +739,7 @@ async def open_editor(
         "editorConfig": {
             "mode": "edit" if can_edit else "view",
             "lang": "de",
-            "callbackUrl": f"{wopi_base}/api/onlyoffice/callback",
+            "callbackUrl": f"{wopi_base}/api/onlyoffice/callback?access_token={token}",
             "user": {
                 "id": str(user["id"]),
                 "name": get_display_name(user),

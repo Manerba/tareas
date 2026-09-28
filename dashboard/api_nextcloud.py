@@ -1,23 +1,23 @@
 """
 Tareas - Nextcloud API-Router
-Admin-Konfiguration und Dateioperationen via WebDAV.
+Nextcloud-Konfiguration und Dateioperationen fuer lokale und WebDAV-Ablagen.
 """
 
 import asyncio
 import logging
-import posixpath
-from urllib.parse import unquote
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional
 
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.config_utils import get_masked_config, resolve_masked_password
 from dashboard.crypto_utils import decrypt
 from dashboard.auth import get_admin_user, get_current_user
 from dashboard import webdav
+from dashboard.audit_log import log_change
+from dashboard.file_storage import get_task_storage, safe_rel_path as _safe_rel_path, safe_filename as _safe_filename
 from dashboard.logging_config import get_security_logger
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB
 # ============================================================
 
 admin_router = APIRouter(prefix="/api/admin/nextcloud", tags=["nextcloud-admin"])
-files_router = APIRouter(tags=["nextcloud-files"])
+files_router = APIRouter(tags=["files"])
 
 
 # ============================================================
@@ -57,39 +57,6 @@ class MoveRequest(BaseModel):
 
 class MkdirRequest(BaseModel):
     name: str
-
-
-# ============================================================
-# Path-Traversal-Schutz
-# ============================================================
-
-def _safe_rel_path(user_path: str) -> str:
-    """
-    Validiert einen vom Client uebergebenen relativen Pfad.
-    Blockiert Path-Traversal-Versuche (z.B. ../../etc/passwd, %2e%2e).
-    Gibt den bereinigten Pfad zurueck oder wirft HTTPException 400.
-    """
-    # URL-Dekodierung (faengt %2e%2e, %2f etc. ab)
-    decoded = unquote(unquote(user_path))  # doppelt fuer doppelte Kodierung
-    # Normalisieren: loest ./ und ../ auf
-    normalized = posixpath.normpath(decoded)
-    # Nach normpath: ".." am Anfang oder absoluter Pfad = Traversal
-    if normalized.startswith("..") or normalized.startswith("/"):
-        raise HTTPException(status_code=400, detail="Ungueltiger Pfad: Verzeichniswechsel nicht erlaubt")
-    # normpath("") => "." -- zurueck zu leerem String
-    if normalized == ".":
-        return ""
-    return normalized
-
-
-def _safe_filename(name: str) -> str:
-    """
-    Validiert einen Datei-/Ordnernamen (einzelnes Segment, keine Pfadtrenner).
-    """
-    decoded = unquote(unquote(name))
-    if not decoded or "/" in decoded or "\\" in decoded or decoded in (".", ".."):
-        raise HTTPException(status_code=400, detail="Ungueltiger Dateiname")
-    return decoded
 
 
 # ============================================================
@@ -159,8 +126,9 @@ async def delete_nextcloud_config(user=Depends(get_admin_user)):
     """Nextcloud-Konfiguration loeschen."""
     with db_transaction() as db:
         db.execute("DELETE FROM nextcloud_config WHERE id = 1")
-        # nextcloud_path in allen tasks zuruecksetzen
-        db.execute("UPDATE tasks SET nextcloud_path = NULL WHERE nextcloud_path IS NOT NULL")
+        # Nur WebDAV-Zuordnungen entfernen; lokale Ablagen bleiben erhalten.
+        db.execute("DELETE FROM wopi_tokens WHERE task_id IN (SELECT id FROM tasks WHERE nextcloud_path IS NOT NULL AND COALESCE(file_storage_type, '') != 'local')")
+        db.execute("UPDATE tasks SET nextcloud_path = NULL, file_storage_type = NULL WHERE COALESCE(file_storage_type, '') != 'local'")
         security_log.info("CONFIG_CHANGED section=nextcloud_deleted by=%s", user["username"])
         return {"message": "Nextcloud-Konfiguration geloescht"}
 
@@ -206,78 +174,31 @@ async def get_nextcloud_status(user=Depends(get_current_user)):
 # ============================================================
 
 def _get_task_nextcloud_path(task_id: int, user: dict) -> str:
-    """
-    Nextcloud-Pfad fuer eine Aufgabe/Projekt ermitteln und Zugriff pruefen.
-    Gibt den relativen Pfad zum Verzeichnis zurueck.
-    """
-    with db_query() as db:
-        task = db.execute(
-            "SELECT id, task_type, nextcloud_path, created_by FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
+    """Kompatibilitaet fuer bestehende Aufrufer der WebDAV-Zugriffspruefung."""
+    storage = get_task_storage(task_id, user)
+    if storage.kind != "webdav":
+        raise HTTPException(status_code=400, detail="Kein Nextcloud-Verzeichnis zugeordnet")
+    return storage.base_path
 
-        if not task:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-        if not task["nextcloud_path"]:
-            raise HTTPException(status_code=400, detail="Kein Nextcloud-Verzeichnis zugeordnet")
 
-        # Zugriffspruefung: Admin, Ersteller, Legacy oder Teammitglied
-        is_creator = task["created_by"] == user["id"]
-        is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            membership = db.execute(
-                "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
-                (task_id, user["id"]),
-            ).fetchone()
-            if not membership or not membership["can_read"]:
-                raise HTTPException(status_code=403, detail="Kein Zugriff auf dieses Projekt")
-
-        return task["nextcloud_path"]
+async def _file_operation(operation, *args):
+    try:
+        return await asyncio.to_thread(operation, *args)
+    except (FileNotFoundError, NotADirectoryError):
+        raise HTTPException(status_code=404, detail="Datei oder Verzeichnis nicht gefunden")
+    except (FileExistsError, IsADirectoryError):
+        raise HTTPException(status_code=409, detail="Datei oder Verzeichnis existiert bereits")
+    except (OSError, RuntimeError):
+        logger.exception("Fehler beim Zugriff auf die Dateiablage")
+        raise HTTPException(status_code=500, detail="Dateioperation fehlgeschlagen")
 
 
 @files_router.get("/api/tasks/{task_id}/files")
-async def list_task_files(
-    task_id: int,
-    path: str = "",
-    user=Depends(get_current_user),
-):
-    """Verzeichnisinhalt eines Projekt-Verzeichnisses auflisten."""
-    nc_path = _get_task_nextcloud_path(task_id, user)
+async def list_task_files(task_id: int, path: str = "", user=Depends(get_current_user)):
+    storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path)
-
-    # Pfad zusammenbauen: nc_path + relativer Unterpfad
-    full_path = nc_path
-    if path:
-        full_path = f"{nc_path}/{path}"
-
-    try:
-        entries = await asyncio.to_thread(webdav.list_directory, full_path)
-
-        # Nextcloud-Config fuer Direktlinks
-        config = webdav._get_config()
-
-        items = []
-        for e in entries:
-            item = {
-                "name": e["name"],
-                "type": e["type"],
-                "size": e["size"],
-                "last_modified": e["last_modified"],
-                "mime_type": e["mime_type"],
-            }
-            if config and e.get("file_id"):
-                item["nextcloud_link"] = webdav.get_nextcloud_link(config, e["file_id"])
-            items.append(item)
-
-        # Sortierung: Ordner zuerst, dann alphabetisch
-        items.sort(key=lambda x: (0 if x["type"] == "directory" else 1, x["name"].lower()))
-
-        return {"items": items, "path": path}
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Verzeichnis nicht gefunden: {path}")
-    except RuntimeError as e:
-        logger.exception("Fehler beim Auflisten der Dateien")
-        raise HTTPException(status_code=500, detail=str(e))
+    items = await _file_operation(storage.list_directory, path)
+    return {"items": items, "path": path, "storage_type": storage.kind, "can_write": storage.can_write}
 
 
 @files_router.get("/api/tasks/{task_id}/files/download")
@@ -287,133 +208,68 @@ async def download_task_file(
     inline: bool = Query(False, description="Datei inline anzeigen statt herunterladen"),
     user=Depends(get_current_user),
 ):
-    """Datei aus dem Projektverzeichnis herunterladen oder inline anzeigen."""
-    nc_path = _get_task_nextcloud_path(task_id, user)
-    path = _safe_rel_path(path)
-    full_path = f"{nc_path}/{path}"
-
-    try:
-        content, content_type = await asyncio.to_thread(webdav.get_file, full_path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Datei nicht gefunden: {path}")
-    except RuntimeError as e:
-        logger.exception("Fehler beim Herunterladen der Datei")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    # Dateiname aus Pfad extrahieren
-    filename = path.rsplit("/", 1)[-1] if "/" in path else path
+    storage = get_task_storage(task_id, user)
+    path = _safe_rel_path(path, allow_empty=False)
+    content, content_type = await _file_operation(storage.get_file, path)
+    filename = path.rsplit("/", 1)[-1]
     disposition = "inline" if inline else "attachment"
-
-    return Response(
-        content=content,
-        media_type=content_type,
-        headers={
-            "Content-Disposition": f'{disposition}; filename="{filename}"',
-        },
-    )
+    return Response(content=content, media_type=content_type, headers={
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename, safe='')}",
+        "Content-Security-Policy": "sandbox",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 @files_router.post("/api/tasks/{task_id}/files/upload")
 async def upload_task_file(
-    task_id: int,
-    file: UploadFile = File(...),
+    task_id: int, file: UploadFile = File(...),
     path: str = Query("", description="Zielordner (relativ)"),
     user=Depends(get_current_user),
 ):
-    """Datei in das Projektverzeichnis hochladen."""
-    nc_path = _get_task_nextcloud_path(task_id, user)
+    storage = get_task_storage(task_id, user, write=True)
     path = _safe_rel_path(path)
-    filename = _safe_filename(file.filename)
-
-    # Ziel-Pfad zusammenbauen
-    target = nc_path
-    if path:
-        target = f"{nc_path}/{path}"
-    target = f"{target}/{filename}"
-
-    content = await file.read()
+    filename = _safe_filename(file.filename or "")
+    target = f"{path}/{filename}" if path else filename
+    content = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=413, detail="Datei zu gross (max. 500 MB)")
-    content_type = file.content_type or "application/octet-stream"
-
-    try:
-        await asyncio.to_thread(webdav.upload_file, target, content, content_type)
-    except RuntimeError as e:
-        logger.exception("Fehler beim Hochladen der Datei")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return {"message": f"Datei '{file.filename}' hochgeladen", "filename": file.filename}
+    await _file_operation(storage.upload_file, target, content, file.content_type or "application/octet-stream")
+    log_change(user, "task", task_id, "file_upload", {"path": target, "storage_type": storage.kind})
+    return {"message": f"Datei '{filename}' hochgeladen", "filename": filename}
 
 
 @files_router.post("/api/tasks/{task_id}/files/mkdir")
 async def create_task_directory(
-    task_id: int,
-    body: MkdirRequest,
+    task_id: int, body: MkdirRequest,
     path: str = Query("", description="Uebergeordneter Ordner (relativ)"),
     user=Depends(get_current_user),
 ):
-    """Neuen Ordner im Projektverzeichnis erstellen."""
-    nc_path = _get_task_nextcloud_path(task_id, user)
+    storage = get_task_storage(task_id, user, write=True)
     path = _safe_rel_path(path)
     dirname = _safe_filename(body.name)
-
-    target = nc_path
-    if path:
-        target = f"{nc_path}/{path}"
-    target = f"{target}/{dirname}"
-
-    try:
-        await asyncio.to_thread(webdav.create_directory, target)
-    except FileExistsError:
-        raise HTTPException(status_code=409, detail=f"Ordner existiert bereits: {body.name}")
-    except RuntimeError as e:
-        logger.exception("Fehler beim Erstellen des Ordners")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return {"message": f"Ordner '{body.name}' erstellt"}
+    target = f"{path}/{dirname}" if path else dirname
+    await _file_operation(storage.create_directory, target)
+    log_change(user, "task", task_id, "file_mkdir", {"path": target, "storage_type": storage.kind})
+    return {"message": f"Ordner '{dirname}' erstellt"}
 
 
 @files_router.delete("/api/tasks/{task_id}/files")
 async def delete_task_file(
-    task_id: int,
-    path: str = Query(..., description="Zu loeschender Pfad (relativ)"),
+    task_id: int, path: str = Query(..., description="Zu loeschender Pfad (relativ)"),
     user=Depends(get_current_user),
 ):
-    """Datei oder Ordner im Projektverzeichnis loeschen."""
-    nc_path = _get_task_nextcloud_path(task_id, user)
-    path = _safe_rel_path(path)
-    full_path = f"{nc_path}/{path}"
-
-    try:
-        await asyncio.to_thread(webdav.delete_item, full_path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Nicht gefunden: {path}")
-    except RuntimeError as e:
-        logger.exception("Fehler beim Loeschen")
-        raise HTTPException(status_code=500, detail=str(e))
-
+    storage = get_task_storage(task_id, user, write=True)
+    path = _safe_rel_path(path, allow_empty=False)
+    await _file_operation(storage.delete_item, path)
+    log_change(user, "task", task_id, "file_delete", {"path": path, "storage_type": storage.kind})
     return {"message": "Geloescht"}
 
 
 @files_router.put("/api/tasks/{task_id}/files/move")
-async def move_task_file(
-    task_id: int,
-    body: MoveRequest,
-    user=Depends(get_current_user),
-):
-    """Datei/Ordner im Projektverzeichnis verschieben oder umbenennen."""
-    nc_path = _get_task_nextcloud_path(task_id, user)
-    source = f"{nc_path}/{_safe_rel_path(body.source)}"
-    dest = f"{nc_path}/{_safe_rel_path(body.destination)}"
-
-    try:
-        await asyncio.to_thread(webdav.move_item, source, dest)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Quelle nicht gefunden: {body.source}")
-    except FileExistsError:
-        raise HTTPException(status_code=409, detail=f"Ziel existiert bereits: {body.destination}")
-    except RuntimeError as e:
-        logger.exception("Fehler beim Verschieben")
-        raise HTTPException(status_code=500, detail=str(e))
-
+async def move_task_file(task_id: int, body: MoveRequest, user=Depends(get_current_user)):
+    storage = get_task_storage(task_id, user, write=True)
+    source = _safe_rel_path(body.source, allow_empty=False)
+    destination = _safe_rel_path(body.destination, allow_empty=False)
+    await _file_operation(storage.move_item, source, destination)
+    log_change(user, "task", task_id, "file_move", {"source": source, "destination": destination, "storage_type": storage.kind})
     return {"message": "Verschoben"}

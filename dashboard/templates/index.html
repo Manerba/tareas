@@ -8,15 +8,16 @@
     <link rel="stylesheet" href="/static/css/expandable_table.css">
     <link rel="stylesheet" href="/static/css/kpi_grid.css">
     <link rel="stylesheet" href="/static/css/aufgaben.css">
+    <link rel="stylesheet" href="/static/css/task_settings.css">
     <link rel="stylesheet" href="/static/css/vis-network.min.css">
     <link rel="stylesheet" href="/static/css/file_browser.css">
     <link rel="stylesheet" href="/static/css/onlyoffice.css">
     <link rel="stylesheet" href="/static/css/markdown_editor.css">
 </head>
-<body>
+<body class="main-app">
     <!-- Header -->
     <header class="header">
-        <h1>Tareas</h1>
+        <h1><a class="header-home" href="/aufgaben">Tareas</a></h1>
         <div class="header-controls">
             <span class="header-username" id="headerUsername"></span>
             <div class="settings-dropdown-wrapper">
@@ -57,12 +58,7 @@
         </div>
     </header>
 
-    <!-- Tabs -->
-    <nav class="tabs main-tabs">
-        <a class="tab" href="/aufgaben" data-tab="aufgaben" data-i18n="nav.aufgaben">Aufgaben</a>
-    </nav>
-
-    <!-- Filter Bar (fuer zukuenftige Tabs) -->
+    <!-- Filter Bar -->
     <div class="filter-bar" id="filterBar" style="display: none;"></div>
 
     <!-- Content Container -->
@@ -85,5 +81,6 @@
     <script src="/static/js/file_browser.js"></script>
     <script src="/static/js/onlyoffice_editor.js"></script>
     <script src="/static/js/tab_aufgaben.js"></script>
+    <script src="/static/js/task_settings.js"></script>
 </body>
 </html>

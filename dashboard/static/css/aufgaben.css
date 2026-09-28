@@ -2,6 +2,31 @@
    Aufgaben Tab - Styles
    ======================================== */
 
+/* Ohne oberen Innenabstand sitzt der Tabellenkopf von Anfang an an seiner Sticky-Position. */
+.main-app > .container:has(> #aufgabenTableContainer):not(:has(.project-focus.expanded)) {
+    padding-top: 0;
+}
+
+.main-app #aufgabenTableContainer > .table-header {
+    top: var(--task-table-header-top, calc(var(--header-height) + var(--filter-bar-height)));
+}
+
+/* Projektansicht: Beim Zuklappen oder Neuladen erscheint die Liste wieder. */
+.table-header:has(+ .table-body > .project-focus.expanded),
+.table-body:has(> .project-focus.expanded) > .table-row-wrapper:not(.project-focus.expanded) {
+    display: none;
+}
+
+/* Scrollraum ausserhalb des Projektrahmens, solange Teilaufgaben zugeklappt werden. */
+.table-body:has(> .project-focus.expanded) {
+    min-height: var(--project-scroll-min-height, 0px);
+}
+
+.main-app:has(#aufgabenTableContainer > .table-body > .project-focus.expanded) > .filter-bar {
+    /* Der Router setzt die Sichtbarkeit der Filterleiste als Inline-Style. */
+    display: none !important;
+}
+
 /* ----------------------------------------
    Control Bar
    ---------------------------------------- */
@@ -537,6 +562,35 @@
 .subtask-detail-row > td {
     padding: 0;
     border-bottom: 1px solid var(--border-color);
+}
+
+.subtask-detail-reveal {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 240ms ease, opacity 240ms ease;
+}
+
+.subtask-detail-row.open .subtask-detail-reveal {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+
+.subtask-detail-clip {
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.subtask-detail-row.no-transition .subtask-detail-reveal {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .subtask-detail-reveal,
+    .subtask-expand-icon {
+        transition: none;
+    }
 }
 
 .subtask-detail-content {

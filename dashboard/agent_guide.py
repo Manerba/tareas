@@ -123,9 +123,11 @@ def build_agent_metadata(request: Request | None = None) -> dict[str, Any]:
             "note.write is an upsert for the current user's one editable note and overwrites that note on repeated calls.",
             "Admins can correct existing content with note.update and handoff.update; author and creation time are preserved.",
             "note.delete removes only the current user's editable note.",
+            "Project assignees can read notes and handoffs on all subtasks and write their own, without individual subtask assignments. For subtasks, task_id is the project ID and subtask_id is the subtask ID.",
             "handoff.add creates a separate history item; handoff.delete removes a handoff by handoff_id.",
             "handoff_id is typed, e.g. task:123 or subtask:456; never pass a bare numeric entry id.",
             "Treat predecessor_ids as dependency edges; position_number is display order only.",
+            "Dependencies must stay within one project, without cycles or redundant direct edges. If C depends on B and B on A, C must not also depend directly on A.",
         ],
     }
 
@@ -163,10 +165,22 @@ Arbeitsregeln:
   wiederholte Aufrufe ueberschreiben diese Notiz.
 - `note.list` liest editierbare User-Notizen; `note.delete` loescht nur die
   eine aktuelle Notiz des aufrufenden Users.
+- Eine Projektzuweisung erlaubt Lesen der Notizen/Handoffs aller Teilaufgaben
+  und Schreiben eigener Beitraege, ohne Einzelzuweisung. Dabei ist `task_id`
+  die Projekt-ID und `subtask_id` die Teilaufgaben-ID.
 - `predecessor_ids` sind echte DAG-Abhaengigkeiten zwischen Sprintpaketen.
+- Nur notwendige direkte Vorgaenger im selben Projekt angeben. Wenn C von B
+  und B von A abhaengt, darf C nicht zusaetzlich direkt von A abhaengen.
+  Das gilt auch, wenn eine neue Verbindung eine vorhandene direkte Kante
+  ueberfluessig machen wuerde. Vorgaengerlisten bei Bedarf komplett ersetzen.
 - Positionsaenderungen sind nur Sortierung/Anzeige; sie aendern keine
   Abhaengigkeitsgueltigkeit.
-- `assign_self` nutzen, wenn eine Session konkrete Bearbeitung uebernimmt.
+- REST, MCP und Dateiablage pruefen dieselben Aufgabenrechte. Lesefreigaben
+  erlauben nur Lesen, Schreibfreigaben auch Inhalte und eigene Beitraege.
+  Projektfreigaben gelten fuer alle Teilaufgaben, Erstellen braucht ein eigenes Recht.
+- Zuweisungen, Loeschen und Freigaben verwalten nur Ersteller und Admins.
+  Das gilt auch fuer `assign_self`. Bei fremden Aufgaben muss der Ersteller
+  oder ein Admin die Session zuweisen oder freigeben.
 - Gitea-Issues enthalten konkrete Findings/Bugs; Tareas enthaelt
   Zusammenfassung und Issue-IDs/Links.
 - Keine Secrets, Tokens, Passwoerter oder privaten Schluessel in Tareas-Notizen,

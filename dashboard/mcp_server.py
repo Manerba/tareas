@@ -24,6 +24,8 @@ from dashboard.audit_log import log_change, diff_fields
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.task_types import normalize_task_type
 from dashboard.note_service import update_note_as_admin
+from dashboard.permissions import require_task_access, require_subtask_access, task_visibility_sql
+from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,13 @@ def _user() -> dict:
     if not u:
         raise ToolError("MCP-User-Kontext fehlt (Bearer-Token nicht akzeptiert?)")
     return u
+
+
+def _change_dependencies(operation, *args, **kwargs):
+    try:
+        return operation(*args, **kwargs)
+    except HTTPException as exc:
+        raise ToolError(exc.detail) from exc
 
 
 # ============================================================
@@ -146,17 +155,16 @@ def get_agent_guide() -> dict:
 @mcp.tool
 def list_projects(status: str | None = None) -> list[dict]:
     """Listet alle Projekte (Top-Level-Aufgaben). Statusfilter: offen, in_arbeit, erledigt, abgebrochen."""
+    user = _user()
     with db_query() as db:
-        if status:
-            rows = db.execute(
-                "SELECT * FROM tasks WHERE status = ? ORDER BY priority DESC, created_at DESC",
-                (status,),
-            ).fetchall()
-        else:
-            rows = db.execute(
-                "SELECT * FROM tasks ORDER BY priority DESC, created_at DESC"
-            ).fetchall()
-        return [_task_to_dict(r) for r in rows]
+        visibility, params = task_visibility_sql(user)
+        status_sql = " AND t.status = ?" if status else ""
+        rows = db.execute(
+            "SELECT t.* FROM tasks t WHERE " + visibility + status_sql + " ORDER BY t.priority DESC, t.created_at DESC",
+            [*params, *([status] if status else [])],
+        ).fetchall()
+        return [_task_to_dict(row) for row in rows]
+
 
 
 @mcp.tool
@@ -166,6 +174,7 @@ def get_project(project_id: int) -> dict:
         task = db.execute("SELECT * FROM tasks WHERE id = ?", (project_id,)).fetchone()
         if not task:
             raise ToolError(f"Projekt {project_id} nicht gefunden")
+        _require_task_read_access(db, project_id, _user())
         subs = db.execute(
             "SELECT * FROM sub_tasks WHERE project_id = ? ORDER BY position_number ASC, id ASC",
             (project_id,),
@@ -241,6 +250,11 @@ def update_project(
         before = db.execute("SELECT * FROM tasks WHERE id = ?", (project_id,)).fetchone()
         if not before:
             raise ToolError(f"Projekt {project_id} nicht gefunden")
+        _, rights = _access(require_task_access, db, project_id, user, "edit_status")
+        if assigned_to is not None and not rights["can_manage"]:
+            raise ToolError("Nur Ersteller und Admins duerfen Zuweisungen aendern")
+        if not rights["can_edit"] and any(v is not None for v in (name, description, deadline, priority)):
+            raise ToolError("Nur Statusaenderungen sind erlaubt")
         updates, values = [], []
         new_vals = {}
         if name is not None:
@@ -274,6 +288,7 @@ def delete_project(project_id: int) -> dict:
     """Loescht ein Projekt inkl. aller Subtasks (CASCADE)."""
     user = _user()
     with db_transaction() as db:
+        _access(require_task_access, db, project_id, user, "manage")
         row = db.execute("SELECT id, name FROM tasks WHERE id = ?", (project_id,)).fetchone()
         if not row:
             raise ToolError(f"Projekt {project_id} nicht gefunden")
@@ -290,6 +305,12 @@ def delete_project(project_id: int) -> dict:
 def list_subtasks(project_id: int) -> list[dict]:
     """Listet alle Teilaufgaben eines Projekts inkl. predecessor_ids."""
     with db_query() as db:
+        user = _user()
+        _, rights = _access(require_task_access, db, project_id, user, None)
+        if not rights["can_read"] and not db.execute(
+            "SELECT 1 FROM sub_tasks WHERE project_id = ? AND assigned_to = ?", (project_id, user["id"]),
+        ).fetchone():
+            raise ToolError("Keine Leseberechtigung")
         if not db.execute("SELECT id FROM tasks WHERE id = ?", (project_id,)).fetchone():
             raise ToolError(f"Projekt {project_id} nicht gefunden")
         subs = db.execute(
@@ -306,6 +327,8 @@ def list_subtasks(project_id: int) -> list[dict]:
             dep_map.setdefault(d["sub_task_id"], []).append(d["depends_on_id"])
         result = []
         for s in subs:
+            if not _can_read_subtask(db, project_id, s["id"], _user()):
+                continue
             st = _subtask_to_dict(s)
             st["predecessor_ids"] = dep_map.get(s["id"], [])
             result.append(st)
@@ -316,6 +339,7 @@ def list_subtasks(project_id: int) -> list[dict]:
 def get_subtask(subtask_id: int) -> dict:
     """Holt eine einzelne Teilaufgabe inkl. predecessor_ids."""
     with db_query() as db:
+        _access(require_subtask_access, db, subtask_id, _user())
         row = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
         if not row:
             raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
@@ -341,12 +365,18 @@ def create_subtask(
     assigned_to: int | None = None,
     depends_on_project: bool = False,
 ) -> dict:
-    """Legt eine Teilaufgabe an. predecessor_ids = Liste der Vorgaenger-Subtask-IDs."""
+    """Legt eine Teilaufgabe an. Vorgaenger muessen zum Projekt gehoeren.
+    Keine Zyklen oder transitiv redundanten Abhaengigkeiten."""
     user = _user()
     if not name.strip():
         raise ToolError("name darf nicht leer sein")
-    predecessor_ids = predecessor_ids or []
+    predecessor_ids = list(predecessor_ids or [])
+    if depends_on_project and 0 not in predecessor_ids:
+        predecessor_ids.append(0)
     with db_transaction() as db:
+        _, rights = _access(require_task_access, db, project_id, user, "create")
+        if assigned_to not in (None, user["id"]) and not rights["can_manage"]:
+            raise ToolError("Nur Ersteller und Admins duerfen Zuweisungen aendern")
         if not db.execute("SELECT id FROM tasks WHERE id = ?", (project_id,)).fetchone():
             raise ToolError(f"Projekt {project_id} nicht gefunden")
         # naechste position_number ermitteln
@@ -364,13 +394,7 @@ def create_subtask(
              next_pos, user["id"], assigned, 1 if depends_on_project else 0),
         )
         subtask_id = cursor.lastrowid
-        for pid in predecessor_ids:
-            if pid == 0:
-                continue
-            db.execute(
-                "INSERT OR IGNORE INTO sub_task_dependencies (sub_task_id, depends_on_id) VALUES (?, ?)",
-                (subtask_id, pid),
-            )
+        _change_dependencies(set_subtask_predecessors, db, subtask_id, predecessor_ids)
         row = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
     log_change(user, "sub_task", subtask_id, "create", {
         "project_id": project_id, "name": name, "description": description,
@@ -395,12 +419,18 @@ def update_subtask(
     predecessor_ids: list[int] | None = None,
 ) -> dict:
     """Aktualisiert eine Teilaufgabe. Nur uebergebene Felder werden geaendert.
-    predecessor_ids ersetzt KOMPLETT die bestehenden Vorgaenger."""
+    predecessor_ids ersetzt KOMPLETT die bestehenden Vorgaenger.
+    Keine Zyklen oder transitiv redundanten Abhaengigkeiten, auch nicht an anderen Teilaufgaben."""
     user = _user()
     with db_transaction() as db:
         before = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
         if not before:
             raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+        _, rights = _access(require_subtask_access, db, subtask_id, user, "edit")
+        if assigned_to is not None and not rights["can_manage"]:
+            raise ToolError("Nur Ersteller und Admins duerfen Zuweisungen aendern")
+        if predecessor_ids is not None:
+            _access(require_task_access, db, before["project_id"], user, "structure")
         updates, values = [], []
         new_vals: dict = {}
         if name is not None:
@@ -425,19 +455,7 @@ def update_subtask(
             values.append(subtask_id)
             db.execute(f"UPDATE sub_tasks SET {', '.join(updates)} WHERE id = ?", values)
         if predecessor_ids is not None:
-            db.execute("DELETE FROM sub_task_dependencies WHERE sub_task_id = ?", (subtask_id,))
-            has_project_dep = 0 in predecessor_ids
-            db.execute(
-                "UPDATE sub_tasks SET depends_on_project = ? WHERE id = ?",
-                (1 if has_project_dep else 0, subtask_id),
-            )
-            for pid in predecessor_ids:
-                if pid == 0:
-                    continue
-                db.execute(
-                    "INSERT OR IGNORE INTO sub_task_dependencies (sub_task_id, depends_on_id) VALUES (?, ?)",
-                    (subtask_id, pid),
-                )
+            _change_dependencies(set_subtask_predecessors, db, subtask_id, predecessor_ids)
             new_vals["predecessor_ids"] = predecessor_ids
         after = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
         preds = db.execute(
@@ -456,6 +474,7 @@ def delete_subtask(subtask_id: int) -> dict:
     """Loescht eine Teilaufgabe."""
     user = _user()
     with db_transaction() as db:
+        _access(require_subtask_access, db, subtask_id, user, "manage")
         row = db.execute("SELECT id, name, project_id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
         if not row:
             raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
@@ -476,6 +495,8 @@ def move_subtask(subtask_id: int, direction: str) -> dict:
         raise ToolError("direction muss 'up' oder 'down' sein")
 
     with db_transaction() as db:
+        subtask, _ = _access(require_subtask_access, db, subtask_id, user)
+        _access(require_task_access, db, subtask["project_id"], user, "structure")
         current = db.execute(
             "SELECT id, project_id, position_number FROM sub_tasks WHERE id = ?",
             (subtask_id,),
@@ -539,6 +560,8 @@ def set_subtask_position(subtask_id: int, position_number: int) -> dict:
         raise ToolError("position_number muss groesser oder gleich 1 sein")
 
     with db_transaction() as db:
+        subtask, _ = _access(require_subtask_access, db, subtask_id, user)
+        _access(require_task_access, db, subtask["project_id"], user, "structure")
         current = db.execute(
             "SELECT id, project_id, position_number FROM sub_tasks WHERE id = ?",
             (subtask_id,),
@@ -589,23 +612,13 @@ def set_subtask_position(subtask_id: int, position_number: int) -> dict:
 @mcp.tool
 def add_dependency(subtask_id: int, depends_on_id: int) -> dict:
     """Fuegt eine Abhaengigkeit hinzu: subtask_id wartet auf depends_on_id.
-    depends_on_id=0 bedeutet 'haengt vom Projektknoten ab'."""
+    depends_on_id=0 bedeutet 'haengt vom Projektknoten ab'.
+    Zyklen und transitiv redundante Verbindungen werden abgewiesen."""
     user = _user()
     with db_transaction() as db:
-        if not db.execute("SELECT id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone():
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
-        if depends_on_id == 0:
-            db.execute(
-                "UPDATE sub_tasks SET depends_on_project = 1 WHERE id = ?",
-                (subtask_id,),
-            )
-        else:
-            if not db.execute("SELECT id FROM sub_tasks WHERE id = ?", (depends_on_id,)).fetchone():
-                raise ToolError(f"Vorgaenger {depends_on_id} nicht gefunden")
-            db.execute(
-                "INSERT OR IGNORE INTO sub_task_dependencies (sub_task_id, depends_on_id) VALUES (?, ?)",
-                (subtask_id, depends_on_id),
-            )
+        subtask, _ = _access(require_subtask_access, db, subtask_id, user)
+        _access(require_task_access, db, subtask["project_id"], user, "structure")
+        _change_dependencies(add_subtask_dependency, db, subtask_id, depends_on_id, allow_existing=True)
     log_change(user, "dependency", subtask_id, "create", {"depends_on_id": depends_on_id})
     return {"added": True, "subtask_id": subtask_id, "depends_on_id": depends_on_id}
 
@@ -615,6 +628,8 @@ def remove_dependency(subtask_id: int, depends_on_id: int) -> dict:
     """Entfernt eine Abhaengigkeit. depends_on_id=0 entfernt die Abhaengigkeit vom Projektknoten."""
     user = _user()
     with db_transaction() as db:
+        subtask, _ = _access(require_subtask_access, db, subtask_id, user)
+        _access(require_task_access, db, subtask["project_id"], user, "structure")
         if depends_on_id == 0:
             db.execute(
                 "UPDATE sub_tasks SET depends_on_project = 0 WHERE id = ?",
@@ -633,116 +648,52 @@ def remove_dependency(subtask_id: int, depends_on_id: int) -> dict:
 # Notes und Handoffs
 # ============================================================
 
-def _task_readable(db, task, user: dict) -> bool:
-    if user.get("is_admin"):
-        return True
-    if task["created_by"] is None:
-        return True
-    if task["created_by"] == user["id"] or task["assigned_to"] == user["id"]:
-        return True
+def _access(operation, *args, **kwargs):
+    try:
+        return operation(*args, **kwargs)
+    except HTTPException as exc:
+        raise ToolError(exc.detail) from exc
 
-    membership = db.execute(
-        "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
-        (task["id"], user["id"]),
-    ).fetchone()
-    return bool(membership and membership["can_read"])
+
+def _task_readable(db, task, user: dict) -> bool:
+    return require_task_access(db, task["id"], user, None)[1]["can_read"]
 
 
 def _require_task_read_access(db, task_id: int, user: dict):
-    row = db.execute(
-        "SELECT id, created_by, assigned_to FROM tasks WHERE id = ?",
-        (task_id,),
-    ).fetchone()
-    if not row:
-        raise ToolError(f"Aufgabe/Projekt {task_id} nicht gefunden")
-    if not _task_readable(db, row, user):
-        raise ToolError(f"Keine Leseberechtigung fuer Aufgabe/Projekt {task_id}")
-    return row
+    return _access(require_task_access, db, task_id, user)[0]
 
 
 def _can_read_task(db, task_id: int, user: dict) -> bool:
-    row = db.execute(
-        "SELECT id, created_by, assigned_to FROM tasks WHERE id = ?",
-        (task_id,),
-    ).fetchone()
-    return bool(row and _task_readable(db, row, user))
+    try:
+        return require_task_access(db, task_id, user, None)[1]["can_read"]
+    except HTTPException:
+        return False
 
 
 def _subtask_readable(db, row, user: dict) -> bool:
-    if user.get("is_admin"):
-        return True
-    if row["task_created_by"] is None:
-        return True
-    if row["task_created_by"] == user["id"] or row["subtask_assigned_to"] == user["id"]:
-        return True
-
-    membership = db.execute(
-        "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
-        (row["project_id"], user["id"]),
-    ).fetchone()
-    return bool(membership and membership["can_read"])
+    sid = row["subtask_id"] if "subtask_id" in row.keys() else row["id"]
+    return _can_read_subtask(db, row["project_id"], sid, user)
 
 
 def _require_subtask_read_access(db, task_id: int, subtask_id: int, user: dict):
-    row = db.execute(
-        """SELECT st.id, st.project_id, st.assigned_to AS subtask_assigned_to,
-                  t.created_by AS task_created_by
-           FROM sub_tasks st
-           JOIN tasks t ON t.id = st.project_id
-           WHERE st.id = ? AND st.project_id = ?""",
-        (subtask_id, task_id),
-    ).fetchone()
-    if not row:
-        raise ToolError(f"Teilaufgabe {subtask_id} gehoert nicht zu Projekt {task_id}")
-    if not _subtask_readable(db, row, user):
-        raise ToolError(f"Keine Leseberechtigung fuer Teilaufgabe {subtask_id}")
-    return row
+    return _access(require_subtask_access, db, subtask_id, user, task_id=task_id)[0]
 
 
 def _can_read_subtask(db, task_id: int, subtask_id: int, user: dict) -> bool:
-    row = db.execute(
-        """SELECT st.id, st.project_id, st.assigned_to AS subtask_assigned_to,
-                  t.created_by AS task_created_by
-           FROM sub_tasks st
-           JOIN tasks t ON t.id = st.project_id
-           WHERE st.id = ? AND st.project_id = ?""",
-        (subtask_id, task_id),
-    ).fetchone()
-    return bool(row and _subtask_readable(db, row, user))
+    try:
+        return require_subtask_access(db, subtask_id, user, None, task_id=task_id)[1]["can_read"]
+    except HTTPException:
+        return False
 
 
 def _task_visibility_sql(task_alias: str, user: dict) -> tuple[str, list[int]]:
-    if user.get("is_admin"):
-        return "1 = 1", []
-    return (
-        f"({task_alias}.created_by IS NULL "
-        f"OR {task_alias}.created_by = ? "
-        f"OR {task_alias}.assigned_to = ? "
-        f"OR EXISTS ("
-        f"SELECT 1 FROM project_members pm "
-        f"WHERE pm.project_id = {task_alias}.id "
-        f"AND pm.user_id = ? "
-        f"AND pm.can_read = 1"
-        f"))",
-        [user["id"], user["id"], user["id"]],
-    )
+    assert task_alias == "t"
+    return task_visibility_sql(user)
 
 
 def _subtask_visibility_sql(task_alias: str, subtask_alias: str, user: dict) -> tuple[str, list[int]]:
-    if user.get("is_admin"):
-        return "1 = 1", []
-    return (
-        f"({task_alias}.created_by IS NULL "
-        f"OR {task_alias}.created_by = ? "
-        f"OR {subtask_alias}.assigned_to = ? "
-        f"OR EXISTS ("
-        f"SELECT 1 FROM project_members pm "
-        f"WHERE pm.project_id = {subtask_alias}.project_id "
-        f"AND pm.user_id = ? "
-        f"AND pm.can_read = 1"
-        f"))",
-        [user["id"], user["id"], user["id"]],
-    )
+    assert (task_alias, subtask_alias) == ("t", "st")
+    return task_visibility_sql(user, subtask=True)
 
 
 def _make_handoff_id(scope: str, local_id: int) -> str:
@@ -821,7 +772,7 @@ def note_write(task_id: int, content: str, subtask_id: int | None = None) -> dic
     user = _user()
     with db_transaction() as db:
         if subtask_id is not None:
-            _require_subtask_read_access(db, task_id, subtask_id, user)
+            _access(require_subtask_access, db, subtask_id, user, "contribute", task_id=task_id)
             db.execute(
                 """INSERT INTO sub_task_notes (sub_task_id, user_id, content, updated_at)
                    VALUES (?, ?, ?, datetime('now'))
@@ -832,7 +783,7 @@ def note_write(task_id: int, content: str, subtask_id: int | None = None) -> dic
             entity_id = subtask_id
             entity_type = "sub_task_note"
         else:
-            _require_task_read_access(db, task_id, user)
+            _access(require_task_access, db, task_id, user, "contribute")
             db.execute(
                 """INSERT INTO task_notes (task_id, user_id, content, updated_at)
                    VALUES (?, ?, ?, datetime('now'))
@@ -864,7 +815,7 @@ def note_delete(task_id: int, subtask_id: int | None = None) -> dict:
     user = _user()
     with db_transaction() as db:
         if subtask_id is not None:
-            _require_subtask_read_access(db, task_id, subtask_id, user)
+            _access(require_subtask_access, db, subtask_id, user, "contribute", task_id=task_id)
             existing = db.execute(
                 "SELECT id, content FROM sub_task_notes WHERE sub_task_id = ? AND user_id = ?",
                 (subtask_id, user["id"]),
@@ -878,7 +829,7 @@ def note_delete(task_id: int, subtask_id: int | None = None) -> dict:
             entity_id = subtask_id
             entity_type = "sub_task_note"
         else:
-            _require_task_read_access(db, task_id, user)
+            _access(require_task_access, db, task_id, user, "contribute")
             existing = db.execute(
                 "SELECT id, content FROM task_notes WHERE task_id = ? AND user_id = ?",
                 (task_id, user["id"]),
@@ -964,7 +915,7 @@ def handoff_add(task_id: int, content: str, subtask_id: int | None = None) -> di
 
     with db_transaction() as db:
         if subtask_id is not None:
-            _require_subtask_read_access(db, task_id, subtask_id, user)
+            _access(require_subtask_access, db, subtask_id, user, "contribute", task_id=task_id)
             cursor = db.execute(
                 """INSERT INTO sub_task_note_entries (sub_task_id, user_id, content)
                    VALUES (?, ?, ?)""",
@@ -974,7 +925,7 @@ def handoff_add(task_id: int, content: str, subtask_id: int | None = None) -> di
             entity_type = "sub_task_handoff"
             scope = "subtask"
         else:
-            _require_task_read_access(db, task_id, user)
+            _access(require_task_access, db, task_id, user, "contribute")
             cursor = db.execute(
                 """INSERT INTO task_note_entries (task_id, user_id, content)
                    VALUES (?, ?, ?)""",
@@ -1048,7 +999,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
                               st.id AS subtask_id,
                               st.project_id,
                               st.assigned_to AS subtask_assigned_to,
-                              t.created_by AS task_created_by
+                              t.created_by AS task_created_by, t.assigned_to AS task_assigned_to
                        FROM sub_task_note_entries sne
                        JOIN sub_tasks st ON st.id = sne.sub_task_id
                        JOIN tasks t ON t.id = st.project_id
@@ -1071,6 +1022,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
 
             if not existing:
                 return {"deleted": False, "handoff_id": handoff_id, "task_id": task_id, "subtask_id": subtask_id}
+            _access(require_subtask_access, db, subtask_id, user, "contribute", task_id=task_id)
             if existing["user_id"] != user["id"] and not user.get("is_admin"):
                 raise ToolError("Nur eigene Handoffs koennen geloescht werden")
             db.execute(
@@ -1082,7 +1034,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
         else:
             if subtask_id is not None:
                 raise ToolError("task-Handoff darf nicht mit subtask_id geloescht werden")
-            _require_task_read_access(db, task_id, user)
+            _access(require_task_access, db, task_id, user, "contribute")
             existing = db.execute(
                 "SELECT id, user_id, content FROM task_note_entries WHERE id = ? AND task_id = ?",
                 (local_id, task_id),
@@ -1265,11 +1217,13 @@ def assign_self(task_id: int | None = None, subtask_id: int | None = None) -> di
         raise ToolError("task_id oder subtask_id erforderlich")
     with db_transaction() as db:
         if subtask_id is not None:
+            _access(require_subtask_access, db, subtask_id, user, "manage", task_id=task_id)
             if not db.execute("SELECT id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone():
                 raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
             db.execute("UPDATE sub_tasks SET assigned_to = ? WHERE id = ?", (user["id"], subtask_id))
             entity_type, entity_id = "sub_task", subtask_id
         else:
+            _access(require_task_access, db, task_id, user, "manage")
             if not db.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone():
                 raise ToolError(f"Projekt {task_id} nicht gefunden")
             db.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (user["id"], task_id))

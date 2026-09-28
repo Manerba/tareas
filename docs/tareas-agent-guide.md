@@ -138,10 +138,18 @@ Arbeitsregeln:
   wiederholte Aufrufe ueberschreiben diese Notiz.
 - `note.list` liest editierbare User-Notizen; `note.delete` loescht nur die
   eine aktuelle Notiz des aufrufenden Users.
+- Eine Projektzuweisung erlaubt Lesen der Notizen/Handoffs aller Teilaufgaben
+  und Schreiben eigener Beitraege, ohne Einzelzuweisung. Dabei ist `task_id`
+  die Projekt-ID und `subtask_id` die Teilaufgaben-ID.
 - `predecessor_ids` sind echte DAG-Abhaengigkeiten zwischen Sprintpaketen.
 - Positionsaenderungen sind nur Sortierung/Anzeige; sie aendern keine
   Abhaengigkeitsgueltigkeit.
-- `assign_self` nutzen, wenn eine Session konkrete Bearbeitung uebernimmt.
+- REST, MCP und Dateiablage pruefen dieselben Aufgabenrechte. Lesefreigaben
+  erlauben nur Lesen, Schreibfreigaben auch Inhalte und eigene Beitraege.
+  Projektfreigaben gelten fuer alle Teilaufgaben, Erstellen braucht ein eigenes Recht.
+- Zuweisungen, Loeschen und Freigaben verwalten nur Ersteller und Admins.
+  Das gilt auch fuer `assign_self`. Bei fremden Aufgaben muss der Ersteller
+  oder ein Admin die Session zuweisen oder freigeben.
 - Gitea-Issues enthalten konkrete Findings/Bugs; Tareas enthaelt
   Zusammenfassung und Issue-IDs/Links.
 - Keine Secrets, Tokens, Passwoerter oder privaten Schluessel in Tareas-Notizen,

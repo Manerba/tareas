@@ -284,6 +284,32 @@ body {
     font-weight: 500;
 }
 
+.main-app {
+    --header-height: 44px;
+}
+
+.main-app .header {
+    padding: 6px 20px;
+}
+
+.main-app .header h1 {
+    font-size: 18px;
+}
+
+.header-home {
+    color: inherit;
+    text-decoration: none;
+}
+
+.header-home:hover {
+    text-decoration: underline;
+}
+
+.header-home:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+}
+
 .header-controls {
     display: flex;
     align-items: center;
@@ -322,6 +348,13 @@ body {
 .settings-btn:hover {
     background-color: rgba(255,255,255,0.1);
     transform: rotate(30deg);
+}
+
+.main-app .settings-btn {
+    width: 30px;
+    height: 30px;
+    border-width: 1px;
+    font-size: 16px;
 }
 
 .settings-dropdown {
@@ -519,6 +552,10 @@ a.tab {
     position: sticky;
     top: calc(var(--header-height) + 44px);
     z-index: 90;
+}
+
+.main-app .filter-bar {
+    top: var(--header-height);
 }
 
 .filter-group {

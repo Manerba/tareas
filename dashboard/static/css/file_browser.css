@@ -3,13 +3,17 @@
    Baumansicht, Icon-Grid, Breadcrumb, Upload, Context-Menu
    ============================================================ */
 
-/* --- Zwei-Spalten Layout im Projekt-Detail --- */
+/* --- Beschreibung mit optionaler Dateiablage im Projekt-Detail --- */
 .project-detail-columns {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     margin-top: 12px;
-    height: 360px;
+    height: var(--project-detail-height, 360px);
+}
+
+.project-detail-columns.has-file-storage {
+    grid-template-columns: minmax(0, var(--project-description-width, 1fr)) 16px minmax(0, var(--project-files-width, 1fr));
 }
 
 .project-detail-columns .project-detail-left {
@@ -50,6 +54,11 @@
     min-height: 0;
     overflow-y: auto;
 }
+.project-detail-left .description-readonly {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+}
 
 /* Dateiablage fuellt rechte Spalte */
 .project-detail-right > div {
@@ -72,32 +81,57 @@
     overflow-y: auto;
 }
 
-/* --- Resize Handle --- */
+/* --- Ziehgriffe fuer Hoehe und Spaltenbreite --- */
 .project-detail-resize {
-    height: 8px;
+    height: 12px;
     cursor: ns-resize;
-    position: relative;
+}
+.project-detail-split {
+    cursor: ew-resize;
+}
+.project-detail-resize,
+.project-detail-split {
+    touch-action: none;
+    user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
 }
-.project-detail-resize::after {
+.project-detail-resize::after,
+.project-detail-split::after {
     content: '';
-    width: 40px;
-    height: 4px;
     background: var(--border-color, #ddd);
     border-radius: 2px;
 }
-.project-detail-resize:hover::after {
+.project-detail-resize::after {
+    width: 40px;
+    height: 4px;
+}
+.project-detail-split::after {
+    width: 4px;
+    height: 40px;
+}
+.project-detail-resize:hover::after,
+.project-detail-split:hover::after,
+.project-detail-split:focus-visible::after {
     background: var(--accent-primary, #3498db);
+}
+.project-detail-split:focus-visible {
+    outline: 2px solid var(--accent-primary, #3498db);
+    outline-offset: -2px;
+}
+.project-detail-right .fb-header {
+    flex-wrap: wrap;
 }
 
 @media (max-width: 900px) {
-    .project-detail-columns {
-        grid-template-columns: 1fr;
-        height: auto;
+    .project-detail-columns.has-file-storage {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+        row-gap: 12px;
+        height: var(--project-detail-height, 600px);
     }
-    .project-detail-resize {
+    .project-detail-split {
         display: none;
     }
 }
@@ -520,6 +554,27 @@
 }
 
 /* --- Projektverzeichnis-Dialog --- */
+.file-storage-help {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 12px 0;
+}
+
+.fb-action-btn[hidden],
+#localStorageSave[hidden],
+#webdavStorageBrowser[hidden] {
+    display: none;
+}
+
+button.nc-bc-item,
+button.nc-dir-name {
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
 .nc-browse-breadcrumb {
     display: flex;
     align-items: center;

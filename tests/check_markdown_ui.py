@@ -65,7 +65,7 @@ def main():
         translations = json.loads((ROOT / 'dashboard/static/i18n/en.json').read_text())
         page.evaluate('(translations) => window.t = key => translations[key] || key', translations)
         for name in ['expandable_table.js', 'wysiwyg_editor.js', 'app_core.js',
-                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'tab_aufgaben.js']:
+                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'tab_aufgaben.js', 'task_settings.js']:
             page.add_script_tag(content=(ROOT / 'dashboard/static/js' / name).read_text())
         for name in ['style.css', 'expandable_table.css', 'aufgaben.css', 'file_browser.css', 'markdown_editor.css']:
             page.add_style_tag(content=(ROOT / 'dashboard/static/css' / name).read_text())
@@ -75,13 +75,15 @@ def main():
             cachedAreas = [];
             cachedUsers = [{id: 1, vorname: 'Admin', nachname: ''}, {id: 3, vorname: 'Assignee', nachname: ''}];
             aufgabenTable = new ExpandableTable({id: 'mdTest', expandable: true,
-                gridTemplate: '30px 330px 60px 130px 90px 150px 160px', columns: [
+                gridTemplate: '30px 280px 60px 110px 80px 130px 140px 76px', columns: [
                     {field: 'name', align: 'left'}, {field: 'id', align: 'left'},
-                    {field: 'status'}, {field: 'priority'}, {field: 'assigned_to_name'}, {field: 'deadline'}
+                    {field: 'status'}, {field: 'priority'}, {field: 'assigned_to_name'}, {field: 'deadline'},
+                    {field: '_actions', renderer: 'deleteAction'}
                 ], detailFields: []}, 'table', {
                     onRowExpanded: onTaskRowExpanded,
                     onRowCollapsed: deactivateInlineEditing,
                 });
+            aufgabenTable.renderers.deleteAction = renderDeleteAction;
             aufgabenTable.filteredData = [task];
             tables.mdTest = aufgabenTable;
             document.getElementById('table').innerHTML = aufgabenTable.renderRow(task, 0);
@@ -154,7 +156,7 @@ def main():
             for field in ('Name', 'Status', 'Priority', 'Assigned', 'Deadline'):
                 expect(page.locator(f'#inline{field}_1')).to_be_enabled()
             expect(editor.locator('[data-md-action="edit"]')).to_be_visible()
-            expect(page.locator('.team-btn')).to_be_visible()
+            expect(page.locator('.row-settings-btn')).to_be_visible()
         with page.expect_response(lambda r: r.url.endswith('/api/tasks/1') and r.request.method == 'PUT'):
             page.locator('#inlineName_1').fill('Admin renamed project')
             page.locator('#inlineName_1').press('Tab')

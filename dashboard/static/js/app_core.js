@@ -79,6 +79,7 @@ const tabDOMCache = {};
 document.addEventListener('DOMContentLoaded', function() {
     initTheme();
     initEventListeners();
+    initTaskTableHeaderOffset();
 
     // Admin-Mode Guard: Tabs nur in der Haupt-App initialisieren
     if (!document.body.dataset.adminMode) {
@@ -86,6 +87,23 @@ document.addEventListener('DOMContentLoaded', function() {
         initTabs();
     }
 });
+
+function initTaskTableHeaderOffset() {
+    if (!document.body.classList.contains('main-app')) return;
+    const header = document.querySelector('.header');
+    const filterBar = document.getElementById('filterBar');
+    if (!header || !filterBar) return;
+
+    // Filter koennen umbrechen oder in der Projektansicht ausgeblendet sein.
+    const updateOffset = () => {
+        const height = header.getBoundingClientRect().height + filterBar.getBoundingClientRect().height;
+        document.body.style.setProperty('--task-table-header-top', `${height}px`);
+    };
+    const observer = new ResizeObserver(updateOffset);
+    observer.observe(header);
+    observer.observe(filterBar);
+    updateOffset();
+}
 
 function initEventListeners() {
     // Settings-Button
@@ -134,6 +152,14 @@ function initEventListeners() {
         schemeToggle.addEventListener('click', toggleColorSchemeMenu);
         buildColorSchemeMenu();
     }
+
+    // Der Titel fuehrt zurueck zur Aufgabenliste; neue Tabs bleiben per Modifier moeglich.
+    document.querySelector('.header-home')?.addEventListener('click', (e) => {
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        navigateTo('aufgaben');
+        window.scrollTo(0, 0);
+    });
 
     // Tabs
     document.querySelectorAll('.tab').forEach(tab => {

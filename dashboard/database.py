@@ -292,6 +292,9 @@ def _initialize_db(conn: sqlite3.Connection):
     task_cols2 = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
     if "nextcloud_path" not in task_cols2:
         conn.execute("ALTER TABLE tasks ADD COLUMN nextcloud_path TEXT")
+    if "file_storage_type" not in task_cols2:
+        conn.execute("ALTER TABLE tasks ADD COLUMN file_storage_type TEXT")
+        conn.execute("UPDATE tasks SET file_storage_type = 'webdav' WHERE nextcloud_path IS NOT NULL AND nextcloud_path != ''")
 
     # App-Config Tabelle
     conn.executescript("""

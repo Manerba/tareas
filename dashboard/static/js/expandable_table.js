@@ -465,6 +465,13 @@ class ExpandableTable {
             let aVal = a[this.sortColumn];
             let bVal = b[this.sortColumn];
 
+            // Pseudozeilen zugewiesener Teilaufgaben haben intern negative IDs.
+            // Sortieren nach derselben positiven ID, die die Spalte anzeigt.
+            if (col?.renderer === 'taskId') {
+                aVal = a._type === 'assigned_subtask' ? a._subtask_id : aVal;
+                bVal = b._type === 'assigned_subtask' ? b._subtask_id : bVal;
+            }
+
             // Spezielle Sortierung für bestimmte Renderer
             if (col?.renderer === 'icon' && col?.rendererOptions?.type === 'stance') {
                 const order = {'bullish': 1, 'bearish': 2, 'neutral': 3, 'unclear': 4, 'none': 5};
@@ -543,6 +550,7 @@ class ExpandableTable {
                 html += this.renderPagination();
             }
             container.innerHTML = html;
+            this.options.onRendered?.();
             return;
         }
 
@@ -566,6 +574,7 @@ class ExpandableTable {
         }
 
         container.innerHTML = html;
+        this.options.onRendered?.();
     }
 
     renderHeader() {
@@ -818,8 +827,20 @@ class ExpandableTable {
                 if (this.options.onRowCollapsed) {
                     this.options.onRowCollapsed(rowId, wrapper);
                 }
+                let targetTop = rowTop;
+                if (wrapper.classList.contains('project-focus')) {
+                    // Filter und Tabellenkopf sind jetzt wieder sichtbar. Ihre Hoehen
+                    // direkt messen; der ResizeObserver aktualisiert den Sticky-Abstand erst spaeter.
+                    const header = document.querySelector('.main-app > .header');
+                    const filterBar = document.getElementById('filterBar');
+                    const tableHeader = document.getElementById(this.containerId)?.querySelector(':scope > .table-header');
+                    const visibleTop = [header, filterBar, tableHeader].reduce(
+                        (height, element) => height + (element?.getBoundingClientRect().height || 0), 0,
+                    );
+                    targetTop = Math.max(rowTop, visibleTop + 4);
+                }
                 const newRowTop = wrapper.getBoundingClientRect().top;
-                window.scrollBy(0, newRowTop - rowTop);
+                window.scrollTo({ top: window.scrollY + newRowTop - targetTop, left: window.scrollX, behavior: 'instant' });
             }
         }
     }

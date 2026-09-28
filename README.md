@@ -7,9 +7,9 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 - **Task & Project Management** - Create tasks, organize them into projects with subtasks, dependencies, and deadlines
 - **Cancellation** - Keep cancelled tasks and projects with their content, filter by status, and resume them when needed
 - **Interactive Network Diagram** - Visualize project dependencies as an interactive graph (vis-network)
-- **Team Collaboration** - Assign tasks, manage team permissions (read/edit/create), notes system. Admins can edit all projects, tasks, notes and handoffs regardless of ownership.
+- **Sharing & Permissions** - Creators and administrators share tasks and projects through Settings → Permissions. Read or edit access is separate from assignment; projects also offer permission to create subtasks. Changes are saved together or discarded with Cancel. Admins can edit all projects, tasks, notes and handoffs regardless of ownership.
 - **Markdown Descriptions & Notes** - Formatted reading view with source editing, lists, tables, and code blocks
-- **File Storage** - Nextcloud/WebDAV integration with tree view, drag & drop upload, context menus
+- **File Storage** - Dedicated local storage per task/project or a Nextcloud/WebDAV directory, with tree view, drag & drop upload and context menus
 - **ONLYOFFICE Integration** - Edit Office documents (docx, xlsx, pptx) directly in the browser via WOPI
 - **LDAP/Active Directory** - Authenticate users against AD, automatic sync, group-based access
 - **Email Notifications** - SMTP integration with configurable templates for assignments, status changes, deadlines
@@ -88,6 +88,50 @@ All configuration is managed through the **Admin Panel** at `http://localhost:85
 | TLS | TLS | HTTPS certificate paths |
 | MCP | MCP | Server status, API tokens, audit log, global kill switch |
 
+### Project view
+
+The task list defaults to descending ID order. The **Tareas** link in the compact
+header returns to the task list. The column headings stay visible below the
+header and filter bar while scrolling, including when the filters wrap onto
+multiple lines.
+
+Expanding a project shows its row and details while hiding the other list rows
+and the main table header and filter bar. Collapsing it restores the list and
+filter bar with the current filters and sort order. The subtask table header
+stays visible within the project.
+
+Dependencies must belong to the same project and cannot form cycles or redundant
+direct links. If C depends on B and B depends on A, C only needs B as a direct
+predecessor. This is enforced in the UI, REST API and MCP tools, including when
+a new indirect path would make an existing direct link redundant. Replace the
+predecessor list or remove the redundant link before adding the new connection.
+
+### File storage
+
+Open a task or project and choose **Dateiablage**. Select **Lokale Dateiablage**
+to create its own directory on the Tareas server, or **WebDAV-Verzeichnis** to
+select an existing directory from the configured Nextcloud share. Local storage
+works without a Nextcloud configuration. Both options support the file browser
+and ONLYOFFICE editing when ONLYOFFICE is configured.
+
+Local files are stored in `data/files/task-<ID>/` relative to the installation
+directory (`/opt/tareas/data/files/` for the Debian package). Directory names stay
+stable when tasks are renamed. Files are served through authenticated APIs using
+the task/project permissions. Include `data/files/` along with the database in
+backups; this directory is excluded from Git and fits the existing systemd write
+permissions.
+
+Use the configuration button in the file browser header to change or remove its
+storage. Removing local storage requires confirmation and deletes that task's
+directory, including all files and subfolders. Removing a WebDAV assignment keeps
+the remote directory and its contents.
+
+Switching storage keeps files in their original location. Reassigning local
+storage reuses that task's directory if it still exists. Deleting a task retains
+its local directory on disk for manual recovery or cleanup; the deleted task's
+files are no longer accessible through the API. Switching storage requires
+reopening active Office editors.
+
 ### MCP Server
 
 Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents and remote coding assistants. The server is mounted in the main app on port `8504` and uses Streamable HTTP via FastMCP.
@@ -96,6 +140,7 @@ Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents an
 - MCP tokens are created in the Admin Panel under **MCP** and are shown only once.
 - Tokens are stored as SHA-256 hashes; revoked tokens stop working immediately.
 - Every token is mapped to its own `mcp` user in the database.
+- Assigning a project to a user grants access to notes and handoffs on all its subtasks, including writing their own notes and handoffs. Individual subtask assignments are not required for this access.
 - Write operations are recorded in the audit log and can be reviewed in the Admin Panel. Admin-only `note.update` and `handoff.update` correct existing content while preserving its author and creation time.
 - Available tools cover projects, subtasks, dependencies, editable notes (`note.*`), handoffs/progress history (`handoff.*`), users, areas, search, self-assignment, and `whoami`.
 

@@ -4,9 +4,8 @@ Tareas - API-Router fuer Aufgaben, Teilaufgaben und Bereiche.
 
 import asyncio
 import logging
-from collections import defaultdict
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
@@ -19,6 +18,9 @@ from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
 from dashboard.mail_service import notify_event
 from dashboard.note_service import update_note_as_admin
+from dashboard.permissions import require_task_access, require_subtask_access, task_permissions, subtask_permissions, task_visibility_sql
+from dashboard.file_storage import ensure_local_directory, remove_local_directory, safe_rel_path, storage_type
+from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,7 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     assigned_to: Optional[int] = None
     nextcloud_path: Optional[str] = None
+    file_storage_type: Optional[Literal["local", "webdav", "none"]] = None
 
 
 class SubTaskCreate(BaseModel):
@@ -168,59 +171,11 @@ def _parse_date_input(date_str: Optional[str]) -> Optional[str]:
 
 
 def _require_task_read_access(db, task_id: int, user: dict):
-    """Prueft Leserechte fuer eine Aufgabe/ein Projekt und liefert die Zeile."""
-    task = db.execute(
-        "SELECT id, created_by, assigned_to FROM tasks WHERE id = ?",
-        (task_id,),
-    ).fetchone()
-    if not task:
-        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-    if user.get("is_admin"):
-        return task
-    if task["created_by"] is None:
-        return task
-    if task["created_by"] == user["id"] or task["assigned_to"] == user["id"]:
-        return task
-
-    membership = db.execute(
-        "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
-        (task_id, user["id"]),
-    ).fetchone()
-    if membership and membership["can_read"]:
-        return task
-
-    raise HTTPException(status_code=403, detail="Keine Leseberechtigung")
+    return require_task_access(db, task_id, user)[0]
 
 
 def _require_subtask_read_access(db, task_id: int, subtask_id: int, user: dict):
-    """Prueft Leserechte fuer eine Teilaufgabe und liefert die Zeile."""
-    row = db.execute(
-        """SELECT st.id, st.project_id, st.assigned_to AS subtask_assigned_to,
-                  t.created_by AS task_created_by
-           FROM sub_tasks st
-           JOIN tasks t ON t.id = st.project_id
-           WHERE st.id = ? AND st.project_id = ?""",
-        (subtask_id, task_id),
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
-
-    if user.get("is_admin"):
-        return row
-    if row["task_created_by"] is None:
-        return row
-    if row["task_created_by"] == user["id"] or row["subtask_assigned_to"] == user["id"]:
-        return row
-
-    membership = db.execute(
-        "SELECT can_read FROM project_members WHERE project_id = ? AND user_id = ?",
-        (task_id, user["id"]),
-    ).fetchone()
-    if membership and membership["can_read"]:
-        return row
-
-    raise HTTPException(status_code=403, detail="Keine Leseberechtigung")
+    return require_subtask_access(db, subtask_id, user, task_id=task_id)[0]
 
 
 async def _send_assignment_mail(user_id, task_name, actor_name, deadline, priority):
@@ -260,42 +215,23 @@ async def _send_status_mail(user_id, task_name, actor_name, new_status):
 async def get_tasks(user=Depends(get_current_user)):
     """Aufgaben abrufen (eigene/zugewiesene/Team-Mitglied + Altdaten ohne created_by).
     Admins sehen alle Aufgaben - inkl. MCP-erstellter Projekte (Kategorie 'mcp')."""
-    is_admin = bool(user.get("is_admin"))
     with db_query() as db:
-        if is_admin:
-            rows = db.execute(
-                """SELECT t.*,
-                          uc.vorname || ' ' || uc.nachname AS created_by_name,
-                          uc.auth_source AS created_by_auth_source,
-                          ua.vorname || ' ' || ua.nachname AS assigned_to_name,
-                          pm.id AS is_team_member, pm.can_edit AS team_can_edit,
-                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
-                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
-                   FROM tasks t
-                   LEFT JOIN users uc ON t.created_by = uc.id
-                   LEFT JOIN users ua ON t.assigned_to = ua.id
-                   LEFT JOIN project_members pm ON pm.project_id = t.id AND pm.user_id = ?
-                   ORDER BY t.priority ASC, t.created_at DESC""",
-                (user["id"],),
-            ).fetchall()
-        else:
-            rows = db.execute(
-                """SELECT t.*,
-                          uc.vorname || ' ' || uc.nachname AS created_by_name,
-                          uc.auth_source AS created_by_auth_source,
-                          ua.vorname || ' ' || ua.nachname AS assigned_to_name,
-                          pm.id AS is_team_member, pm.can_edit AS team_can_edit,
-                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
-                          (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
-                   FROM tasks t
-                   LEFT JOIN users uc ON t.created_by = uc.id
-                   LEFT JOIN users ua ON t.assigned_to = ua.id
-                   LEFT JOIN project_members pm ON pm.project_id = t.id AND pm.user_id = ?
-                   WHERE t.created_by = ? OR t.assigned_to = ? OR t.created_by IS NULL
-                      OR t.id IN (SELECT project_id FROM project_members WHERE user_id = ? AND can_read = 1)
-                   ORDER BY t.priority ASC, t.created_at DESC""",
-                (user["id"], user["id"], user["id"], user["id"]),
-            ).fetchall()
+        visibility, params = task_visibility_sql(user)
+        rows = db.execute(
+            """SELECT t.*,
+                      uc.vorname || ' ' || uc.nachname AS created_by_name,
+                      uc.auth_source AS created_by_auth_source,
+                      ua.vorname || ' ' || ua.nachname AS assigned_to_name,
+                      pm.id AS is_team_member,
+                      (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id) AS subtask_total,
+                      (SELECT COUNT(*) FROM sub_tasks st WHERE st.project_id = t.id AND st.status_percent >= 100) AS subtask_done
+               FROM tasks t
+               LEFT JOIN users uc ON t.created_by = uc.id
+               LEFT JOIN users ua ON t.assigned_to = ua.id
+               LEFT JOIN project_members pm ON pm.project_id = t.id AND pm.user_id = ?
+               WHERE """ + visibility + " ORDER BY t.priority ASC, t.created_at DESC",
+            [user["id"], *params],
+        ).fetchall()
 
         items = []
         for row in rows:
@@ -322,6 +258,7 @@ async def get_tasks(user=Depends(get_current_user)):
             else:
                 category = "eigene"
 
+            rights = task_permissions(db, row, user)
             items.append({
                 "id": row["id"],
                 "_type": "task",
@@ -339,11 +276,10 @@ async def get_tasks(user=Depends(get_current_user)):
                 "created_by_name": (row["created_by_name"] or "").strip(),
                 "assigned_to_name": (row["assigned_to_name"] or "").strip(),
                 "is_team_member": bool(row["is_team_member"]),
-                "can_edit_status": (
-                    bool(user.get("is_admin")) or created_by is None or created_by == user["id"]
-                    or assigned_to == user["id"] or bool(row["team_can_edit"])
-                ),
+                "permissions": rights,
+                "can_edit_status": rights["can_edit_status"],
                 "nextcloud_path": row["nextcloud_path"] or "",
+                "file_storage_type": storage_type(row),
                 "subtask_total": row["subtask_total"] or 0,
                 "subtask_done": row["subtask_done"] or 0,
             })
@@ -391,6 +327,7 @@ async def get_tasks(user=Depends(get_current_user)):
                 "assigned_to": st["assigned_to"],
                 "created_by_name": (st["created_by_name"] or "").strip(),
                 "assigned_to_name": (st["assigned_to_name"] or "").strip(),
+                "permissions": require_subtask_access(db, st["id"], user, None)[1],
                 "is_team_member": False,
             })
 
@@ -420,37 +357,22 @@ async def create_task(task: TaskCreate, user=Depends(get_current_user)):
     return {"id": new_id, "message": "Aufgabe erstellt"}
 
 
-@router.put("/api/tasks/{task_id}")
-async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_user)):
-    """Aufgabe aktualisieren."""
+def _update_task_record(task_id: int, task: TaskUpdate, user: dict):
+    """DB- und lokale Dateioperationen zusammen in einem Worker ausfuehren."""
     with db_transaction() as db:
-        existing = db.execute(
-            "SELECT id, created_by, assigned_to FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-        # Berechtigung pruefen
-        is_creator = existing["created_by"] == user["id"]
-        is_legacy = existing["created_by"] is None
-        is_assignee = existing["assigned_to"] == user["id"]
-        has_team_edit = False
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            membership = db.execute(
-                "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
-                (task_id, user["id"]),
-            ).fetchone()
-            has_team_edit = bool(membership and membership["can_edit"])
-
-        # MCP-Assignees haben volle Edit-Rechte (im Gegensatz zu menschlichen Assignees)
-        mcp_assignee_full = (user.get("auth_source") == "mcp") and is_assignee
-        can_full_edit = bool(user.get("is_admin")) or is_creator or is_legacy or has_team_edit or mcp_assignee_full
-        if not can_full_edit and not is_assignee:
-            raise HTTPException(status_code=403, detail="Keine Berechtigung zum Bearbeiten")
+        # Die Ablage darf waehrend einer lokalen Loeschung nicht parallel wechseln.
+        db.execute("BEGIN IMMEDIATE")
+        existing, rights = require_task_access(db, task_id, user, "edit_status")
+        can_full_edit = rights["can_edit"]
+        if task.assigned_to is not None and not rights["can_manage"]:
+            raise HTTPException(status_code=403, detail="Nur Ersteller und Admins duerfen Zuweisungen aendern")
+        if not can_full_edit and (task.file_storage_type is not None or task.nextcloud_path is not None):
+            raise HTTPException(status_code=403, detail="Keine Berechtigung zum Aendern der Dateiablage")
 
         updates = []
         values = []
         changes_diff: dict = {}
+        remove_local = False
 
         # Zugewiesene duerfen nur Status aendern
         if can_full_edit:
@@ -487,14 +409,27 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
                     updates.append("assigned_to = ?")
                     values.append(task.assigned_to)
                     changes_diff["assigned_to"] = task.assigned_to
-            if task.nextcloud_path is not None:
-                if task.nextcloud_path == "":
-                    updates.append("nextcloud_path = NULL")
-                    changes_diff["nextcloud_path"] = None
-                else:
-                    updates.append("nextcloud_path = ?")
-                    values.append(task.nextcloud_path)
-                    changes_diff["nextcloud_path"] = task.nextcloud_path
+            if task.file_storage_type is not None or task.nextcloud_path is not None:
+                kind = task.file_storage_type or ("webdav" if task.nextcloud_path else "none")
+                nc_path = None
+                if kind == "webdav":
+                    nc_path = safe_rel_path(task.nextcloud_path if task.nextcloud_path is not None
+                                            else existing["nextcloud_path"] or "", allow_empty=False)
+                elif task.nextcloud_path:
+                    raise HTTPException(status_code=400, detail="WebDAV-Pfad passt nicht zur gewaehlten Ablageart")
+                if kind == "local":
+                    try:
+                        ensure_local_directory(task_id)
+                    except OSError:
+                        logger.exception("Lokale Dateiablage konnte nicht angelegt werden")
+                        raise HTTPException(status_code=500, detail="Lokale Dateiablage konnte nicht angelegt werden")
+                remove_local = kind == "none" and storage_type(existing) == "local"
+                updates.extend(["file_storage_type = ?", "nextcloud_path = ?"])
+                values.extend([kind if kind != "none" else None, nc_path])
+                changes_diff.update(file_storage_type=kind, nextcloud_path=nc_path)
+                if kind != storage_type(existing) or nc_path != existing["nextcloud_path"]:
+                    # Offene Editoren duerfen nach einem Wechsel nicht in die neue Ablage schreiben.
+                    db.execute("DELETE FROM wopi_tokens WHERE task_id = ?", (task_id,))
 
         # Status darf auch der Zugewiesene aendern
         if task.status is not None:
@@ -509,9 +444,26 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
                 values,
             )
 
-        # Mail-Benachrichtigungen (non-blocking)
-        actor_name = get_display_name(user)
         task_row = db.execute("SELECT name, deadline, priority, assigned_to, status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+
+        if remove_local:
+            try:
+                # Erst nach erfolgreicher SQL-Validierung loeschen. Bei einem
+                # Dateisystemfehler bleibt die Zuordnung durch Rollback bestehen.
+                remove_local_directory(task_id)
+            except OSError:
+                logger.exception("Lokale Dateiablage konnte nicht geloescht werden")
+                raise HTTPException(status_code=500, detail="Lokale Dateiablage konnte nicht geloescht werden")
+            changes_diff["local_directory_deleted"] = True
+
+    return existing, task_row, changes_diff
+
+
+@router.put("/api/tasks/{task_id}")
+async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_user)):
+    """Aufgabe aktualisieren."""
+    existing, task_row, changes_diff = await asyncio.to_thread(_update_task_record, task_id, task, user)
+    actor_name = get_display_name(user)
 
     # Mail-Versand ausserhalb der Transaktion (non-blocking)
     if task_row:
@@ -540,15 +492,7 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
 async def delete_task(task_id: int, user=Depends(get_current_user)):
     """Aufgabe loeschen (inkl. SubTasks durch CASCADE)."""
     with db_transaction() as db:
-        existing = db.execute("SELECT id, name, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-        # Nur Ersteller, Legacy oder Admin duerfen loeschen
-        is_creator = existing["created_by"] == user["id"]
-        is_legacy = existing["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            raise HTTPException(status_code=403, detail="Keine Berechtigung zum Loeschen")
+        existing, _ = require_task_access(db, task_id, user, "manage")
 
         task_name = existing["name"]
         db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
@@ -564,24 +508,11 @@ async def delete_task(task_id: int, user=Depends(get_current_user)):
 async def get_subtasks(task_id: int, user=Depends(get_current_user)):
     """Teilaufgaben eines Projekts abrufen (mit Berechtigungsfilter)."""
     with db_query() as db:
-        # Projekt pruefen
-        task = db.execute(
-            "SELECT id, created_by, netzplan_project_x, netzplan_project_y FROM tasks WHERE id = ?", (task_id,)
-        ).fetchone()
-        if not task:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-        is_creator = task["created_by"] == user["id"]
-        is_legacy = task["created_by"] is None
-        is_admin = bool(user.get("is_admin"))
-
-        # Teammitgliedschaft pruefen
-        membership = None
-        if not is_creator and not is_legacy and not is_admin:
-            membership = db.execute(
-                "SELECT can_read, can_edit, can_create FROM project_members WHERE project_id = ? AND user_id = ?",
-                (task_id, user["id"]),
-            ).fetchone()
+        task, task_rights = require_task_access(db, task_id, user, None)
+        if not task_rights["can_read"] and not db.execute(
+            "SELECT 1 FROM sub_tasks WHERE project_id = ? AND assigned_to = ?", (task_id, user["id"]),
+        ).fetchone():
+            raise HTTPException(status_code=403, detail="Keine Leseberechtigung")
 
         rows = db.execute(
             """SELECT st.*, a.name as area_name,
@@ -613,24 +544,10 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
 
         items = []
         for row in rows:
-            # Effektive Berechtigungen berechnen
-            if is_admin or is_creator or is_legacy:
-                permissions = {"can_read": True, "can_edit": True, "can_create": True}
-            elif membership:
-                permissions = {
-                    "can_read": bool(membership["can_read"]),
-                    "can_edit": bool(membership["can_edit"]),
-                    "can_create": bool(membership["can_create"]),
-                }
-                if not permissions["can_read"]:
-                    continue
-            else:
-                # Kein Zugriff (weder Ersteller, Legacy, noch Teammitglied)
-                # Zugewiesene sehen nur ihre zugewiesene Subtask
-                if row["assigned_to"] == user["id"]:
-                    permissions = {"can_read": True, "can_edit": True, "can_create": False}
-                else:
-                    continue
+            rights = subtask_permissions(task, task_rights, row, user)
+            if not rights["can_read"]:
+                continue
+            permissions = {key: rights[key] for key in ("can_read", "can_edit", "can_create")}
 
             pred_ids = deps.get(row["id"], [])
             if row["depends_on_project"]:
@@ -664,6 +581,7 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
         return {
             "items": items,
             "total": len(items),
+            "permissions": task_rights,
             "netzplan_project_x": task["netzplan_project_x"],
             "netzplan_project_y": task["netzplan_project_y"],
         }
@@ -673,20 +591,7 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
 async def create_subtask(task_id: int, subtask: SubTaskCreate, user=Depends(get_current_user)):
     """Teilaufgabe anlegen."""
     with db_transaction() as db:
-        existing = db.execute("SELECT id, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-        # Berechtigung pruefen: Admin, Ersteller, Legacy oder Teammitglied mit can_create
-        is_creator = existing["created_by"] == user["id"]
-        is_legacy = existing["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            membership = db.execute(
-                "SELECT can_create FROM project_members WHERE project_id = ? AND user_id = ?",
-                (task_id, user["id"]),
-            ).fetchone()
-            if not membership or not membership["can_create"]:
-                raise HTTPException(status_code=403, detail="Keine Berechtigung zum Erstellen von Teilaufgaben")
+        require_task_access(db, task_id, user, "create")
 
         # Naechste position_number ermitteln
         row = db.execute(
@@ -703,12 +608,7 @@ async def create_subtask(task_id: int, subtask: SubTaskCreate, user=Depends(get_
         )
         new_id = cursor.lastrowid
 
-        # Vorgaenger eintragen
-        for pred_id in subtask.predecessor_ids:
-            db.execute(
-                "INSERT OR IGNORE INTO sub_task_dependencies (sub_task_id, depends_on_id) VALUES (?, ?)",
-                (new_id, pred_id),
-            )
+        set_subtask_predecessors(db, new_id, subtask.predecessor_ids)
 
     log_change(user, "sub_task", new_id, "create", {
         "project_id": task_id, "name": subtask.name, "priority": subtask.priority,
@@ -721,28 +621,11 @@ async def create_subtask(task_id: int, subtask: SubTaskCreate, user=Depends(get_
 async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(get_current_user)):
     """Teilaufgabe aktualisieren."""
     with db_transaction() as db:
-        existing = db.execute(
-            "SELECT id, project_id FROM sub_tasks WHERE id = ?", (subtask_id,)
-        ).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
-
-        # Berechtigung pruefen
-        task = db.execute(
-            "SELECT created_by FROM tasks WHERE id = ?", (existing["project_id"],)
-        ).fetchone()
-        is_creator = task and task["created_by"] == user["id"]
-        is_legacy = task and task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            membership = db.execute(
-                "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
-                (existing["project_id"], user["id"]),
-            ).fetchone()
-            if not membership or not membership["can_edit"]:
-                # Zugewiesene duerfen ihre Subtask bearbeiten
-                st_row = db.execute("SELECT assigned_to FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
-                if not st_row or st_row["assigned_to"] != user["id"]:
-                    raise HTTPException(status_code=403, detail="Keine Berechtigung zum Bearbeiten")
+        existing, rights = require_subtask_access(db, subtask_id, user, "edit")
+        if subtask.assigned_to is not None and not rights["can_manage"]:
+            raise HTTPException(status_code=403, detail="Nur Ersteller und Admins duerfen Zuweisungen aendern")
+        if subtask.position_number is not None or subtask.predecessor_ids is not None:
+            require_task_access(db, existing["project_id"], user, "structure")
 
         updates = []
         values = []
@@ -793,22 +676,7 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
 
         # Vorgaenger aktualisieren (komplett ersetzen)
         if subtask.predecessor_ids is not None:
-            db.execute(
-                "DELETE FROM sub_task_dependencies WHERE sub_task_id = ?", (subtask_id,)
-            )
-            # depends_on_project aus predecessor_ids extrahieren
-            has_project_dep = 0 in subtask.predecessor_ids
-            db.execute(
-                "UPDATE sub_tasks SET depends_on_project = ? WHERE id = ?",
-                (1 if has_project_dep else 0, subtask_id),
-            )
-            for pred_id in subtask.predecessor_ids:
-                if pred_id == 0:
-                    continue  # Projektknoten wird ueber depends_on_project behandelt
-                db.execute(
-                    "INSERT OR IGNORE INTO sub_task_dependencies (sub_task_id, depends_on_id) VALUES (?, ?)",
-                    (subtask_id, pred_id),
-                )
+            set_subtask_predecessors(db, subtask_id, subtask.predecessor_ids)
 
     sub_changes: dict = {}
     for f in ("name", "area_id", "deadline", "priority", "status_percent",
@@ -827,20 +695,9 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
 
 @router.delete("/api/subtasks/{subtask_id}")
 async def delete_subtask(subtask_id: int, user=Depends(get_current_user)):
-    """Teilaufgabe loeschen (Ersteller, Legacy oder Admin)."""
+    """Teilaufgabe loeschen (Projektersteller oder Admin)."""
     with db_transaction() as db:
-        existing = db.execute("SELECT id, name, project_id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
-
-        # Ersteller des Projekts, Legacy oder Admin darf loeschen
-        task = db.execute(
-            "SELECT created_by FROM tasks WHERE id = ?", (existing["project_id"],)
-        ).fetchone()
-        is_creator = task and task["created_by"] == user["id"]
-        is_legacy = task and task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            raise HTTPException(status_code=403, detail="Keine Berechtigung zum Loeschen")
+        existing, _ = require_subtask_access(db, subtask_id, user, "manage")
 
         sub_name = existing["name"]
         project_id = existing["project_id"]
@@ -865,14 +722,7 @@ async def move_subtask(subtask_id: int, move: SubTaskMove, user=Depends(get_curr
         if not current:
             raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
 
-        # Berechtigung pruefen
-        task = db.execute(
-            "SELECT created_by FROM tasks WHERE id = ?", (current["project_id"],)
-        ).fetchone()
-        is_creator = task and task["created_by"] == user["id"]
-        is_legacy = task and task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        require_task_access(db, current["project_id"], user, "structure")
 
         # Nachbar finden
         if move.direction == "up":
@@ -922,123 +772,26 @@ async def move_subtask(subtask_id: int, move: SubTaskMove, user=Depends(get_curr
 async def add_dependency(task_id: int, dep: DependencyAction, user=Depends(get_current_user)):
     """Abhaengigkeit zwischen Teilaufgaben hinzufuegen (from_id -> to_id)."""
     with db_transaction() as db:
-        # Projekt pruefen
-        task = db.execute("SELECT id, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not task:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
+        require_task_access(db, task_id, user, "structure")
 
-        # Berechtigung pruefen
-        is_creator = task["created_by"] == user["id"]
-        is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            raise HTTPException(status_code=403, detail="Keine Berechtigung")
-
-        # Spezialfall: Projektknoten als Vorgaenger
-        if dep.from_id == 0:
-            to_st = db.execute(
-                "SELECT id, depends_on_project FROM sub_tasks WHERE id = ? AND project_id = ?",
-                (dep.to_id, task_id),
-            ).fetchone()
-            if not to_st:
-                raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
-            # Nur erlaubt wenn Ziel keine Vorgaenger hat
-            has_preds = db.execute(
-                "SELECT 1 FROM sub_task_dependencies WHERE sub_task_id = ?", (dep.to_id,)
-            ).fetchone()
-            if has_preds or to_st["depends_on_project"]:
-                raise HTTPException(status_code=400, detail="Nur erlaubt wenn keine Vorgaenger vorhanden")
-            db.execute(
-                "UPDATE sub_tasks SET depends_on_project = 1 WHERE id = ?", (dep.to_id,)
-            )
-            return {"message": "Projekt-Abhaengigkeit hinzugefuegt", "new_positions": {}}
-
-        # Beide Subtasks muessen zum Projekt gehoeren
-        from_st = db.execute(
-            "SELECT id FROM sub_tasks WHERE id = ? AND project_id = ?", (dep.from_id, task_id)
-        ).fetchone()
         to_st = db.execute(
             "SELECT id FROM sub_tasks WHERE id = ? AND project_id = ?", (dep.to_id, task_id)
         ).fetchone()
-        if not from_st or not to_st:
+        if not to_st:
             raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
-
-        # Keine Self-Loops
-        if dep.from_id == dep.to_id:
-            raise HTTPException(status_code=400, detail="Self-Loop nicht erlaubt")
-
-        # Keine Duplikate
-        existing = db.execute(
-            "SELECT 1 FROM sub_task_dependencies WHERE sub_task_id = ? AND depends_on_id = ?",
-            (dep.to_id, dep.from_id),
-        ).fetchone()
-        if existing:
-            raise HTTPException(status_code=400, detail="Abhaengigkeit existiert bereits")
-
-        # Zykluserkennung: from_id darf nicht transitiv von to_id abhaengen
-        # BFS von from_id entlang depends_on_id-Kanten
-        all_deps = db.execute(
-            "SELECT d.sub_task_id, d.depends_on_id FROM sub_task_dependencies d "
-            "JOIN sub_tasks s ON d.sub_task_id = s.id WHERE s.project_id = ?", (task_id,)
-        ).fetchall()
-        adj = defaultdict(set)  # sub_task_id -> set of depends_on_ids (Vorgaenger)
-        adj_fwd = defaultdict(set)  # depends_on_id -> set of sub_task_ids (Nachfolger)
-        for d in all_deps:
-            adj[d["sub_task_id"]].add(d["depends_on_id"])
-            adj_fwd[d["depends_on_id"]].add(d["sub_task_id"])
-
-        # Pruefen ob to_id transitiv from_id erreichen kann (= Zyklus)
-        visited = set()
-        queue = [dep.to_id]
-        while queue:
-            nid = queue.pop(0)
-            if nid == dep.from_id:
-                raise HTTPException(status_code=400, detail="Zirkulaere Abhaengigkeit nicht erlaubt")
-            if nid in visited:
-                continue
-            visited.add(nid)
-            for succ in adj_fwd.get(nid, set()):
-                queue.append(succ)
-
-        # Transitive Redundanz: Pruefen ob from_id bereits transitiver Vorgaenger von to_id ist
-        visited_pred = set()
-        queue_pred = list(adj.get(dep.to_id, set()))
-        while queue_pred:
-            nid = queue_pred.pop(0)
-            if nid == dep.from_id:
-                raise HTTPException(status_code=400, detail="Transitiv redundante Abhaengigkeit")
-            if nid in visited_pred:
-                continue
-            visited_pred.add(nid)
-            for pred in adj.get(nid, set()):
-                queue_pred.append(pred)
-
-        # Dependency einfuegen
-        db.execute(
-            "INSERT INTO sub_task_dependencies (sub_task_id, depends_on_id) VALUES (?, ?)",
-            (dep.to_id, dep.from_id),
-        )
-
-        new_positions = {}
+        add_subtask_dependency(db, dep.to_id, dep.from_id)
 
     log_change(user, "dependency", dep.to_id, "create",
                {"depends_on_id": dep.from_id, "project_id": task_id})
-    return {"message": "Abhaengigkeit hinzugefuegt", "new_positions": new_positions}
+    return {"message": "Abhaengigkeit hinzugefuegt", "new_positions": {}}
 
 
 @router.post("/api/tasks/{task_id}/subtasks/remove-dependency")
 async def remove_dependency(task_id: int, dep: DependencyAction, user=Depends(get_current_user)):
     """Abhaengigkeit zwischen Teilaufgaben entfernen."""
     with db_transaction() as db:
-        # Projekt pruefen
-        task = db.execute("SELECT id, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not task:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-        # Berechtigung pruefen
-        is_creator = task["created_by"] == user["id"]
-        is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        require_task_access(db, task_id, user, "structure")
+        require_subtask_access(db, dep.to_id, user, task_id=task_id)
 
         # Spezialfall: Projektknoten-Abhaengigkeit entfernen
         if dep.from_id == 0:
@@ -1068,19 +821,7 @@ async def remove_dependency(task_id: int, dep: DependencyAction, user=Depends(ge
 async def save_netzplan_positions(task_id: int, payload: NetzplanPositionsSave, user=Depends(get_current_user)):
     """Netzplan-Positionen fuer Teilaufgaben speichern."""
     with db_transaction() as db:
-        task = db.execute("SELECT id, created_by FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not task:
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
-
-        is_creator = task["created_by"] == user["id"]
-        is_legacy = task["created_by"] is None
-        if not is_creator and not is_legacy and not user.get("is_admin"):
-            membership = db.execute(
-                "SELECT can_edit FROM project_members WHERE project_id = ? AND user_id = ?",
-                (task_id, user["id"]),
-            ).fetchone()
-            if not membership or not membership["can_edit"]:
-                raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        require_task_access(db, task_id, user, "structure")
 
         for pos in payload.positions:
             if pos.id == 0:
@@ -1150,7 +891,7 @@ async def get_task_notes(task_id: int, user=Depends(get_current_user)):
 async def upsert_task_note(task_id: int, note: NoteUpdate, user=Depends(get_current_user)):
     """Eigene Notiz fuer eine Aufgabe erstellen/aktualisieren."""
     with db_transaction() as db:
-        _require_task_read_access(db, task_id, user)
+        require_task_access(db, task_id, user, "contribute")
         db.execute(
             """INSERT INTO task_notes (task_id, user_id, content, updated_at)
                VALUES (?, ?, ?, datetime('now'))
@@ -1245,7 +986,7 @@ async def get_subtask_notes(task_id: int, subtask_id: int, user=Depends(get_curr
 async def upsert_subtask_note(task_id: int, subtask_id: int, note: NoteUpdate, user=Depends(get_current_user)):
     """Eigene Notiz fuer eine Teilaufgabe erstellen/aktualisieren."""
     with db_transaction() as db:
-        _require_subtask_read_access(db, task_id, subtask_id, user)
+        require_subtask_access(db, subtask_id, user, "contribute", task_id=task_id)
         db.execute(
             """INSERT INTO sub_task_notes (sub_task_id, user_id, content, updated_at)
                VALUES (?, ?, ?, datetime('now'))
@@ -1337,10 +1078,10 @@ async def get_tasks_config():
             Column("Zugewiesen an", "assigned_to_name", width=140, sortable=True, i18n_key="tasks.col.assignedTo"),
             Column("Erstellt", "created_at", width=100, sortable=True, i18n_key="tasks.col.created"),
             Column("Deadline", "deadline", width=130, sortable=True, i18n_key="tasks.col.deadline"),
-            Column("", "_actions", width=36, sortable=False, renderer="deleteAction", align="center"),
+            Column("", "_actions", width=76, sortable=False, renderer="deleteAction", align="center"),
         ],
         detail_fields=[],
-        default_sort=("priority", "asc"),
+        default_sort=("id", "desc"),
         filters=[
             Filter(
                 id="typeFilter",

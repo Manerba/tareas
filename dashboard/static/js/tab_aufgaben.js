@@ -6,11 +6,10 @@
 
 let aufgabenTable = null;
 let aufgabenConfig = null;
-let allExpanded = false;
 let cachedAreas = null;
 let cachedUsers = [];
 let ncConfigured = false;
-let ncDirectories = [];
+const projectDetailSizes = new Map();
 
 // Auto-Save: Debounce-Timer pro Feld
 const _autoSaveTimers = {};
@@ -60,8 +59,9 @@ async function initAufgabenTab() {
         // Tabelle erstellen
         aufgabenTable = new ExpandableTable(aufgabenConfig, 'aufgabenTableContainer', {
             onRowExpanded: onTaskRowExpanded,
-            onRowCollapsed: (rowId) => deactivateInlineEditing(rowId),
+            onRowCollapsed: onTaskRowCollapsed,
             onDataLoaded: () => buildCategoryButtons(),
+            onRendered: updateExpandAllButton,
         });
 
         // Custom Renderer registrieren
@@ -137,13 +137,24 @@ function applySearchFilter(value) {
 
 function toggleAllExpand() {
     if (!aufgabenTable) return;
-    allExpanded = !allExpanded;
-    aufgabenTable.toggleAllRows(allExpanded);
+    aufgabenTable.toggleAllRows(!taskRowsExpanded());
+    updateExpandAllButton();
+}
 
+function taskRowsExpanded() {
+    const container = document.getElementById(aufgabenTable?.containerId);
+    if (!container) return false;
+    if (container.querySelector('.table-row-wrapper.project-focus.expanded')) return true;
+    const rows = [...container.querySelectorAll(':scope > .table-body > .table-row-wrapper')];
+    return rows.length > 0 && rows.every(row => row.classList.contains('expanded'));
+}
+
+function updateExpandAllButton() {
     const btn = document.getElementById('toggleAllBtn');
     if (btn) {
-        btn.textContent = allExpanded ? t('tasks.collapseAll') : t('tasks.expandAll');
-        btn.classList.toggle('active', allExpanded);
+        const expanded = taskRowsExpanded();
+        btn.textContent = expanded ? t('tasks.collapseAll') : t('tasks.expandAll');
+        btn.classList.toggle('active', expanded);
     }
 }
 
@@ -253,7 +264,7 @@ function activateInlineEditing(rowId) {
 
     // Name
     const nameCell = cellForField('name');
-    if (nameCell && (perm.isAdmin || (!perm.isAssignee && !(perm.isCreator && perm.isAssigned)))) {
+    if (nameCell && perm.canEdit) {
         nameCell._originalHTML = nameCell.innerHTML;
         nameCell.innerHTML = `<input type="text" class="inline-edit-input" id="inlineName_${row.id}" value="${escapeAttr(row.name)}" onclick="event.stopPropagation()">`;
     }
@@ -261,7 +272,7 @@ function activateInlineEditing(rowId) {
     // Projekte koennen zwischen berechnetem Fortschritt und Abgebrochen wechseln.
     const statusCell = cellForField('status');
     if (statusCell) {
-        const canEditStatus = perm.isAdmin || (row.can_edit_status ?? (perm.isCreator || perm.isAssignee || perm.isLegacy));
+        const canEditStatus = perm.isAdmin || (row.permissions?.can_edit_status ?? row.can_edit_status ?? (perm.canEdit || perm.isAssignee));
         if (canEditStatus) {
             const isProject = row.task_type === 'projekt';
             const progressStatus = row.subtask_total > 0 && row.subtask_done >= row.subtask_total
@@ -282,14 +293,14 @@ function activateInlineEditing(rowId) {
 
     // Prioritaet
     const priorityCell = cellForField('priority');
-    if (priorityCell && (perm.isAdmin || !perm.isAssignee)) {
+    if (priorityCell && perm.canEdit) {
         priorityCell._originalHTML = priorityCell.innerHTML;
         priorityCell.innerHTML = `<input type="number" class="inline-edit-input" id="inlinePriority_${row.id}" value="${row.priority}" min="1" max="100" onclick="event.stopPropagation()">`;
     }
 
     // Zugewiesen an (Admin/Ersteller/Legacy)
     const assignedCell = cellForField('assigned_to_name');
-    if (assignedCell && (perm.isAdmin || perm.isCreator || perm.isOwnTask || perm.isLegacy)) {
+    if (assignedCell && perm.canManage) {
         assignedCell._originalHTML = assignedCell.innerHTML;
         assignedCell.innerHTML = `<select class="inline-edit-select" id="inlineAssigned_${row.id}" onclick="event.stopPropagation()">
             ${buildUserOptions(row.assigned_to)}
@@ -298,7 +309,7 @@ function activateInlineEditing(rowId) {
 
     // Deadline
     const deadlineCell = cellForField('deadline');
-    if (deadlineCell && (perm.isAdmin || !perm.isAssignee)) {
+    if (deadlineCell && perm.canEdit) {
         deadlineCell._originalHTML = deadlineCell.innerHTML;
         deadlineCell.innerHTML = `<input type="date" class="inline-edit-input" id="inlineDeadline_${row.id}" value="${deadlineISO}" onclick="event.stopPropagation()">`;
     }
@@ -455,10 +466,13 @@ function renderPriority(value, col, row) {
 }
 
 function renderDeleteAction(value, col, row) {
+    if (row._type === 'assigned_subtask' || row.id < 0) return '';
     const perm = getTaskPermissions(row);
-    if (!perm.isCreator && !perm.isOwnTask && !perm.isLegacy && !perm.isAdmin) return '';
-    const taskId = row.id;
-    return `<button class="row-delete-btn" onclick="event.stopPropagation(); deleteTask(${taskId})" title="${t('common.delete')}">&times;</button>`;
+    if (!perm.canManage) return '';
+    return `<span class="task-row-actions">
+        <button class="row-settings-btn" onclick="event.stopPropagation(); openTaskSettings(${row.id})" title="${t('taskSettings.title')}" aria-label="${t('taskSettings.title')}">&#9881;</button>
+        <button class="row-delete-btn" onclick="event.stopPropagation(); deleteTask(${row.id})" title="${t('common.delete')}">&times;</button>
+    </span>`;
 }
 
 // ========================================
@@ -477,7 +491,12 @@ function getTaskPermissions(row) {
     const isTeamMember = !!row.is_team_member;
     const isAdmin = !!(currentUser && currentUser.is_admin);
 
-    return { isCreator, isAssignee, isAssigned, isOwnTask, isLegacy, isTeamMember, isAdmin };
+    const canManage = isAdmin || (row.permissions?.can_manage ?? isCreator);
+    const canEdit = isAdmin || (row.permissions?.can_edit ?? (isCreator || isLegacy || (isTeamMember && row.can_edit_status)));
+    const canStructure = isAdmin || (row.permissions?.can_structure ?? canEdit);
+    const canCreate = row.permissions?.can_create ?? (isAdmin || isCreator || isLegacy);
+    return { isCreator, isAssignee, isAssigned, isOwnTask, isLegacy, isTeamMember, isAdmin,
+        canManage, canEdit, canStructure, canCreate };
 }
 
 // ========================================
@@ -528,8 +547,22 @@ async function onTaskRowExpanded(rowId, detailElement) {
 
     // Zugewiesene Subtask-Ansicht (negative ID = Pseudo-Task fuer zugewiesene Subtask)
     if (row._type === 'assigned_subtask' || row.id < 0) {
+        updateExpandAllButton();
         return onSubtaskViewExpanded(row, detailElement);
     }
+
+    if (row.task_type === 'projekt') {
+        const wrapper = detailElement.closest('.table-row-wrapper');
+        wrapper.parentElement.style.removeProperty('--project-scroll-min-height');
+        // Auch bei gesammelt geoeffneten Zeilen bleibt genau ein Projekt sichtbar.
+        wrapper.parentElement.querySelectorAll(':scope > .project-focus').forEach(other => {
+            if (other === wrapper) return;
+            other.classList.remove('project-focus', 'expanded');
+            deactivateInlineEditing(other.dataset.rowId);
+        });
+        wrapper.classList.add('project-focus');
+    }
+    updateExpandAllButton();
 
     const perm = getTaskPermissions(row);
 
@@ -538,16 +571,18 @@ async function onTaskRowExpanded(rowId, detailElement) {
 
     let html = `<div class="detail-edit" data-task-id="${row.id}">`;
 
-    // Beschreibung + Dateiablage: Zwei-Spalten-Layout wenn NC-Verzeichnis zugeordnet
-    const hasNcPath = !!row.nextcloud_path && ncConfigured;
+    // Beschreibung und zugeordnete Dateiablage nebeneinander anzeigen.
+    const storageType = row.file_storage_type || (row.nextcloud_path ? 'webdav' : 'none');
+    const hasStorage = storageType === 'local' || (storageType === 'webdav' && ncConfigured);
+    const canManageStorage = perm.canEdit;
+    const storageLabel = storageType === 'local' ? t('files.localStorage') : row.nextcloud_path;
+    const storageButton = `<button class="control-btn${storageType !== 'none' ? ' nc-active' : ''}" onclick="event.stopPropagation(); openFileStorageDialog(${row.id})">${storageLabel ? '&#128194; ' + escapeHtml(storageLabel) : t('nc.fileStorage')}</button>`;
 
-    if (hasNcPath) {
-        html += `<div class="project-detail-columns">`;
-        html += `<div class="project-detail-left">`;
-    }
+    html += `<div class="project-detail-columns${hasStorage ? ' has-file-storage' : ''}" id="pdColumns_${row.id}">`;
+    html += `<div class="project-detail-left" id="pdDescription_${row.id}">`;
 
     // Beschreibung: Markdown-Ansicht, Bearbeiten nach bestehenden Berechtigungen
-    if (!perm.isAdmin && perm.isAssignee && !perm.isCreator) {
+    if (!perm.canEdit && perm.isAssignee) {
         html += `<div class="notes-section">
             <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
             <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
@@ -556,7 +591,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
             <h5>${t('detail.myNotes')}</h5>
             <div id="notesEditor_${row.id}"></div>
         </div>`;
-    } else if (!perm.isAdmin && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
+    } else if (!perm.canEdit && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
         html += `<div class="notes-section">
             <h5>${t('detail.description')}</h5>
             <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
@@ -569,21 +604,23 @@ async function onTaskRowExpanded(rowId, detailElement) {
         html += `<div id="wysiwygEditor_${row.id}"></div>`;
     }
 
-    if (hasNcPath) {
-        html += `</div>`; // project-detail-left
+    html += `</div>`; // project-detail-left
+    if (hasStorage) {
+        html += `<div class="project-detail-split" id="pdSplit_${row.id}" role="separator" tabindex="0"
+            aria-orientation="vertical" aria-controls="pdDescription_${row.id}"
+            aria-valuemin="20" aria-valuemax="80" aria-valuenow="50"
+            aria-label="${escapeAttr(t('detail.resizeWidth'))}" title="${escapeAttr(t('detail.resizeWidth'))}"></div>`;
         html += `<div class="project-detail-right">
             <div id="fileBrowserContainer_${row.id}"></div>
         </div>`;
-        html += `</div>`; // project-detail-columns
-        html += `<div class="project-detail-resize" id="pdResize_${row.id}"></div>`;
     }
+    html += `</div>`; // project-detail-columns
+    html += `<div class="project-detail-resize" id="pdResize_${row.id}" title="${escapeAttr(t('detail.resizeHeight'))}"></div>`;
 
-    if (perm.isAdmin) {
-        html += `<div class="notes-section subtask-notes-list">
-            <h5>${t('detail.notes')}</h5>
-            <div class="subtask-notes-content" id="taskAllNotes_${row.id}"><em>${t('common.loading')}</em></div>
-        </div>`;
-    }
+    html += `<div class="notes-section subtask-notes-list">
+        <h5>${t('detail.notes')}</h5>
+        <div class="subtask-notes-content" id="taskAllNotes_${row.id}"><em>${t('common.loading')}</em></div>
+    </div>`;
 
     html += `<div class="notes-section note-entries-list">
         <h5>${t('detail.noteHistory')}</h5>
@@ -591,9 +628,9 @@ async function onTaskRowExpanded(rowId, detailElement) {
     </div>`;
 
     // Dateiablage-Button fuer Aufgaben (nicht-Projekte)
-    if (row.task_type !== 'projekt' && ncConfigured && (perm.isAdmin || perm.isCreator || perm.isLegacy)) {
+    if (row.task_type !== 'projekt' && canManageStorage && !hasStorage) {
         html += `<div class="subtask-section-actions" style="margin-top:8px;display:flex;justify-content:flex-end">
-            <button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>
+            ${storageButton}
         </div>`;
     }
 
@@ -604,8 +641,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
                 <h4>${t('subtask.title')}</h4>
                 <div class="subtask-section-actions">
                     <button class="control-btn" onclick="event.stopPropagation(); openNetzplan(${row.id})">${t('netzplan.title')}</button>
-                    ${(perm.isAdmin || perm.isCreator) ? `<button class="team-btn" onclick="event.stopPropagation(); openTeamDialog(${row.id})">${t('team.title')}</button>` : ''}
-                    ${ncConfigured && (perm.isAdmin || perm.isCreator || perm.isLegacy) ? `<button class="control-btn${row.nextcloud_path ? ' nc-active' : ''}" onclick="event.stopPropagation(); openNcDirDialog(${row.id}, '${escapeAttr(row.nextcloud_path || '')}')">${row.nextcloud_path ? '&#128194; ' + escapeHtml(row.nextcloud_path) : t('nc.fileStorage')}</button>` : ''}
+                    ${canManageStorage && !hasStorage ? storageButton : ''}
                 </div>
             </div>
             <div id="subtaskContainer_${row.id}">
@@ -619,7 +655,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
     detailElement.innerHTML = html;
 
     // Editoren initialisieren
-    if (!perm.isAdmin && perm.isAssignee && !perm.isCreator) {
+    if (!perm.canEdit && perm.isAssignee) {
         // Notizen-Editor fuer Zugewiesenen: Notiz laden und Editor initialisieren
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
@@ -632,7 +668,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
         } catch (e) {
             document.getElementById(`notesEditor_${row.id}`).textContent = t('detail.loadError');
         }
-    } else if (!perm.isAdmin && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
+    } else if (!perm.canEdit && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
         // Notizen des Zugewiesenen laden
         try {
             const notesResp = await fetch(`/api/tasks/${row.id}/notes`);
@@ -653,13 +689,12 @@ async function onTaskRowExpanded(rowId, detailElement) {
         // Markdown startet in der formatierten Ansicht
         createMarkdownField(`wysiwygEditor_${row.id}`, row.description || '', {
             url: `/api/tasks/${row.id}`, model: row,
-            readOnly: !(perm.isAdmin || perm.isOwnTask || perm.isLegacy || (perm.isTeamMember && row.can_edit_status)),
+            readOnly: !perm.canEdit,
         });
     }
 
-    if (perm.isAdmin) {
-        loadAdminNotes(`/api/tasks/${row.id}/notes`, `taskAllNotes_${row.id}`);
-    }
+    loadTaskNotes(`/api/tasks/${row.id}/notes`, `taskAllNotes_${row.id}`,
+        !perm.canEdit && perm.isAssignee ? currentUser.id : null);
 
     // Auto-Save: WYSIWYG-Editor mit Debounce
     const wysiwygContent = document.querySelector(`#wysiwygEditor_${row.id} .wysiwyg-content`);
@@ -680,13 +715,15 @@ async function onTaskRowExpanded(rowId, detailElement) {
     loadTaskNoteEntries(row.id);
 
     // File Browser initialisieren wenn Verzeichnis zugeordnet
-    if (row.nextcloud_path && ncConfigured) {
+    if (hasStorage) {
         const fbContainer = document.getElementById(`fileBrowserContainer_${row.id}`);
         if (fbContainer) {
-            new FileBrowser(`fileBrowserContainer_${row.id}`, row.id);
+            new FileBrowser(`fileBrowserContainer_${row.id}`, row.id, {
+                onConfigure: canManageStorage ? () => openFileStorageDialog(row.id) : null,
+            });
         }
-        initColumnResize(row.id);
     }
+    initColumnResize(row.id);
 
     // SubTasks laden wenn Projekt
     if (row.task_type === 'projekt') {
@@ -694,38 +731,89 @@ async function onTaskRowExpanded(rowId, detailElement) {
     }
 }
 
+function onTaskRowCollapsed(rowId) {
+    deactivateInlineEditing(rowId);
+    updateExpandAllButton();
+}
 
 /**
- * Resize-Handle fuer Zwei-Spalten-Layout (Editor + Dateiablage).
- * Zieht man den Handle nach unten/oben, aendert sich die Hoehe beider Spalten synchron.
+ * Hoehe der Beschreibung und bei Dateiablage auch die Spaltenbreiten anpassen.
+ * Abmessungen bleiben beim erneuten Aufklappen innerhalb der Seite erhalten.
  */
 function initColumnResize(taskId) {
-    const handle = document.getElementById(`pdResize_${taskId}`);
-    if (!handle) return;
-    const columns = handle.previousElementSibling;
-    if (!columns || !columns.classList.contains('project-detail-columns')) return;
+    const columns = document.getElementById(`pdColumns_${taskId}`);
+    const heightHandle = document.getElementById(`pdResize_${taskId}`);
+    const splitHandle = document.getElementById(`pdSplit_${taskId}`);
+    if (!columns || !heightHandle) return;
+    const sizes = projectDetailSizes.get(taskId) || {};
+    projectDetailSizes.set(taskId, sizes);
 
-    let startY = 0;
-    let startH = 0;
+    function setHeight(height) {
+        sizes.height = Math.max(200, height);
+        columns.style.setProperty('--project-detail-height', `${sizes.height}px`);
+    }
+    function setSplit(percent) {
+        sizes.split = Math.max(20, Math.min(80, percent));
+        columns.style.setProperty('--project-description-width', `${sizes.split}fr`);
+        columns.style.setProperty('--project-files-width', `${100 - sizes.split}fr`);
+        splitHandle?.setAttribute('aria-valuenow', Math.round(sizes.split));
+    }
+    if (sizes.height) setHeight(sizes.height);
+    if (sizes.split) setSplit(sizes.split);
 
-    function onMouseMove(e) {
-        const newH = Math.max(200, startH + (e.clientY - startY));
-        columns.style.height = newH + 'px';
+    function bindDrag(handle, cursor, startDrag) {
+        if (!handle) return;
+        handle.addEventListener('pointerdown', event => {
+            if (event.button !== 0 || !event.isPrimary) return;
+            event.preventDefault();
+            const pointerId = event.pointerId;
+            const update = startDrag(event);
+            const oldCursor = document.body.style.cursor;
+            const oldUserSelect = document.body.style.userSelect;
+            document.body.style.cursor = cursor;
+            document.body.style.userSelect = 'none';
+            handle.setPointerCapture(pointerId);
+
+            const move = event => {
+                if (!columns.isConnected) return stop();
+                if (event.pointerId === pointerId) update(event);
+            };
+            const stop = event => {
+                if (event?.pointerId !== undefined && event.pointerId !== pointerId) return;
+                document.removeEventListener('pointermove', move);
+                document.removeEventListener('pointerup', stop);
+                document.removeEventListener('pointercancel', stop);
+                handle.removeEventListener('lostpointercapture', stop);
+                window.removeEventListener('blur', stop);
+                document.body.style.cursor = oldCursor;
+                document.body.style.userSelect = oldUserSelect;
+                if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+            };
+            document.addEventListener('pointermove', move);
+            document.addEventListener('pointerup', stop);
+            document.addEventListener('pointercancel', stop);
+            handle.addEventListener('lostpointercapture', stop);
+            window.addEventListener('blur', stop);
+        });
     }
-    function onMouseUp() {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-    }
-    handle.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        startY = e.clientY;
-        startH = columns.offsetHeight;
-        document.body.style.userSelect = 'none';
-        document.body.style.cursor = 'ns-resize';
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
+
+    bindDrag(heightHandle, 'ns-resize', event => {
+        const startY = event.clientY;
+        const startHeight = columns.getBoundingClientRect().height;
+        return event => setHeight(startHeight + event.clientY - startY);
+    });
+    bindDrag(splitHandle, 'ew-resize', event => {
+        const startX = event.clientX;
+        const startWidth = columns.querySelector('.project-detail-left').getBoundingClientRect().width;
+        const availableWidth = columns.clientWidth - splitHandle.offsetWidth;
+        return event => setSplit((startWidth + event.clientX - startX) / availableWidth * 100);
+    });
+    splitHandle?.addEventListener('keydown', event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        if (event.key === 'Home') setSplit(20);
+        else if (event.key === 'End') setSplit(80);
+        else setSplit((sizes.split || 50) + (event.key === 'ArrowRight' ? 5 : -5));
     });
 }
 
@@ -781,7 +869,7 @@ async function saveTask(taskId, silent = false) {
         if (!resp.ok) throw new Error(t('common.saveError'));
 
         // Notizen separat speichern (fuer Zugewiesene)
-        if (!perm.isAdmin && perm.isAssignee && !perm.isCreator) {
+        if (!perm.canEdit && perm.isAssignee) {
             const notesContainer = document.getElementById(`notesEditor_${taskId}`);
             const notesContent = notesContainer?.querySelector('.wysiwyg-content');
             if (notesContent) {
@@ -812,7 +900,9 @@ async function onSubtaskViewExpanded(row, detailElement) {
     const projectId = row._project_id;
     const deadlineISO = convertToISO(row.deadline);
     const isAdmin = !!currentUser?.is_admin;
-    const fieldAccess = isAdmin ? '' : 'disabled class="field-readonly"';
+    const canEdit = isAdmin || !!row.permissions?.can_edit;
+    const canManage = isAdmin || !!row.permissions?.can_manage;
+    const fieldAccess = canEdit ? '' : 'disabled class="field-readonly"';
 
     let html = `<div class="detail-edit" data-task-id="${row.id}">`;
 
@@ -837,13 +927,13 @@ async function onSubtaskViewExpanded(row, detailElement) {
             <label>${t('subtask.col.status')}</label>
             <input type="number" id="stViewStatus_${stId}" value="${escapeAttr(row._status_percent ?? 0)}" min="0" max="100" step="1" required style="width:70px">
         </div>
-        ${isAdmin ? `<div class="detail-edit-field">
+        ${canManage ? `<div class="detail-edit-field">
             <label>${t('subtask.col.assignedTo')}</label>
             <select id="stViewAssigned_${stId}">${buildUserOptions(row.assigned_to)}</select>
         </div>` : ''}
     </div>`;
 
-    html += isAdmin ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
+    html += canEdit ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
         <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
         <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
     </div>`;
@@ -869,11 +959,11 @@ async function onSubtaskViewExpanded(row, detailElement) {
     html += `</div>`;
     detailElement.innerHTML = html;
 
-    if (isAdmin) {
+    if (canEdit) {
         createMarkdownField(`stViewDescription_${stId}`, row.description || '', {
             url: `/api/subtasks/${stId}`, model: row,
         });
-        if (projectId) loadAdminNotes(`/api/tasks/${projectId}/subtasks/${stId}/notes`, `stViewAllNotes_${stId}`, currentUser.id);
+        if (projectId) loadTaskNotes(`/api/tasks/${projectId}/subtasks/${stId}/notes`, `stViewAllNotes_${stId}`, currentUser.id);
     }
 
     // Notizen laden und Editor initialisieren
@@ -919,6 +1009,7 @@ async function saveSubtaskView(row, silent = false) {
     const stId = row._subtask_id || Math.abs(row.id);
     const projectId = row._project_id;
     const statusInput = document.getElementById(`stViewStatus_${stId}`);
+    const canEdit = !!currentUser?.is_admin || !!row.permissions?.can_edit;
     if (statusInput && !statusInput.reportValidity()) return;
 
     try {
@@ -926,11 +1017,12 @@ async function saveSubtaskView(row, silent = false) {
         if (statusInput) {
             const statusPercent = statusInput.valueAsNumber;
             const body = { status_percent: statusPercent };
-            if (currentUser?.is_admin) {
+            if (canEdit) {
                 body.name = document.getElementById(`stViewName_${stId}`).value;
                 body.deadline = document.getElementById(`stViewDeadline_${stId}`).value;
                 body.priority = document.getElementById(`stViewPriority_${stId}`).valueAsNumber || 50;
-                body.assigned_to = Number(document.getElementById(`stViewAssigned_${stId}`).value) || 0;
+                const assigned = document.getElementById(`stViewAssigned_${stId}`);
+                if (assigned) body.assigned_to = Number(assigned.value) || 0;
             }
             const resp = await fetch(`/api/subtasks/${stId}`, {
                 method: 'PUT',
@@ -938,11 +1030,11 @@ async function saveSubtaskView(row, silent = false) {
                 body: JSON.stringify(body),
             });
             if (!resp.ok) throw new Error(t('common.saveError'));
-            if (currentUser?.is_admin) {
+            if (canEdit) {
                 row.name = body.name;
                 row.priority = body.priority;
                 row.deadline = body.deadline ? body.deadline.split('-').reverse().join('.') : '';
-                row.assigned_to = body.assigned_to || null;
+                if (body.assigned_to !== undefined) row.assigned_to = body.assigned_to || null;
                 const assignee = cachedUsers.find(u => u.id === row.assigned_to);
                 row.assigned_to_name = assignee ? `${assignee.vorname} ${assignee.nachname}`.trim() : '';
             }
@@ -951,7 +1043,7 @@ async function saveSubtaskView(row, silent = false) {
             const statusIndex = aufgabenTable.config.columns.findIndex(col => col.field === 'status');
             const cells = document.querySelector(`[data-row-id="${row.id}"] .table-row`)?.querySelectorAll('.table-cell');
             if (cells?.[statusIndex]) cells[statusIndex].innerHTML = renderSubtaskProgress(statusPercent);
-            if (currentUser?.is_admin && cells) {
+            if (canEdit && cells) {
                 aufgabenTable.config.columns.forEach((col, index) => {
                     if (cells[index] && ['name', 'priority', 'deadline', 'assigned_to_name'].includes(col.field)) {
                         cells[index].innerHTML = aufgabenTable.renderCell(row[col.field], col, row);
@@ -1015,6 +1107,7 @@ async function loadSubTasks(taskId) {
     try {
         const resp = await fetch(`/api/tasks/${taskId}/subtasks`);
         const data = await resp.json();
+        container._permissions = data.permissions;
         renderSubTasks(taskId, data.items || []);
 
         // Projektknoten-Position speichern
@@ -1026,7 +1119,7 @@ async function loadSubTasks(taskId) {
         }
 
         // Expanded-State wiederherstellen
-        expandedIds.forEach(id => toggleSubTaskDetail(taskId, id));
+        expandedIds.forEach(id => toggleSubTaskDetail(taskId, id, false));
     } catch (error) {
         console.error('SubTasks laden fehlgeschlagen:', error);
         container.innerHTML = `<div class="table-error">${t('common.loadError')}</div>`;
@@ -1046,6 +1139,7 @@ function renderSubTasks(taskId, subtasks) {
 
     const areasOptions = buildAreaOptions();
     const colCount = 12;
+    const canAddDependency = createDependencyValidator(subtasks);
 
     let html = `<table class="subtask-table">
         <thead>
@@ -1072,11 +1166,9 @@ function renderSubTasks(taskId, subtasks) {
         const statusPct = st.status_percent || 0;
         const stPerms = st.permissions || { can_read: true, can_edit: true, can_create: true };
         const canEdit = parentPerm.isAdmin || stPerms.can_edit;
-        const isSubAssigned = !!st.assigned_to;
-        const isSubCreator = parentPerm.isCreator || parentPerm.isLegacy;
 
         // Readonly-Logik pro Feld
-        const stNameRO = (!canEdit || (!parentPerm.isAdmin && isSubCreator && isSubAssigned)) ? 'disabled' : '';
+        const stNameRO = !canEdit ? 'disabled' : '';
         const stNameROClass = stNameRO ? 'field-readonly' : '';
         const fieldRO = !canEdit ? 'disabled' : '';
         const fieldROClass = !canEdit ? 'field-readonly' : '';
@@ -1084,24 +1176,18 @@ function renderSubTasks(taskId, subtasks) {
         const stDeadlineROClass = stDeadlineRO ? 'field-readonly' : '';
         const stPrioRO = !canEdit ? 'disabled' : '';
         const stPrioROClass = stPrioRO ? 'field-readonly' : '';
-        const stStatusRO = (!canEdit || (!parentPerm.isAdmin && isSubCreator && isSubAssigned)) ? 'disabled' : '';
+        const stStatusRO = !canEdit ? 'disabled' : '';
         const dlISO = convertToISO(st.deadline);
 
         // Vorgaenger-Optionen und Chips (positionsunabhaengig, aber ohne Zyklen/Redundanz)
-        const transitivePreds = getTransitivePredecessors(st.id, subtasks);
-        const transitiveSuccessors = getTransitiveSuccessors(st.id, subtasks);
         let predOptions = '';
         // "Pos 0: Projekt" nur anbieten wenn keine Vorgaenger vorhanden
-        if (predIds.length === 0) {
+        if (canAddDependency(0, st.id)) {
             const projName = parentRow ? parentRow.name : 'Projekt';
             predOptions += `<option value="0">Pos. 0: ${escapeHtml(projName)}</option>`;
         }
         predOptions += subtasks
-            .filter(other =>
-                other.id !== st.id &&
-                !transitivePreds.has(other.id) &&
-                !transitiveSuccessors.has(other.id)
-            )
+            .filter(other => canAddDependency(other.id, st.id))
             .map(other => `<option value="${other.id}">Pos. ${other.position_number}: ${escapeHtml(other.name)}</option>`)
             .join('');
 
@@ -1113,13 +1199,13 @@ function renderSubTasks(taskId, subtasks) {
 
         // Daten-Zeile mit Dual-Content (Text + verstecktes Input)
         html += `<tr class="subtask-row" data-subtask-id="${st.id}" onpointerdown="ExpandableTable.trackRowPointerDown(event)" onclick="if (ExpandableTable.shouldToggleRow(event)) toggleSubTaskDetail(${taskId}, ${st.id})">
-            <td class="pos-cell"><span class="subtask-expand-icon">&#9654;</span><span class="pos-number">${st.position_number || ''}</span><span class="pos-arrows st-cell-edit"><button class="pos-arrow up" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'up')" title="Nach oben">&#9650;</button><button class="pos-arrow down" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'down')" title="Nach unten">&#9660;</button></span></td>
+            <td class="pos-cell"><span class="subtask-expand-icon">&#9654;</span><span class="pos-number">${st.position_number || ''}</span><span class="pos-arrows st-cell-edit" ${parentPerm.canStructure ? '' : 'hidden'}><button class="pos-arrow up" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'up')" title="Nach oben">&#9650;</button><button class="pos-arrow down" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'down')" title="Nach unten">&#9660;</button></span></td>
             <td class="subtask-id-cell">${st.id}</td>
             ${!stNameRO ? `<td>
                 <span class="st-cell-text">${escapeHtml(st.name)}</span>
                 <span class="st-cell-edit"><input type="text" id="stEditName_${st.id}" value="${escapeAttr(st.name)}" class="subtask-name-input" onclick="event.stopPropagation()"></span>
             </td>` : `<td>${escapeHtml(st.name)}</td>`}
-            ${canEdit ? `<td class="predecessor-cell">
+            ${parentPerm.canStructure ? `<td class="predecessor-cell">
                 <span class="st-cell-text">${predDisplay ? `<span class="predecessor-display">${escapeHtml(predDisplay)}</span>` : '-'}</span>
                 <span class="st-cell-edit">
                     <select id="predSelect_${st.id}" onclick="event.stopPropagation()" onchange="addPredecessorDirect(${taskId}, ${st.id}, this)">
@@ -1142,7 +1228,7 @@ function renderSubTasks(taskId, subtasks) {
                 </span>
             </td>` : `<td>${escapeHtml(st.area_name || '-')}</td>`}
             <td>${escapeHtml(st.created_by_name || '-')}</td>
-            ${(parentPerm.isAdmin || parentPerm.isCreator || parentPerm.isLegacy) ? `<td>
+            ${parentPerm.canManage ? `<td>
                 <span class="st-cell-text">${escapeHtml(st.assigned_to_name || '-')}</span>
                 <span class="st-cell-edit">
                     <select id="stEditAssigned_${st.id}" onclick="event.stopPropagation()">
@@ -1166,7 +1252,7 @@ function renderSubTasks(taskId, subtasks) {
 
         // Delete-Button (Ersteller, Legacy oder Admin)
         html += `<td>`;
-        if (parentPerm.isCreator || parentPerm.isLegacy || parentPerm.isAdmin) {
+        if (parentPerm.canManage) {
             html += `<div class="subtask-actions">
                     <button class="subtask-btn delete" onclick="event.stopPropagation(); deleteSubTask(${taskId}, ${st.id})">x</button>
                 </div>`;
@@ -1176,12 +1262,11 @@ function renderSubTasks(taskId, subtasks) {
         // Detail-Zeile (versteckt): nur noch Beschreibung/WYSIWYG
         html += `<tr class="subtask-detail-row" data-subtask-detail-id="${st.id}">
             <td colspan="${colCount}">
-                <div class="subtask-detail-content">`;
+                <div class="subtask-detail-reveal"><div class="subtask-detail-clip">
+                    <div class="subtask-detail-content">`;
 
         // WYSIWYG oder Readonly-Beschreibung
-        if (!parentPerm.isAdmin && isSubCreator && isSubAssigned) {
-            html += `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
-        } else if (canEdit) {
+        if (canEdit) {
             html += `<div id="stWysiwyg_${st.id}"></div>`;
         } else {
             html += `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
@@ -1197,7 +1282,7 @@ function renderSubTasks(taskId, subtasks) {
             <div class="subtask-notes-content" id="stNoteEntriesContent_${st.id}"><em>${t('common.loading')}</em></div>
         </div>`;
 
-        html += `</div>
+        html += `</div></div></div>
             </td>
         </tr>`;
     });
@@ -1206,8 +1291,8 @@ function renderSubTasks(taskId, subtasks) {
 
     // "+ Teilaufgabe"-Button: Admin, Ersteller, Legacy oder Teammitglieder mit can_create
     const firstSt = subtasks[0];
-    const canCreate = parentPerm.isAdmin || parentPerm.isCreator || parentPerm.isLegacy || (firstSt && firstSt.permissions && firstSt.permissions.can_create);
-    if (canCreate || subtasks.length === 0) {
+    const canCreate = container._permissions?.can_create ?? (parentPerm.canCreate || firstSt?.permissions?.can_create);
+    if (canCreate) {
         html += `<div class="subtask-add-row">
             <button class="control-btn" onclick="addSubTask(${taskId})">${t('subtask.add')}</button>
         </div>`;
@@ -1257,7 +1342,7 @@ function mountAdminNoteEditors(container, items, url, isHandoff = false) {
     });
 }
 
-async function loadAdminNotes(url, elementId, excludeUserId = null) {
+async function loadTaskNotes(url, elementId, excludeUserId = null) {
     const container = document.getElementById(elementId);
     if (!container) return;
     try {
@@ -1299,7 +1384,7 @@ function renderNoteEntriesList(entries) {
         return `<details class="subtask-note-item note-entry-item">
             <summary class="note-entry-summary">
                 <span class="subtask-note-meta">
-                    <strong>${escapeHtml(userName)}</strong>
+                    <span>#${escapeHtml(entry.id)} <strong>${escapeHtml(userName)}</strong></span>
                     <span class="note-entry-meta-end">
                         ${createdAt}
                         <span class="note-entry-toggle-icon" aria-hidden="true">&#9660;</span>
@@ -1340,24 +1425,77 @@ async function loadSubtaskNoteEntries(taskId, subtaskId, elementId) {
     }
 }
 
-async function toggleSubTaskDetail(taskId, subtaskId) {
+function reserveProjectScrollSpace(tableBody, rowShift = 0) {
+    if (!tableBody) return;
+    const height = Math.max(0, Math.ceil(window.innerHeight - tableBody.getBoundingClientRect().top + rowShift));
+    tableBody.style.setProperty('--project-scroll-min-height', `${height}px`);
+}
+
+// Beim Zurueckscrollen nur noch den Platz bis zum aktuellen Viewport-Ende behalten.
+window.addEventListener('scroll', () => {
+    const tableBody = document.getElementById(aufgabenTable?.containerId)?.querySelector(':scope > .table-body');
+    const reservedHeight = parseFloat(tableBody?.style.getPropertyValue('--project-scroll-min-height'));
+    if (!reservedHeight || !tableBody.querySelector(':scope > .project-focus.expanded')) return;
+    const neededHeight = Math.max(0, Math.ceil(window.innerHeight - tableBody.getBoundingClientRect().top));
+    if (neededHeight < reservedHeight) reserveProjectScrollSpace(tableBody);
+}, { passive: true });
+
+function restoreSubtaskRowPosition(dataRow, rowTop) {
+    const rowShift = dataRow.getBoundingClientRect().top - rowTop;
+    // Auch das Anpassen des Leerraums kann scrollY begrenzen: absolutes Ziel merken.
+    const scrollTop = window.scrollY + rowShift;
+    reserveProjectScrollSpace(dataRow.closest('.table-body'), rowShift);
+    window.scrollTo({ top: scrollTop, left: window.scrollX, behavior: 'instant' });
+}
+
+function animateSubtaskDetail(dataRow, detailRow, isExpanding, animate) {
+    const reveal = detailRow.querySelector('.subtask-detail-reveal');
+    const token = {};
+    detailRow._transitionToken = token;
+    detailRow.classList.toggle('no-transition', !animate);
+    // Den Startzustand nach display:none berechnen, bevor die Animation beginnt.
+    reveal.getBoundingClientRect();
+    detailRow.classList.toggle('open', isExpanding);
+
+    const finish = () => {
+        // Ein erneuter Klick darf von der vorherigen Animation nicht ueberschrieben werden.
+        if (detailRow._transitionToken !== token) return;
+        detailRow._transitionToken = null;
+        if (!isExpanding) {
+            const rowTop = dataRow.getBoundingClientRect().top;
+            detailRow.classList.remove('visible');
+            const project = dataRow.closest('.table-row-wrapper.expanded');
+            if (dataRow.isConnected && project?.getClientRects().length) {
+                restoreSubtaskRowPosition(dataRow, rowTop);
+            }
+        }
+        detailRow.classList.remove('no-transition');
+    };
+    const transitions = reveal.getAnimations();
+    if (transitions.length) {
+        Promise.all(transitions.map(transition => transition.finished.catch(() => {}))).then(finish);
+    } else {
+        finish();
+    }
+}
+
+async function toggleSubTaskDetail(taskId, subtaskId, animate = true) {
     const dataRow = document.querySelector(`tr.subtask-row[data-subtask-id="${subtaskId}"]`);
     const detailRow = document.querySelector(`tr.subtask-detail-row[data-subtask-detail-id="${subtaskId}"]`);
     if (!dataRow || !detailRow) return;
 
     const isExpanding = !dataRow.classList.contains('expanded');
     const rowTop = dataRow.getBoundingClientRect().top;
+    const tableBody = dataRow.closest('.table-body');
 
-    dataRow.classList.toggle('expanded');
-    detailRow.classList.toggle('visible');
+    // Vor dem Verkuerzen Platz sichern, sonst begrenzt der Browser scrollY sofort.
+    if (!isExpanding) reserveProjectScrollSpace(tableBody);
 
-    // Beim Zuklappen: Scroll-Position korrigieren
-    if (!isExpanding) {
-        const newRowTop = dataRow.getBoundingClientRect().top;
-        window.scrollBy(0, newRowTop - rowTop);
-    }
+    dataRow.classList.toggle('expanded', isExpanding);
+    // Erst nach der Schliessanimation verstecken, damit die Tabellenhoehe weich abnimmt.
+    detailRow.classList.add('visible');
 
-    // Beim Aufklappen: Editoren initialisieren + Notizen laden
+    // Editor vor dem Animationsstart aufbauen; CSS Grid folgt auch spaeter geladenen Notizen.
     if (isExpanding) {
         const editorContainer = document.getElementById(`stWysiwyg_${subtaskId}`);
         if (editorContainer && !editorContainer._editorInit) {
@@ -1372,7 +1510,11 @@ async function toggleSubTaskDetail(taskId, subtaskId) {
             }
             editorContainer._editorInit = true;
         }
+    }
+    animateSubtaskDetail(dataRow, detailRow, isExpanding, animate);
+    if (!isExpanding) restoreSubtaskRowPosition(dataRow, rowTop);
 
+    if (isExpanding) {
         // Alle Teilaufgaben-Notizen lazy laden, inkl. MCP-/Agent-Notizen.
         const notesContent = document.getElementById(`stAllNotesContent_${subtaskId}`);
         if (notesContent && !notesContent._loaded) {
@@ -1447,7 +1589,7 @@ async function saveSubTask(taskId, subtaskId, silent = false) {
     // Aktuelle predecessor_ids sammeln
     const chipsContainer = document.getElementById(`predChips_${subtaskId}`);
     const currentChips = chipsContainer ? chipsContainer.querySelectorAll('.predecessor-chip') : [];
-    body.predecessor_ids = Array.from(currentChips).map(c => parseInt(c.dataset.predId));
+    if (chipsContainer) body.predecessor_ids = Array.from(currentChips).map(c => parseInt(c.dataset.predId));
 
     // Zuweisung
     const assignSelect = document.getElementById(`stEditAssigned_${subtaskId}`);
@@ -1462,7 +1604,7 @@ async function saveSubTask(taskId, subtaskId, silent = false) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!resp.ok) throw new Error(t('common.saveError'));
+        await checkDependencyResponse(resp, 'common.saveError');
 
         if (!silent) {
             showNotification(t('subtask.saved'), 'success');
@@ -1509,7 +1651,7 @@ async function saveSubTask(taskId, subtaskId, silent = false) {
         }
     } catch (error) {
         console.error('SubTask speichern fehlgeschlagen:', error);
-        showNotification(t('common.saveError'), 'error');
+        showNotification(error.message || t('common.saveError'), 'error');
     }
 }
 
@@ -1632,19 +1774,41 @@ function getTransitivePredecessors(subtaskId, subtasks) {
     return visited;
 }
 
-function getTransitiveSuccessors(subtaskId, subtasks) {
-    const visited = new Set();
-    const queue = [subtaskId];
-    while (queue.length > 0) {
-        const id = queue.shift();
-        subtasks.forEach(st => {
-            if ((st.predecessor_ids || []).includes(id) && !visited.has(st.id)) {
-                visited.add(st.id);
-                queue.push(st.id);
+function createDependencyValidator(subtasks) {
+    const byId = new Map(subtasks.map(st => [st.id, st]));
+    const ancestors = new Map(subtasks.map(st => [st.id, getTransitivePredecessors(st.id, subtasks)]));
+    ancestors.set(0, new Set());
+    // Nur bisher notwendige Kanten betrachten; Altfehler bleiben einzeln behebbar.
+    const requiredEdges = [];
+    for (const st of subtasks) {
+        const predecessors = st.predecessor_ids || [];
+        for (const predecessor of predecessors) {
+            if (!predecessors.some(other => other !== predecessor && ancestors.get(other)?.has(predecessor))) {
+                requiredEdges.push([st.id, predecessor]);
             }
-        });
+        }
     }
-    return visited;
+    return (predecessorId, subtaskId) => {
+        const target = byId.get(subtaskId);
+        if (!target || (predecessorId !== 0 && !byId.has(predecessorId)) || predecessorId === subtaskId) return false;
+        const predecessors = target.predecessor_ids || [];
+        if ((predecessorId === 0 && predecessors.length > 0) || predecessors.includes(0)) return false;
+        if (ancestors.get(subtaskId).has(predecessorId)) return false;
+        const sourceAncestors = ancestors.get(predecessorId);
+        if (sourceAncestors.has(subtaskId)) return false;
+        // Eine neue Verbindung kann auch eine bestehende direkte Kante an
+        // einer anderen Teilaufgabe durch einen laengeren Weg ersetzen.
+        return !requiredEdges.some(([child, parent]) =>
+            (child === subtaskId || ancestors.get(child).has(subtaskId)) &&
+            (parent === predecessorId || sourceAncestors.has(parent))
+        );
+    };
+}
+
+async function checkDependencyResponse(response, fallbackKey) {
+    if (response.ok) return;
+    const error = await response.json().catch(() => ({}));
+    throw new Error(typeof error.detail === 'string' ? error.detail : t(fallbackKey));
 }
 
 async function addPredecessor(taskId, subtaskId) {
@@ -1671,13 +1835,13 @@ async function addPredecessor(taskId, subtaskId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ predecessor_ids: predIds }),
         });
-        if (!resp.ok) throw new Error(t('common.error'));
+        await checkDependencyResponse(resp, 'team.addError');
 
         // Tabelle neu laden
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('Vorgaenger hinzufuegen fehlgeschlagen:', error);
-        showNotification(t('team.addError'), 'error');
+        showNotification(error.message || t('team.addError'), 'error');
     }
 }
 
@@ -1708,13 +1872,13 @@ async function addPredecessorDirect(taskId, subtaskId, selectEl) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ predecessor_ids: predIds }),
         });
-        if (!resp.ok) throw new Error(t('common.error'));
+        await checkDependencyResponse(resp, 'team.addError');
 
         // Tabelle neu laden
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('Vorgaenger hinzufuegen fehlgeschlagen:', error);
-        showNotification(t('team.addError'), 'error');
+        showNotification(error.message || t('team.addError'), 'error');
     }
 }
 
@@ -1734,13 +1898,13 @@ async function removePredecessor(taskId, subtaskId, predIdToRemove) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ predecessor_ids: predIds }),
         });
-        if (!resp.ok) throw new Error(t('common.error'));
+        await checkDependencyResponse(resp, 'team.removeError');
 
         // Tabelle neu laden
         await loadSubTasks(taskId);
     } catch (error) {
         console.error('Vorgaenger entfernen fehlgeschlagen:', error);
-        showNotification(t('team.removeError'), 'error');
+        showNotification(error.message || t('team.removeError'), 'error');
     }
 }
 
@@ -1850,153 +2014,6 @@ async function createNewTask() {
     } catch (error) {
         console.error('Erstellen fehlgeschlagen:', error);
         showNotification(t('common.createError'), 'error');
-    }
-}
-
-// ========================================
-// Team-Dialog (Sprint C)
-// ========================================
-
-async function openTeamDialog(projectId) {
-    createModal({
-        title: t('team.title'),
-        cssClass: 'modal-wide',
-        body: `
-            <div class="team-info-text">${t('team.creatorInfo')}</div>
-            <div class="team-add-row">
-                <select id="teamAddUserSelect">
-                    <option value="">${t('team.selectUser')}</option>
-                </select>
-                <button class="control-btn primary" onclick="addTeamMember(${projectId})">${t('team.addMember')}</button>
-            </div>
-            <div id="teamMembersContainer">
-                <div class="table-loading"><div class="spinner"></div></div>
-            </div>`,
-        footer: `<button class="action-btn" onclick="closeModal()">${t('common.close')}</button>`,
-    });
-
-    await loadTeamMembers(projectId);
-}
-
-async function loadTeamMembers(projectId) {
-    const container = document.getElementById('teamMembersContainer');
-    if (!container) return;
-
-    try {
-        const resp = await fetch(`/api/tasks/${projectId}/members`);
-        if (!resp.ok) throw new Error(t('common.loadError'));
-        const data = await resp.json();
-        const members = data.items || [];
-
-        // User-Dropdown aktualisieren (ohne Ersteller und bestehende Mitglieder)
-        const parentRow = aufgabenTable.filteredData.find(r => String(r.id) === String(projectId));
-        const creatorId = parentRow ? parentRow.created_by : null;
-        const memberIds = members.map(m => m.user_id);
-
-        const select = document.getElementById('teamAddUserSelect');
-        if (select) {
-            select.innerHTML = `<option value="">${t('team.selectUser')}</option>`;
-            cachedUsers.forEach(u => {
-                if (u.id === creatorId || memberIds.includes(u.id)) return;
-                const name = `${u.vorname} ${u.nachname}`.trim() || `User ${u.id}`;
-                select.innerHTML += `<option value="${u.id}">${escapeHtml(name)}</option>`;
-            });
-        }
-
-        if (members.length === 0) {
-            container.innerHTML = `<div class="team-empty">${t('team.noMembers')}</div>`;
-            return;
-        }
-
-        let html = `<table class="team-table">
-            <thead>
-                <tr>
-                    <th>${t('team.col.lastName')}</th>
-                    <th>${t('team.col.firstName')}</th>
-                    <th>${t('team.col.email')}</th>
-                    <th style="text-align:center">${t('team.col.read')}</th>
-                    <th style="text-align:center">${t('team.col.edit')}</th>
-                    <th style="text-align:center">${t('team.col.create')}</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>`;
-
-        members.forEach(m => {
-            html += `<tr data-member-uid="${m.user_id}">
-                <td>${escapeHtml(m.nachname)}</td>
-                <td>${escapeHtml(m.vorname)}</td>
-                <td>${escapeHtml(m.email)}</td>
-                <td style="text-align:center"><input type="checkbox" ${m.can_read ? 'checked' : ''} onchange="updateTeamMember(${projectId}, ${m.user_id}, this.closest('tr'))"></td>
-                <td style="text-align:center"><input type="checkbox" ${m.can_edit ? 'checked' : ''} onchange="updateTeamMember(${projectId}, ${m.user_id}, this.closest('tr'))"></td>
-                <td style="text-align:center"><input type="checkbox" ${m.can_create ? 'checked' : ''} onchange="updateTeamMember(${projectId}, ${m.user_id}, this.closest('tr'))"></td>
-                <td><button class="team-remove-btn" onclick="removeTeamMember(${projectId}, ${m.user_id})">x</button></td>
-            </tr>`;
-        });
-
-        html += '</tbody></table>';
-        container.innerHTML = html;
-    } catch (error) {
-        console.error('Team laden fehlgeschlagen:', error);
-        container.innerHTML = `<div class="table-error">${t('common.loadError')}</div>`;
-    }
-}
-
-async function addTeamMember(projectId) {
-    const select = document.getElementById('teamAddUserSelect');
-    if (!select || !select.value) {
-        showNotification(t('team.selectRequired'), 'error');
-        return;
-    }
-
-    try {
-        const resp = await fetch(`/api/tasks/${projectId}/members`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: parseInt(select.value), can_read: true }),
-        });
-        if (!resp.ok) {
-            const err = await resp.json();
-            throw new Error(err.detail || t('common.error'));
-        }
-
-        showNotification(t('team.memberAdded'), 'success');
-        await loadTeamMembers(projectId);
-    } catch (error) {
-        showNotification(error.message || t('team.addError'), 'error');
-    }
-}
-
-async function updateTeamMember(projectId, userId, row) {
-    if (!row) return;
-    const checkboxes = row.querySelectorAll('input[type="checkbox"]');
-    const can_read = checkboxes[0]?.checked || false;
-    const can_edit = checkboxes[1]?.checked || false;
-    const can_create = checkboxes[2]?.checked || false;
-
-    try {
-        const resp = await fetch(`/api/tasks/${projectId}/members/${userId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ can_read, can_edit, can_create }),
-        });
-        if (!resp.ok) throw new Error(t('common.error'));
-    } catch (error) {
-        showNotification(t('team.updateError'), 'error');
-    }
-}
-
-async function removeTeamMember(projectId, userId) {
-    if (!await msgbox('cancel/yes', 'confirm', t('team.removeMemberConfirm'))) return;
-
-    try {
-        const resp = await fetch(`/api/tasks/${projectId}/members/${userId}`, { method: 'DELETE' });
-        if (!resp.ok) throw new Error(t('common.error'));
-
-        showNotification(t('team.memberRemoved'), 'success');
-        await loadTeamMembers(projectId);
-    } catch (error) {
-        showNotification(t('team.removeError'), 'error');
     }
 }
 
@@ -2181,56 +2198,8 @@ function _getNetzplanEdgeDirection(fromId, toId, positionMap) {
 }
 
 function _computeValidNetzplanTargets(sourceId, subtasks) {
-    // Spezialfall: Projektknoten (Node 0) - nur Nodes ohne Vorgaenger sind gueltig
-    if (sourceId === 0) {
-        const valid = new Set();
-        subtasks.forEach(target => {
-            const predIds = target.predecessor_ids || [];
-            if (predIds.length === 0) {
-                valid.add(target.id);
-            }
-        });
-        return valid;
-    }
-
-    const st = subtasks.find(s => s.id === sourceId);
-    if (!st) return new Set();
-
-    // Bereits direkte Nachfolger (sourceId ist Vorgaenger von diesen)
-    const directSuccessors = new Set();
-    subtasks.forEach(s => {
-        if ((s.predecessor_ids || []).includes(sourceId)) directSuccessors.add(s.id);
-    });
-
-    // Transitive Nachfolger von sourceId (wuerde Zyklus erzeugen)
-    const transitiveSuccessors = new Set();
-    const queue = [sourceId];
-    while (queue.length > 0) {
-        const nid = queue.shift();
-        subtasks.forEach(s => {
-            if ((s.predecessor_ids || []).includes(nid) && !transitiveSuccessors.has(s.id)) {
-                transitiveSuccessors.add(s.id);
-                queue.push(s.id);
-            }
-        });
-    }
-
-    // Transitive Vorgaenger von potentiellem Ziel: Wenn sourceId bereits transitiver
-    // Vorgaenger eines Ziels ist, waere die direkte Kante redundant
-    const valid = new Set();
-    subtasks.forEach(target => {
-        if (target.id === sourceId) return; // sich selbst
-        if (directSuccessors.has(target.id)) return; // bereits direkte Abhaengigkeit
-        if (transitiveSuccessors.has(target.id)) return; // wuerde Zyklus erzeugen
-
-        // Pruefen auf transitive Redundanz: ist sourceId bereits transitiver Vorgaenger von target?
-        const transitivePreds = getTransitivePredecessors(target.id, subtasks);
-        if (transitivePreds.has(sourceId)) return; // transitiv redundant
-
-        valid.add(target.id);
-    });
-
-    return valid;
+    const canAddDependency = createDependencyValidator(subtasks);
+    return new Set(subtasks.filter(target => canAddDependency(sourceId, target.id)).map(target => target.id));
 }
 
 function _netzplanValue(value) {
@@ -2619,6 +2588,7 @@ function _buildNetzplanGraphData(subtasks, colors, savedPositions, projectName, 
 function openNetzplan(taskId) {
     const parentRow = aufgabenTable.filteredData.find(r => String(r.id) === String(taskId));
     const projectName = parentRow ? parentRow.name : `Projekt #${taskId}`;
+    const canEditGraph = !!parentRow && getTaskPermissions(parentRow).canStructure;
 
     // SubTasks-Daten aus dem gespeicherten Container lesen
     const stContainer = document.getElementById(`subtaskContainer_${taskId}`);
@@ -2670,6 +2640,7 @@ function openNetzplan(taskId) {
     }
 
     async function _savePositionsToDb(positions) {
+        if (!canEditGraph) return;
         const posArr = Object.keys(positions).map(id => ({
             id: parseInt(id),
             x: positions[id].x,
@@ -2760,7 +2731,7 @@ function openNetzplan(taskId) {
             tooltipDelay: 200,
             zoomView: true,
             dragView: true,
-            dragNodes: true,
+            dragNodes: canEditGraph,
         },
         edges: {
             smooth: { type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.5 },
@@ -2814,6 +2785,7 @@ function openNetzplan(taskId) {
     // Auto-Layout-Dropdown
     const autoLayoutDropdown = document.getElementById('netzplanAutoLayoutDropdown');
     const autoLayoutToggle = autoLayoutDropdown.querySelector('.netzplan-toolbar-btn');
+    autoLayoutDropdown.hidden = !canEditGraph;
     autoLayoutToggle.addEventListener('click', (e) => {
         e.stopPropagation();
         autoLayoutDropdown.classList.toggle('open');
@@ -2854,6 +2826,7 @@ function openNetzplan(taskId) {
     const _originalNodeStyles = {};
 
     function enterLinkingMode(nodeId) {
+        if (!canEditGraph) return;
         const validTargets = _computeValidNetzplanTargets(nodeId, subtasks);
         const positions = netzplanNetwork.getPositions([nodeId]);
         const sourcePos = positions[nodeId];
@@ -3076,6 +3049,7 @@ function openNetzplan(taskId) {
     const NETZPLAN_CLICK_DELAY_MS = 220;
 
     async function _handleNetzplanClick(params) {
+        if (!canEditGraph) return;
         if (_netzplanRebuilding) return;
 
         const clickedNodeId = params.nodes && params.nodes.length > 0 ? params.nodes[0] : null;
@@ -3223,6 +3197,7 @@ function openNetzplan(taskId) {
     }
 
     async function _netzplanUndo() {
+        if (!canEditGraph) return;
         if (netzplanHistoryPointer < 0) return;
         const entry = netzplanHistory[netzplanHistoryPointer];
         netzplanHistoryPointer--;
@@ -3237,31 +3212,38 @@ function openNetzplan(taskId) {
         } else if (entry.type === 'dependency-add') {
             // Undo: Dependency wieder entfernen
             try {
-                await fetch(`/api/tasks/${taskId}/subtasks/remove-dependency`, {
+                const resp = await fetch(`/api/tasks/${taskId}/subtasks/remove-dependency`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ from_id: entry.fromId, to_id: entry.toId }),
                 });
+                await checkDependencyResponse(resp, 'netzplan.undoFailed');
                 await _rebuildNetzplanWithPositions(entry.positionsBefore);
             } catch (e) {
-                showNotification(t('netzplan.undoFailed'), 'error');
+                netzplanHistoryPointer++;
+                _updateUndoRedoButtons();
+                showNotification(e.message || t('netzplan.undoFailed'), 'error');
             }
         } else if (entry.type === 'dependency-remove') {
             // Undo: Dependency wieder hinzufuegen
             try {
-                await fetch(`/api/tasks/${taskId}/subtasks/add-dependency`, {
+                const resp = await fetch(`/api/tasks/${taskId}/subtasks/add-dependency`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ from_id: entry.fromId, to_id: entry.toId }),
                 });
+                await checkDependencyResponse(resp, 'netzplan.undoFailed');
                 await _rebuildNetzplanWithPositions(entry.positionsBefore);
             } catch (e) {
-                showNotification(t('netzplan.undoFailed'), 'error');
+                netzplanHistoryPointer++;
+                _updateUndoRedoButtons();
+                showNotification(e.message || t('netzplan.undoFailed'), 'error');
             }
         }
     }
 
     async function _netzplanRedo() {
+        if (!canEditGraph) return;
         if (netzplanHistoryPointer >= netzplanHistory.length - 1) return;
         netzplanHistoryPointer++;
         const entry = netzplanHistory[netzplanHistoryPointer];
@@ -3276,26 +3258,32 @@ function openNetzplan(taskId) {
         } else if (entry.type === 'dependency-add') {
             // Redo: Dependency wieder hinzufuegen
             try {
-                await fetch(`/api/tasks/${taskId}/subtasks/add-dependency`, {
+                const resp = await fetch(`/api/tasks/${taskId}/subtasks/add-dependency`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ from_id: entry.fromId, to_id: entry.toId }),
                 });
+                await checkDependencyResponse(resp, 'netzplan.redoFailed');
                 await _rebuildNetzplanWithPositions(entry.positionsAfter);
             } catch (e) {
-                showNotification(t('netzplan.redoFailed'), 'error');
+                netzplanHistoryPointer--;
+                _updateUndoRedoButtons();
+                showNotification(e.message || t('netzplan.redoFailed'), 'error');
             }
         } else if (entry.type === 'dependency-remove') {
             // Redo: Dependency wieder entfernen
             try {
-                await fetch(`/api/tasks/${taskId}/subtasks/remove-dependency`, {
+                const resp = await fetch(`/api/tasks/${taskId}/subtasks/remove-dependency`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ from_id: entry.fromId, to_id: entry.toId }),
                 });
+                await checkDependencyResponse(resp, 'netzplan.redoFailed');
                 await _rebuildNetzplanWithPositions(entry.positionsAfter);
             } catch (e) {
-                showNotification(t('netzplan.redoFailed'), 'error');
+                netzplanHistoryPointer--;
+                _updateUndoRedoButtons();
+                showNotification(e.message || t('netzplan.redoFailed'), 'error');
             }
         }
     }
@@ -3343,31 +3331,66 @@ function openNetzplan(taskId) {
 }
 
 // ========================================
-// Nextcloud-Integration
+// Dateiablage: lokal oder WebDAV
 // ========================================
 
-async function openNcDirDialog(taskId, currentPath) {
-    if (currentPath) {
-        const confirmed = await msgbox('confirm', 'warning', t('nc.changeConfirm'));
-        if (!confirmed) return;
-    }
-
+function openFileStorageDialog(taskId) {
+    const row = aufgabenTable.filteredData.find(item => item.id === taskId);
+    if (!row) return;
+    const currentType = row.file_storage_type || (row.nextcloud_path ? 'webdav' : 'none');
+    const selectedType = currentType === 'webdav' && ncConfigured ? 'webdav' : 'local';
     createModal({
         title: t('nc.fileStorage'),
         cssClass: 'modal-wide',
         body: `
-            <div class="nc-browse-breadcrumb" id="ncBrowseBc"></div>
-            <div id="ncDirList">
-                <div class="table-loading"><div class="spinner"></div></div>
+            <div class="form-group">
+                <label for="fileStorageType">${t('files.storageType')}</label>
+                <select id="fileStorageType">
+                    <option value="local" ${selectedType === 'local' ? 'selected' : ''}>${t('files.localStorage')}</option>
+                    <option value="webdav" ${selectedType === 'webdav' ? 'selected' : ''} ${ncConfigured ? '' : 'disabled'}>${t('files.webdavStorage')}</option>
+                </select>
+            </div>
+            <p class="file-storage-help" id="localStorageHelp">${t('files.localStorageHelp')}</p>
+            ${!ncConfigured ? `<p class="file-storage-help">${t('files.webdavUnavailable')}</p>` : ''}
+            <p class="file-storage-help">${t('files.storageRetained')}</p>
+            <div id="webdavStorageBrowser" hidden>
+                <div class="nc-browse-breadcrumb" id="ncBrowseBc"></div>
+                <div id="ncDirList"></div>
             </div>`,
-        footer: (currentPath ? `<button class="action-btn danger" onclick="saveNcPath(${taskId}, '')">${t('nc.removeMapping')}</button>` : '') +
-                `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>`,
+        footer: `<button class="action-btn primary" id="localStorageSave">${t('files.useLocalStorage')}</button>` +
+            (currentType !== 'none' ? `<button class="action-btn danger" id="storageRemove">${t(currentType === 'local' ? 'files.removeLocalStorage' : 'nc.removeMapping')}</button>` : '') +
+            `<button class="action-btn" onclick="closeModal()">${t('common.cancel')}</button>`,
         onOpen: () => {
-            // Footer braucht ID fuer dynamische Buttons
             const footer = document.querySelector('.modal-overlay .modal-footer');
             if (footer) footer.id = 'ncDirFooter';
-            // Browse starten bei Root
-            ncBrowseDir(taskId, '', currentPath);
+            const selector = document.getElementById('fileStorageType');
+            const updateChoice = () => {
+                const local = selector.value === 'local';
+                document.getElementById('localStorageHelp').hidden = !local;
+                document.getElementById('localStorageSave').hidden = !local;
+                document.getElementById('webdavStorageBrowser').hidden = local;
+                footer?.querySelectorAll('.nc-select-btn').forEach(button => button.remove());
+                if (!local) ncBrowseDir(taskId, '', row.nextcloud_path || '');
+            };
+            selector.addEventListener('change', updateChoice);
+            document.getElementById('localStorageSave').onclick = () => saveFileStorage(taskId, 'local');
+            document.getElementById('storageRemove')?.addEventListener('click', () => removeFileStorage(taskId, currentType));
+            updateChoice();
+        },
+    });
+}
+
+function removeFileStorage(taskId, currentType) {
+    if (currentType !== 'local') return saveFileStorage(taskId, 'none');
+    createModal({
+        title: t('files.removeLocalStorage'),
+        body: `<p>${escapeHtml(t('files.removeLocalConfirm'))}</p>`,
+        footer: `<button class="action-btn" id="storageDeleteCancel">${t('common.cancel')}</button>
+            <button class="action-btn danger" id="storageDeleteConfirm">${t('files.removeLocalStorage')}</button>`,
+        onOpen: () => {
+            document.getElementById('storageDeleteCancel').onclick = () => openFileStorageDialog(taskId);
+            document.getElementById('storageDeleteConfirm').onclick = () => saveFileStorage(taskId, 'none');
+            document.getElementById('storageDeleteCancel').focus();
         },
     });
 }
@@ -3376,80 +3399,102 @@ async function ncBrowseDir(taskId, browsePath, selectedPath) {
     const listContainer = document.getElementById('ncDirList');
     const bcContainer = document.getElementById('ncBrowseBc');
     if (!listContainer) return;
-
+    listContainer.dataset.path = browsePath;
     listContainer.innerHTML = '<div class="table-loading"><div class="spinner"></div></div>';
 
-    // Breadcrumb aktualisieren
     if (bcContainer) {
-        const parts = browsePath ? browsePath.split('/').filter(Boolean) : [];
-        let bcHtml = `<span class="nc-bc-item" onclick="ncBrowseDir(${taskId}, '', '${escapeAttr(selectedPath)}')">&#127968; ${t('nc.rootDir')}</span>`;
+        bcContainer.replaceChildren();
+        const addCrumb = (label, path) => {
+            const button = document.createElement('button');
+            button.className = 'nc-bc-item';
+            button.textContent = label;
+            button.onclick = () => ncBrowseDir(taskId, path, selectedPath);
+            bcContainer.appendChild(button);
+        };
+        addCrumb('⌂ ' + t('nc.rootDir'), '');
         let accumulated = '';
-        parts.forEach(part => {
+        for (const part of browsePath.split('/').filter(Boolean)) {
             accumulated += (accumulated ? '/' : '') + part;
-            const p = accumulated;
-            bcHtml += `<span class="nc-bc-sep">/</span>`;
-            bcHtml += `<span class="nc-bc-item" onclick="ncBrowseDir(${taskId}, '${escapeAttr(p)}', '${escapeAttr(selectedPath)}')">${escapeHtml(part)}</span>`;
-        });
-        bcContainer.innerHTML = bcHtml;
+            const separator = document.createElement('span');
+            separator.className = 'nc-bc-sep';
+            separator.textContent = '/';
+            bcContainer.appendChild(separator);
+            addCrumb(part, accumulated);
+        }
     }
 
-    // "Diesen Ordner waehlen"-Button anzeigen wenn wir nicht in Root sind
     const footer = document.getElementById('ncDirFooter');
-    if (footer && browsePath) {
-        // Bestehende "waehlen"-Buttons entfernen
-        footer.querySelectorAll('.nc-select-btn').forEach(b => b.remove());
-        const selectBtn = document.createElement('button');
-        selectBtn.className = 'action-btn primary nc-select-btn';
-        selectBtn.textContent = t('nc.selectDir', { name: browsePath.split('/').pop() });
-        selectBtn.onclick = () => saveNcPath(taskId, browsePath);
-        footer.insertBefore(selectBtn, footer.firstChild);
-    } else if (footer) {
-        footer.querySelectorAll('.nc-select-btn').forEach(b => b.remove());
-    }
+    footer?.querySelectorAll('.nc-select-btn').forEach(button => button.remove());
 
     try {
         const resp = await fetch(`/api/nextcloud/directories?path=${encodeURIComponent(browsePath)}`);
         if (!resp.ok) throw new Error(t('nc.loadDirError'));
         const data = await resp.json();
-        const dirs = data.directories || [];
+        if (document.getElementById('ncDirList') !== listContainer || listContainer.dataset.path !== browsePath
+            || document.getElementById('fileStorageType').value !== 'webdav') return;
 
+        if (footer && browsePath) {
+            const selectBtn = document.createElement('button');
+            selectBtn.className = 'action-btn primary nc-select-btn';
+            selectBtn.textContent = t('nc.selectDir', { name: browsePath.split('/').pop() });
+            selectBtn.onclick = () => saveFileStorage(taskId, 'webdav', browsePath);
+            footer.insertBefore(selectBtn, footer.firstChild);
+        }
+
+        const dirs = data.directories || [];
         if (dirs.length === 0) {
             listContainer.innerHTML = `<div class="nc-dir-empty">${t('nc.noSubdirs')}</div>`;
             return;
         }
-
-        let html = '<div class="nc-dir-grid">';
-        dirs.forEach(d => {
-            const isSelected = d.path === selectedPath;
-            html += `<div class="nc-dir-item${isSelected ? ' nc-dir-selected' : ''}">
-                <span class="nc-dir-icon" onclick="event.stopPropagation(); ncBrowseDir(${taskId}, '${escapeAttr(d.path)}', '${escapeAttr(selectedPath)}')">&#128194;</span>
-                <span class="nc-dir-name" onclick="event.stopPropagation(); ncBrowseDir(${taskId}, '${escapeAttr(d.path)}', '${escapeAttr(selectedPath)}')">${escapeHtml(d.name)}</span>
-                <button class="nc-dir-select-btn" onclick="event.stopPropagation(); saveNcPath(${taskId}, '${escapeAttr(d.path)}')">${isSelected ? '&#10003; ' + t('nc.selected') : t('nc.select')}</button>
-            </div>`;
-        });
-        html += '</div>';
-        listContainer.innerHTML = html;
+        listContainer.innerHTML = '<div class="nc-dir-grid"></div>';
+        const grid = listContainer.firstElementChild;
+        for (const dir of dirs) {
+            const item = document.createElement('div');
+            const selected = dir.path === selectedPath;
+            item.className = 'nc-dir-item' + (selected ? ' nc-dir-selected' : '');
+            const browse = document.createElement('button');
+            browse.className = 'nc-dir-name';
+            browse.textContent = '📂 ' + dir.name;
+            browse.onclick = () => ncBrowseDir(taskId, dir.path, selectedPath);
+            const select = document.createElement('button');
+            select.className = 'nc-dir-select-btn';
+            select.textContent = selected ? '✓ ' + t('nc.selected') : t('nc.select');
+            select.onclick = () => saveFileStorage(taskId, 'webdav', dir.path);
+            item.append(browse, select);
+            grid.appendChild(item);
+        }
     } catch (error) {
-        listContainer.innerHTML = `<p style="color:var(--color-bearish,#e74c3c)">${escapeHtml(error.message)}</p>`;
+        if (document.getElementById('ncDirList') === listContainer && listContainer.dataset.path === browsePath) {
+            listContainer.innerHTML = `<p class="fb-error">${escapeHtml(error.message)}</p>`;
+        }
     }
 }
 
-async function saveNcPath(taskId, value) {
+async function saveFileStorage(taskId, type, path = '') {
+    const modal = document.querySelector('.modal-overlay');
+    if (modal?.dataset.saving === 'true') return;
+    if (modal) modal.dataset.saving = 'true';
+    const controls = modal?.querySelectorAll('button, select') || [];
+    controls.forEach(control => { control.disabled = true; });
     try {
+        const payload = { file_storage_type: type };
+        if (type === 'webdav') payload.nextcloud_path = path;
         const resp = await fetch(`/api/tasks/${taskId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nextcloud_path: value }),
+            body: JSON.stringify(payload),
         });
-        if (!resp.ok) throw new Error(t('common.error'));
-        showNotification(value ? t('nc.pathAssigned', { path: value }) : t('nc.pathRemoved'), 'success');
-
-        // Modal schliessen
+        if (!resp.ok) {
+            const error = await resp.json().catch(() => ({}));
+            throw new Error(error.detail || t('nc.saveFailed'));
+        }
+        showNotification(type === 'none' ? t('nc.pathRemoved') : t('files.storageSaved'), 'success');
         closeModal();
-
-        // Tabelle neu laden damit das Detail mit/ohne File Browser aktualisiert wird
         await aufgabenTable.loadData();
     } catch (error) {
-        showNotification(t('nc.saveFailed'), 'error');
+        showNotification(error.message || t('nc.saveFailed'), 'error');
+    } finally {
+        if (modal) modal.dataset.saving = 'false';
+        controls.forEach(control => { control.disabled = false; });
     }
 }
