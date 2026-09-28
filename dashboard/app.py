@@ -56,7 +56,7 @@ from dashboard.api_teams import router as teams_router
 from dashboard.api_nextcloud import files_router as nextcloud_files_router
 from dashboard.api_onlyoffice import wopi_router, editor_router
 from dashboard.api_mail import mail_user_router
-from dashboard.auth import get_current_user, _extract_user_from_request, validate_mcp_bearer
+from dashboard.auth import get_current_user, _extract_user_from_request, _extract_bearer_token, validate_mcp_bearer
 from dashboard.mcp_server import mcp, current_mcp_user
 from dashboard.tls_utils import get_tls_config
 
@@ -87,8 +87,8 @@ app.include_router(tasks_router, dependencies=[Depends(get_current_user)])
 # Teams-Router MIT auth Dependency
 app.include_router(teams_router, dependencies=[Depends(get_current_user)])
 
-# Nextcloud Files-Router MIT auth Dependency
-app.include_router(nextcloud_files_router, dependencies=[Depends(get_current_user)])
+# Datei-Endpunkte pruefen Session/MCP-Bearer selbst, Nextcloud-Browse bleibt Session-basiert.
+app.include_router(nextcloud_files_router)
 
 # ONLYOFFICE WOPI-Router OHNE auth (Token-basiert)
 app.include_router(wopi_router)
@@ -182,10 +182,9 @@ async def mcp_auth(request: Request, call_next):
     """Bearer-Token-Auth fuer /mcp/*. Setzt current_mcp_user ContextVar."""
     if not request.url.path.startswith("/mcp"):
         return await call_next(request)
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = _extract_bearer_token(request)
+    if not token:
         return JSONResponse({"error": "Bearer-Token fehlt"}, status_code=401)
-    token = auth_header[7:].strip()
     user = validate_mcp_bearer(token)
     if not user:
         return JSONResponse(

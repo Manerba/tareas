@@ -192,7 +192,7 @@ async def get_admin_user(request: Request) -> dict:
 
 
 # ============================================================
-# MCP-Token-Auth (Bearer-Token fuer den /mcp-Endpoint)
+# MCP-Token-Auth (Bearer-Token fuer MCP und die REST-Dateiablage)
 # ============================================================
 
 def _hash_token(plain_token: str) -> str:
@@ -253,10 +253,10 @@ def validate_mcp_bearer(token: str) -> dict | None:
 
 def _extract_bearer_token(request: Request) -> str | None:
     """Liest 'Authorization: Bearer <token>' aus dem Request, oder None."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    parts = request.headers.get("Authorization", "").split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
         return None
-    return auth[7:].strip() or None
+    return parts[1]
 
 
 async def get_mcp_user(request: Request) -> dict:
@@ -270,6 +270,15 @@ async def get_mcp_user(request: Request) -> dict:
     if not user:
         raise HTTPException(status_code=401, detail="Ungueltiges oder widerrufenes Token")
     return user
+
+
+async def get_file_user(request: Request) -> dict:
+    """Datei-API: MCP-Bearer oder Web-Session mit denselben Aufgabenrechten."""
+    # Ein expliziter Authorization-Header bestimmt die Identitaet. Ungueltige
+    # Tokens duerfen nicht auf eine eventuell privilegiertere Session fallen.
+    if "Authorization" in request.headers:
+        return await get_mcp_user(request)
+    return await get_current_user(request)
 
 
 def create_mcp_token(display_name: str, created_by_user_id: int) -> tuple[str, int]:

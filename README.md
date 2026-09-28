@@ -153,10 +153,29 @@ pagination via `next_offset` (default 200, maximum 500 entries).
 
 `file.read` returns text as UTF-8 or binary data as Base64, identified by `encoding`.
 `file.write` accepts either encoding and replaces the entire file. Parent folders
-must exist. MCP reads/writes are limited to 1 MiB per file; use the web UI for larger
-files. Moves never overwrite existing destinations. Deleting a folder deletes its
-contents too; the storage root cannot be deleted through these tools. Audit entries
-record the acting user and file operation, without file contents.
+must exist. MCP reads/writes are limited to 1 MiB per file; use the REST file API or
+web UI for larger files. Moves never overwrite existing destinations. Deleting a
+folder deletes its contents too; the storage root cannot be deleted through these
+tools. Audit entries record the acting user and file operation, without file contents.
+
+The same MCP token also authenticates the REST file API without a browser session.
+Send `Authorization: Bearer <token>` on each request. Writes additionally require
+`X-Requested-With: XMLHttpRequest`. Paths are relative to the task's configured
+local or WebDAV storage. The token user's task permissions, token revocation and
+the global MCP switch apply to every request. An explicit authorization header
+takes precedence over a session cookie.
+
+| Method | Endpoint | Parameters / body |
+|--------|----------|-------------------|
+| GET | `/api/tasks/{task_id}/files` | Optional `path` query for a subfolder |
+| GET | `/api/tasks/{task_id}/files/download` | `path` query, returns file bytes |
+| POST | `/api/tasks/{task_id}/files/upload` | Multipart field `file`, optional folder `path` query, maximum 500 MiB |
+| POST | `/api/tasks/{task_id}/files/mkdir` | JSON `{"name": "folder"}`, optional parent `path` query |
+| PUT | `/api/tasks/{task_id}/files/move` | JSON `{"source": "old.txt", "destination": "new.txt"}` |
+| DELETE | `/api/tasks/{task_id}/files` | `path` query, folders are deleted recursively |
+
+Other REST endpoints, storage configuration and the Office editor still require
+a browser session.
 
 For using Tareas as the planning layer in another repository, see
 [Tareas Agent Guide](docs/tareas-agent-guide.md). The guide includes the

@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from fastmcp.exceptions import ToolError
 
 from dashboard import api_tasks, api_teams, api_nextcloud, api_onlyoffice, database, mcp_server
-from dashboard.auth import get_current_user
+from dashboard.auth import get_current_user, get_file_user
 
 
 class TaskPermissionsTests(unittest.TestCase):
@@ -34,6 +34,7 @@ class TaskPermissionsTests(unittest.TestCase):
         for router in (api_tasks.router, api_teams.router, api_nextcloud.files_router, api_onlyoffice.wopi_router):
             app.include_router(router)
         app.dependency_overrides[get_current_user] = lambda: self.user
+        app.dependency_overrides[get_file_user] = lambda: self.user
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
         mail = patch.object(api_tasks, "notify_event", return_value=None)

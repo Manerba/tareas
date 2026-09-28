@@ -66,7 +66,8 @@ Regeln:
 
 - `<token>` ist ein Platzhalter. Den echten Token nie in Repo-Dateien schreiben.
 - Tokens werden in Tareas unter Admin UI -> MCP erzeugt und nur einmal angezeigt.
-- Der MCP-Bearer ist nur fuer `/mcp/`, nicht fuer normale REST/Web-API-Calls.
+- Der MCP-Bearer gilt fuer `/mcp/` und die REST-Dateioperationen unter
+  `/api/tasks/{task_id}/files`. Andere REST-Endpunkte brauchen eine Web-Anmeldung.
 - Wenn die lokale Konfiguration nicht beschreibbar ist, den Benutzer um Setup
   oder Token-Konfiguration bitten.
 
@@ -108,6 +109,40 @@ Pruefablauf:
 Wenn keine Tareas-MCP-Tools verfuegbar sind, keine lokale Ersatz-DB und keine
 Schattenquelle in einem anderen System anlegen. Erst MCP einrichten oder den
 Benutzer um die lokale Konfiguration bitten.
+
+## Dateiablage per REST
+
+Fuer direkte Dateiuebertragungen, auch ueber 1 MiB, gilt derselbe MCP-Token
+an den folgenden Endpunkten. Eine Web-Anmeldung ist dafuer nicht erforderlich.
+
+| Methode | Pfad | Parameter / Body |
+|---------|------|------------------|
+| GET | `/api/tasks/{task_id}/files` | Optionaler Unterordner als Query `path` |
+| GET | `/api/tasks/{task_id}/files/download` | Datei als Query `path`, Antwort sind Dateibytes |
+| POST | `/api/tasks/{task_id}/files/upload` | Multipart-Feld `file`, optional Zielordner als Query `path`, maximal 500 MiB |
+| POST | `/api/tasks/{task_id}/files/mkdir` | JSON `{"name": "Ordner"}`, optional Elternordner als Query `path` |
+| PUT | `/api/tasks/{task_id}/files/move` | JSON `{"source": "alt.txt", "destination": "neu.txt"}` |
+| DELETE | `/api/tasks/{task_id}/files` | Query `path`, Ordner werden rekursiv geloescht |
+
+Bei jedem Aufruf `Authorization: Bearer <token>` senden, bei Schreibzugriffen
+zusaetzlich `X-Requested-With: XMLHttpRequest`. Alle Pfade sind relativ zur
+konfigurierten lokalen oder WebDAV-Ablage der Aufgabe bzw. des Projekts.
+Leserechte erlauben Auflisten und Download, Bearbeitungsrechte auch Aenderungen.
+Token-Widerruf und der globale MCP-Ausschalter greifen bei jedem Aufruf.
+Ein expliziter Authorization-Header hat Vorrang vor einer Web-Session.
+Andere REST-Endpunkte, Ablagekonfiguration und Office-Editor brauchen weiterhin
+eine Web-Anmeldung.
+
+```bash
+curl --fail --get 'http://10.0.12.7:8504/api/tasks/<task_id>/files/download' \
+  --header 'Authorization: Bearer <token>' \
+  --data-urlencode 'path=Unterlagen/Plan.pdf' --output Plan.pdf
+
+curl --fail 'http://10.0.12.7:8504/api/tasks/<task_id>/files/upload' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'X-Requested-With: XMLHttpRequest' \
+  --form 'file=@Plan.pdf'
+```
 
 ## AGENTS.md-Snippet
 
@@ -164,8 +199,13 @@ Arbeitsregeln:
   Lesen braucht Leserechte, Dateiaenderungen brauchen Bearbeitungsrechte.
 - `file.read` liefert UTF-8 oder Base64 (Feld `encoding`). `file.write`
   ersetzt die gesamte Datei, daher vorher lesen. Maximal 1 MiB je Datei beim
-  Lesen/Schreiben, groessere Dateien ueber die Web-UI. `file.list` liefert
+  Lesen/Schreiben, groessere Dateien ueber die REST-Datei-API oder Web-UI. `file.list` liefert
   bei weiteren Eintraegen `next_offset`. `file.delete` loescht Ordner samt Inhalt.
+- Die REST-Dateiablage unter `/api/tasks/{task_id}/files` akzeptiert denselben
+  MCP-Token als `Authorization: Bearer <token>`. Schreibzugriffe brauchen
+  zusaetzlich `X-Requested-With: XMLHttpRequest`. Uploads laufen als Multipart
+  mit Feld `file` (maximal 500 MiB), Downloads liefern die Dateibytes.
+  Aufgabenrechte, Token-Widerruf und der MCP-Ausschalter gelten auch dort.
 - Gitea-Issues enthalten konkrete Findings/Bugs; Tareas enthaelt
   Zusammenfassung und Issue-IDs/Links.
 - Keine Secrets, Tokens, Passwoerter oder privaten Schluessel in Tareas-Notizen,
@@ -214,5 +254,5 @@ auf Tareas-IDs.
 - `localhost:8504` in einem Remote-Projekt dokumentieren.
 - Kiron (`10.0.12.16:8505`) statt Tareas verwenden.
 - Bei fehlendem MCP eine lokale Schatten-DB anlegen.
-- REST-Web-API mit MCP-Bearer aufrufen.
+- Andere REST-Endpunkte als die Dateioperationen mit MCP-Bearer aufrufen.
 - Positionsnummern als Dependency-Gueltigkeit interpretieren.

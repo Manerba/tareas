@@ -127,7 +127,8 @@ def build_agent_metadata(request: Request | None = None) -> dict[str, Any]:
             "handoff.add creates a separate history item; handoff.delete removes a handoff by handoff_id.",
             "handoff_id is typed, e.g. task:123 or subtask:456; never pass a bare numeric entry id.",
             "file.list/read/write/mkdir/move/delete access the configured local or WebDAV project storage with current permissions. Paths are relative to that project's storage root; task_id is the project ID.",
-            "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the web UI. File contents are not recorded in the audit log.",
+            "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the REST file API or web UI. File contents are not recorded in the audit log.",
+            "The same MCP Bearer token authenticates REST file list/download/upload/mkdir/move/delete at /api/tasks/{task_id}/files. Writes also require X-Requested-With: XMLHttpRequest. Uploads use multipart field file, maximum 500 MiB. Current task permissions, token revocation and the global MCP switch apply. Other REST endpoints require a browser session.",
             "Treat predecessor_ids as dependency edges; position_number is display order only.",
             "Dependencies must stay within one project, without cycles or redundant direct edges. If C depends on B and B on A, C must not also depend directly on A.",
         ],
@@ -189,8 +190,13 @@ Arbeitsregeln:
   Lesen braucht Leserechte, Dateiaenderungen brauchen Bearbeitungsrechte.
 - `file.read` liefert UTF-8 oder Base64 (Feld `encoding`). `file.write`
   ersetzt die gesamte Datei, daher vorher lesen. Maximal 1 MiB je Datei beim
-  Lesen/Schreiben, groessere Dateien ueber die Web-UI. `file.list` liefert
+  Lesen/Schreiben, groessere Dateien ueber die REST-Datei-API oder Web-UI. `file.list` liefert
   bei weiteren Eintraegen `next_offset`. `file.delete` loescht Ordner samt Inhalt.
+- Die REST-Dateiablage unter `/api/tasks/{{task_id}}/files` akzeptiert denselben
+  MCP-Token als `Authorization: Bearer <token>`. Schreibzugriffe brauchen
+  zusaetzlich `X-Requested-With: XMLHttpRequest`. Uploads laufen als Multipart
+  mit Feld `file` (maximal 500 MiB), Downloads liefern die Dateibytes.
+  Aufgabenrechte, Token-Widerruf und der MCP-Ausschalter gelten auch dort.
 - Gitea-Issues enthalten konkrete Findings/Bugs; Tareas enthaelt
   Zusammenfassung und Issue-IDs/Links.
 - Keine Secrets, Tokens, Passwoerter oder privaten Schluessel in Tareas-Notizen,
@@ -300,6 +306,40 @@ Wenn keine Tareas-MCP-Tools verfuegbar sind, keine lokale Ersatz-DB und keine
 Schattenquelle in einem anderen System anlegen. Erst MCP einrichten oder den
 Benutzer um lokale Konfiguration bitten.
 
+## Dateiablage per REST
+
+Fuer direkte Dateiuebertragungen, auch ueber 1 MiB, gilt derselbe MCP-Token
+an den folgenden Endpunkten. Eine Web-Anmeldung ist dafuer nicht erforderlich.
+
+| Methode | Pfad | Parameter / Body |
+|---------|------|------------------|
+| GET | `/api/tasks/{{task_id}}/files` | Optionaler Unterordner als Query `path` |
+| GET | `/api/tasks/{{task_id}}/files/download` | Datei als Query `path`, Antwort sind Dateibytes |
+| POST | `/api/tasks/{{task_id}}/files/upload` | Multipart-Feld `file`, optional Zielordner als Query `path`, maximal 500 MiB |
+| POST | `/api/tasks/{{task_id}}/files/mkdir` | JSON `{{"name": "Ordner"}}`, optional Elternordner als Query `path` |
+| PUT | `/api/tasks/{{task_id}}/files/move` | JSON `{{"source": "alt.txt", "destination": "neu.txt"}}` |
+| DELETE | `/api/tasks/{{task_id}}/files` | Query `path`, Ordner werden rekursiv geloescht |
+
+Bei jedem Aufruf `Authorization: Bearer <token>` senden, bei Schreibzugriffen
+zusaetzlich `X-Requested-With: XMLHttpRequest`. Alle Pfade sind relativ zur
+konfigurierten lokalen oder WebDAV-Ablage der Aufgabe bzw. des Projekts.
+Leserechte erlauben Auflisten und Download, Bearbeitungsrechte auch Aenderungen.
+Token-Widerruf und der globale MCP-Ausschalter greifen bei jedem Aufruf.
+Ein expliziter Authorization-Header hat Vorrang vor einer Web-Session.
+Andere REST-Endpunkte, Ablagekonfiguration und Office-Editor brauchen weiterhin
+eine Web-Anmeldung.
+
+```bash
+curl --fail --get '{web_ui}api/tasks/<task_id>/files/download' \\
+  --header 'Authorization: Bearer <token>' \\
+  --data-urlencode 'path=Unterlagen/Plan.pdf' --output Plan.pdf
+
+curl --fail '{web_ui}api/tasks/<task_id>/files/upload' \\
+  --header 'Authorization: Bearer <token>' \\
+  --header 'X-Requested-With: XMLHttpRequest' \\
+  --form 'file=@Plan.pdf'
+```
+
 ## AGENTS.md-Snippet
 
 ```markdown
@@ -343,6 +383,6 @@ auf Tareas-IDs.
 - `localhost:8504` in einem Remote-Projekt dokumentieren.
 - Kiron (`10.0.12.16:8505`) statt Tareas verwenden.
 - Bei fehlendem MCP eine lokale Schatten-DB anlegen.
-- REST-Web-API mit MCP-Bearer aufrufen.
+- Andere REST-Endpunkte als die Dateioperationen mit MCP-Bearer aufrufen.
 - Positionsnummern als Dependency-Gueltigkeit interpretieren.
 """

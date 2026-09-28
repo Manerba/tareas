@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.config_utils import get_masked_config, resolve_masked_password
 from dashboard.crypto_utils import decrypt
-from dashboard.auth import get_admin_user, get_current_user
+from dashboard.auth import get_admin_user, get_current_user, get_file_user
 from dashboard import webdav
 from dashboard.audit_log import log_change
 from dashboard.file_storage import get_task_storage, safe_rel_path as _safe_rel_path, safe_filename as _safe_filename
@@ -170,7 +170,7 @@ async def get_nextcloud_status(user=Depends(get_current_user)):
 
 
 # ============================================================
-# Datei-Endpoints (authentifizierte Benutzer)
+# Datei-Endpoints (Web-Session oder MCP-Bearer)
 # ============================================================
 
 def _get_task_nextcloud_path(task_id: int, user: dict) -> str:
@@ -194,7 +194,7 @@ async def _file_operation(operation, *args):
 
 
 @files_router.get("/api/tasks/{task_id}/files")
-async def list_task_files(task_id: int, path: str = "", user=Depends(get_current_user)):
+async def list_task_files(task_id: int, path: str = "", user=Depends(get_file_user)):
     storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path)
     items = await _file_operation(storage.list_directory, path)
@@ -206,7 +206,7 @@ async def download_task_file(
     task_id: int,
     path: str = Query(..., description="Relativer Pfad zur Datei"),
     inline: bool = Query(False, description="Datei inline anzeigen statt herunterladen"),
-    user=Depends(get_current_user),
+    user=Depends(get_file_user),
 ):
     storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path, allow_empty=False)
@@ -224,7 +224,7 @@ async def download_task_file(
 async def upload_task_file(
     task_id: int, file: UploadFile = File(...),
     path: str = Query("", description="Zielordner (relativ)"),
-    user=Depends(get_current_user),
+    user=Depends(get_file_user),
 ):
     storage = get_task_storage(task_id, user, write=True)
     path = _safe_rel_path(path)
@@ -242,7 +242,7 @@ async def upload_task_file(
 async def create_task_directory(
     task_id: int, body: MkdirRequest,
     path: str = Query("", description="Uebergeordneter Ordner (relativ)"),
-    user=Depends(get_current_user),
+    user=Depends(get_file_user),
 ):
     storage = get_task_storage(task_id, user, write=True)
     path = _safe_rel_path(path)
@@ -256,7 +256,7 @@ async def create_task_directory(
 @files_router.delete("/api/tasks/{task_id}/files")
 async def delete_task_file(
     task_id: int, path: str = Query(..., description="Zu loeschender Pfad (relativ)"),
-    user=Depends(get_current_user),
+    user=Depends(get_file_user),
 ):
     storage = get_task_storage(task_id, user, write=True)
     path = _safe_rel_path(path, allow_empty=False)
@@ -266,7 +266,7 @@ async def delete_task_file(
 
 
 @files_router.put("/api/tasks/{task_id}/files/move")
-async def move_task_file(task_id: int, body: MoveRequest, user=Depends(get_current_user)):
+async def move_task_file(task_id: int, body: MoveRequest, user=Depends(get_file_user)):
     storage = get_task_storage(task_id, user, write=True)
     source = _safe_rel_path(body.source, allow_empty=False)
     destination = _safe_rel_path(body.destination, allow_empty=False)

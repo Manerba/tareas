@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from dashboard import api_nextcloud, api_onlyoffice, api_tasks, database, file_storage, webdav
-from dashboard.auth import get_admin_user, get_current_user
+from dashboard.auth import get_admin_user, get_current_user, get_file_user
 
 
 class FileStorageTests(unittest.TestCase):
@@ -48,6 +48,7 @@ class FileStorageTests(unittest.TestCase):
                        api_onlyoffice.editor_router, api_onlyoffice.wopi_router):
             app.include_router(router)
         app.dependency_overrides[get_current_user] = lambda: self.user
+        app.dependency_overrides[get_file_user] = lambda: self.user
         app.dependency_overrides[get_admin_user] = lambda: self.users["admin"]
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
