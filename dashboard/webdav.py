@@ -247,11 +247,15 @@ def get_file_stream(rel_path: str):
     auth = _build_auth(config)
 
     client = httpx.Client(timeout=TIMEOUT, verify=config.get("verify", False))
-    resp = client.send(
-        client.build_request("GET", url, headers={}),
-        auth=auth,
-        stream=True,
-    )
+    try:
+        resp = client.send(
+            client.build_request("GET", url, headers={}),
+            auth=auth,
+            stream=True,
+        )
+    except Exception:
+        client.close()
+        raise
     if resp.status_code == 404:
         resp.close()
         client.close()

@@ -37,6 +37,7 @@ MCP_TOOLS = [
     "add_dependency", "remove_dependency",
     "note.list", "note.write", "note.update", "note.delete",
     "handoff.list", "handoff.add", "handoff.update", "handoff.delete",
+    "file.list", "file.read", "file.write", "file.mkdir", "file.move", "file.delete",
     "list_users", "list_areas", "search", "assign_self", "whoami",
 ]
 

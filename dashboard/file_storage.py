@@ -144,13 +144,32 @@ class TaskStorage:
     def _mime_type(path: Path) -> str:
         return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
-    def get_file(self, path: str) -> tuple[bytes, str]:
+    def get_file(self, path: str, *, max_bytes: int | None = None) -> tuple[bytes, str]:
         target = self._path(path)
         if self.kind == "webdav":
-            return webdav.get_file(target)
+            if max_bytes is None:
+                return webdav.get_file(target)
+            response, client, content_type, _ = webdav.get_file_stream(target)
+            try:
+                content = bytearray()
+                for chunk in response.iter_bytes(chunk_size=65536):
+                    content.extend(chunk)
+                    self._check_read_size(len(content), max_bytes)
+                return bytes(content), content_type
+            finally:
+                response.close()
+                client.close()
         if not target.is_file():
             raise FileNotFoundError(path)
-        return target.read_bytes(), self._mime_type(target)
+        with target.open("rb") as source:
+            content = source.read() if max_bytes is None else source.read(max_bytes + 1)
+        self._check_read_size(len(content), max_bytes)
+        return content, self._mime_type(target)
+
+    @staticmethod
+    def _check_read_size(size: int, max_bytes: int | None):
+        if max_bytes is not None and size > max_bytes:
+            raise HTTPException(status_code=413, detail=f"Datei zu gross fuer diesen Abruf (max. {max_bytes} Bytes)")
 
     def upload_file(self, path: str, content: bytes, content_type: str = "application/octet-stream"):
         target = self._path(path)

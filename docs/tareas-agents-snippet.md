@@ -34,7 +34,17 @@ Arbeitsregeln:
 - `predecessor_ids` sind echte DAG-Abhaengigkeiten zwischen Sprintpaketen.
 - Positionsaenderungen sind nur Sortierung/Anzeige; sie aendern keine
   Abhaengigkeitsgueltigkeit.
-- `assign_self` nutzen, wenn eine Session konkrete Bearbeitung uebernimmt.
+- Zuweisungen, Loeschen von Aufgaben/Teilaufgaben und Freigaben verwalten nur Ersteller und Admins.
+  Das gilt auch fuer `assign_self`. Bei fremden Aufgaben muss der Ersteller
+  oder ein Admin die Session zuweisen oder freigeben.
+- `file.list`, `file.read`, `file.write`, `file.mkdir`, `file.move` und
+  `file.delete` nutzen die konfigurierte lokale oder WebDAV-Projektablage.
+  `task_id` ist die Projekt-ID, Pfade sind relativ zu dessen Ablage.
+  Lesen braucht Leserechte, Dateiaenderungen brauchen Bearbeitungsrechte.
+- `file.read` liefert UTF-8 oder Base64 (Feld `encoding`). `file.write`
+  ersetzt die gesamte Datei, daher vorher lesen. Maximal 1 MiB je Datei beim
+  Lesen/Schreiben, groessere Dateien ueber die Web-UI. `file.list` liefert
+  bei weiteren Eintraegen `next_offset`. `file.delete` loescht Ordner samt Inhalt.
 - Gitea-Issues enthalten konkrete Findings/Bugs; Tareas enthaelt
   Zusammenfassung und Issue-IDs/Links.
 - Keine Secrets, Tokens, Passwoerter oder privaten Schluessel in Tareas-Notizen,

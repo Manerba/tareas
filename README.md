@@ -142,7 +142,21 @@ Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents an
 - Every token is mapped to its own `mcp` user in the database.
 - Assigning a project to a user grants access to notes and handoffs on all its subtasks, including writing their own notes and handoffs. Individual subtask assignments are not required for this access.
 - Write operations are recorded in the audit log and can be reviewed in the Admin Panel. Admin-only `note.update` and `handoff.update` correct existing content while preserving its author and creation time.
-- Available tools cover projects, subtasks, dependencies, editable notes (`note.*`), handoffs/progress history (`handoff.*`), users, areas, search, self-assignment, and `whoami`.
+- Available tools cover projects, subtasks, dependencies, editable notes (`note.*`), handoffs/progress history (`handoff.*`), project files (`file.*`), users, areas, search, self-assignment, and `whoami`.
+
+Agents access configured local or WebDAV storage through `file.list`, `file.read`,
+`file.write`, `file.mkdir`, `file.move`, and `file.delete`. Pass the project ID as
+`task_id` and paths relative to its storage root. Read access allows listing and
+reading, edit access allows file changes. Permissions are checked on every call.
+`get_project` includes `file_storage_type`; `file.list` includes `can_write` and
+pagination via `next_offset` (default 200, maximum 500 entries).
+
+`file.read` returns text as UTF-8 or binary data as Base64, identified by `encoding`.
+`file.write` accepts either encoding and replaces the entire file. Parent folders
+must exist. MCP reads/writes are limited to 1 MiB per file; use the web UI for larger
+files. Moves never overwrite existing destinations. Deleting a folder deletes its
+contents too; the storage root cannot be deleted through these tools. Audit entries
+record the acting user and file operation, without file contents.
 
 For using Tareas as the planning layer in another repository, see
 [Tareas Agent Guide](docs/tareas-agent-guide.md). The guide includes the

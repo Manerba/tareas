@@ -12,9 +12,14 @@ Persistenz: direkter Zugriff auf SQLite (selbe DB wie REST-API), Schreib-Ops
 laufen via audit_log.log_change(...) ins Audit.
 """
 
+import base64
+import binascii
 import logging
+import mimetypes
 from contextvars import ContextVar
+from typing import Literal
 
+import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastapi import HTTPException
@@ -26,6 +31,7 @@ from dashboard.task_types import normalize_task_type
 from dashboard.note_service import update_note_as_admin
 from dashboard.permissions import require_task_access, require_subtask_access, task_visibility_sql
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
+from dashboard.file_storage import get_task_storage, safe_rel_path, storage_type
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +72,7 @@ def _task_to_dict(row) -> dict:
         "created_by": row["created_by"],
         "assigned_to": row["assigned_to"],
         "nextcloud_path": row["nextcloud_path"] if "nextcloud_path" in row.keys() else None,
+        "file_storage_type": storage_type(row),
     }
 
 
@@ -133,7 +140,9 @@ mcp = FastMCP(
         "registriert; alle Aenderungen werden im Audit-Log protokolliert. "
         "Aufgaben (Projekte) haben Teilaufgaben (Subtasks) mit optionalen "
         "Abhaengigkeiten. Felder: description = Spec/Anforderung, notes = "
-        "aktuelle User-Notiz, handoffs = chronologischer Verlauf/Findings."
+        "aktuelle User-Notiz, handoffs = chronologischer Verlauf/Findings. "
+        "file.* greift auf die konfigurierte Projektablage zu (lokal oder WebDAV), "
+        "mit relativen Pfaden und den aktuellen Projektrechten."
     ),
 )
 
@@ -1058,6 +1067,145 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
         "content_len": len(existing["content"] or ""),
     })
     return {"deleted": True, "handoff_id": handoff_id, "task_id": task_id, "subtask_id": subtask_id}
+
+
+# ============================================================
+# Dateien (lokale Ablage und WebDAV)
+# ============================================================
+
+MCP_FILE_MAX_BYTES = 1024 * 1024
+
+
+def _file_operation(operation, *args, **kwargs):
+    """Dateifehler ohne interne Serverpfade als MCP-Fehler zurueckgeben."""
+    try:
+        return operation(*args, **kwargs)
+    except HTTPException as exc:
+        raise ToolError(exc.detail) from exc
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        raise ToolError("Datei oder Verzeichnis nicht gefunden") from exc
+    except (FileExistsError, IsADirectoryError) as exc:
+        raise ToolError("Zieldatei oder Verzeichnis existiert bereits") from exc
+    except (OSError, RuntimeError, httpx.RequestError) as exc:
+        logger.exception("MCP-Dateioperation fehlgeschlagen")
+        raise ToolError("Dateioperation fehlgeschlagen") from exc
+
+
+def _file_context(task_id: int, path: str, *, write: bool = False, allow_empty: bool = False):
+    user = _user()
+    storage = _access(get_task_storage, task_id, user, write=write)
+    path = _access(safe_rel_path, path, allow_empty=allow_empty)
+    return user, storage, path
+
+
+@mcp.tool(name="file.list", annotations={"readOnlyHint": True})
+def file_list(task_id: int, path: str = "", offset: int = 0, limit: int = 200) -> dict:
+    """Dateien/Ordner der Projektablage auflisten. task_id ist die Aufgaben-/Projekt-ID.
+
+    path ist relativ zur konfigurierten Ablage, leer fuer deren Wurzel.
+    Benoetigt Leserechte. Maximal 500 Eintraege pro Seite, next_offset fuer weitere.
+    Keine automatische Einrichtung einer Ablage.
+    """
+    _, storage, path = _file_context(task_id, path, allow_empty=True)
+    if offset < 0 or not 1 <= limit <= 500:
+        raise ToolError("offset muss >= 0 sein, limit zwischen 1 und 500")
+    entries = _file_operation(storage.list_directory, path)
+    items = []
+    for entry in entries[offset:offset + limit]:
+        item = {key: entry[key] for key in ("name", "type", "size", "last_modified", "mime_type") if key in entry}
+        item["path"] = f"{path}/{entry['name']}" if path else entry["name"]
+        items.append(item)
+    end = offset + len(items)
+    return {"task_id": task_id, "path": path, "storage_type": storage.kind,
+            "can_write": storage.can_write, "items": items, "total": len(entries),
+            "next_offset": end if end < len(entries) else None,
+            "max_file_bytes": MCP_FILE_MAX_BYTES}
+
+
+@mcp.tool(name="file.read", annotations={"readOnlyHint": True})
+def file_read(task_id: int, path: str, encoding: Literal["auto", "utf-8", "base64"] = "auto") -> dict:
+    """Datei lesen (Leserechte, max. 1 MiB). Pfad relativ zur Projektablage.
+
+    auto liefert UTF-8-Text, bei binaeren/nicht-UTF-8-Inhalten Base64.
+    encoding im Ergebnis gibt das Format von content an. base64 erzwingt die
+    verlustfreie binaere Uebertragung. Groessere Dateien ueber die Web-UI abrufen.
+    """
+    _, storage, path = _file_context(task_id, path)
+    if encoding not in ("auto", "utf-8", "base64"):
+        raise ToolError("encoding muss auto, utf-8 oder base64 sein")
+    raw, content_type = _file_operation(storage.get_file, path, max_bytes=MCP_FILE_MAX_BYTES)
+    text = None
+    if encoding != "base64":
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            if encoding == "utf-8":
+                raise ToolError("Datei ist kein UTF-8-Text. encoding=base64 verwenden") from exc
+    if encoding == "auto" and text is not None and any(ord(char) < 32 and char not in "\t\r\n" for char in text):
+        text = None
+    return {"task_id": task_id, "path": path, "storage_type": storage.kind,
+            "content": text if text is not None else base64.b64encode(raw).decode("ascii"),
+            "encoding": "utf-8" if text is not None else "base64", "content_type": content_type, "size": len(raw)}
+
+
+@mcp.tool(name="file.write", annotations={"readOnlyHint": False, "destructiveHint": True})
+def file_write(task_id: int, path: str, content: str, encoding: Literal["utf-8", "base64"] = "utf-8") -> dict:
+    """Datei anlegen oder vollstaendig ersetzen (Bearbeitungsrechte, max. 1 MiB).
+
+    path ist ein relativer Dateipfad. Elternordner muessen bereits existieren
+    (file.mkdir). Text als utf-8, binaere Dateien als strikt kodiertes Base64.
+    Vor dem Ersetzen vorhandene Inhalte mit file.read pruefen.
+    """
+    user, storage, path = _file_context(task_id, path, write=True)
+    if encoding not in ("utf-8", "base64"):
+        raise ToolError("encoding muss utf-8 oder base64 sein")
+    max_chars = MCP_FILE_MAX_BYTES if encoding == "utf-8" else 4 * ((MCP_FILE_MAX_BYTES + 2) // 3)
+    if len(content) > max_chars:
+        raise ToolError("Datei zu gross (max. 1 MiB pro MCP-Aufruf)")
+    try:
+        raw = content.encode("utf-8") if encoding == "utf-8" else base64.b64decode(content, validate=True)
+    except (UnicodeError, ValueError, binascii.Error) as exc:
+        raise ToolError("Ungueltiger Dateiinhalt fuer die angegebene Kodierung") from exc
+    if len(raw) > MCP_FILE_MAX_BYTES:
+        raise ToolError("Datei zu gross (max. 1 MiB pro MCP-Aufruf)")
+    content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    _file_operation(storage.upload_file, path, raw, content_type)
+    log_change(user, "task", task_id, "file_upload", {"path": path, "size": len(raw), "storage_type": storage.kind})
+    return {"task_id": task_id, "path": path, "storage_type": storage.kind, "size": len(raw), "written": True}
+
+
+@mcp.tool(name="file.mkdir", annotations={"readOnlyHint": False, "destructiveHint": False})
+def file_mkdir(task_id: int, path: str) -> dict:
+    """Ordner anlegen (Bearbeitungsrechte). Relativer Pfad, Elternordner muessen existieren."""
+    user, storage, path = _file_context(task_id, path, write=True)
+    _file_operation(storage.create_directory, path)
+    log_change(user, "task", task_id, "file_mkdir", {"path": path, "storage_type": storage.kind})
+    return {"task_id": task_id, "path": path, "created": True}
+
+
+@mcp.tool(name="file.move", annotations={"readOnlyHint": False, "destructiveHint": True})
+def file_move(task_id: int, source: str, destination: str) -> dict:
+    """Datei/Ordner innerhalb derselben Projektablage verschieben oder umbenennen.
+
+    Benoetigt Bearbeitungsrechte. Beide Pfade relativ, Ziel darf nicht existieren.
+    """
+    user, storage, source = _file_context(task_id, source, write=True)
+    destination = _access(safe_rel_path, destination, allow_empty=False)
+    _file_operation(storage.move_item, source, destination)
+    log_change(user, "task", task_id, "file_move", {"source": source, "destination": destination, "storage_type": storage.kind})
+    return {"task_id": task_id, "source": source, "destination": destination, "moved": True}
+
+
+@mcp.tool(name="file.delete", annotations={"readOnlyHint": False, "destructiveHint": True})
+def file_delete(task_id: int, path: str) -> dict:
+    """Datei oder Ordner samt Inhalt dauerhaft loeschen (Bearbeitungsrechte).
+
+    Relativer Pfad zur Projektablage. Die Wurzel der Ablage kann nicht geloescht werden.
+    """
+    user, storage, path = _file_context(task_id, path, write=True)
+    _file_operation(storage.delete_item, path)
+    log_change(user, "task", task_id, "file_delete", {"path": path, "storage_type": storage.kind})
+    return {"task_id": task_id, "path": path, "deleted": True}
 
 
 # ============================================================

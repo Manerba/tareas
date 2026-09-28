@@ -126,6 +126,8 @@ def build_agent_metadata(request: Request | None = None) -> dict[str, Any]:
             "Project assignees can read notes and handoffs on all subtasks and write their own, without individual subtask assignments. For subtasks, task_id is the project ID and subtask_id is the subtask ID.",
             "handoff.add creates a separate history item; handoff.delete removes a handoff by handoff_id.",
             "handoff_id is typed, e.g. task:123 or subtask:456; never pass a bare numeric entry id.",
+            "file.list/read/write/mkdir/move/delete access the configured local or WebDAV project storage with current permissions. Paths are relative to that project's storage root; task_id is the project ID.",
+            "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the web UI. File contents are not recorded in the audit log.",
             "Treat predecessor_ids as dependency edges; position_number is display order only.",
             "Dependencies must stay within one project, without cycles or redundant direct edges. If C depends on B and B on A, C must not also depend directly on A.",
         ],
@@ -178,9 +180,17 @@ Arbeitsregeln:
 - REST, MCP und Dateiablage pruefen dieselben Aufgabenrechte. Lesefreigaben
   erlauben nur Lesen, Schreibfreigaben auch Inhalte und eigene Beitraege.
   Projektfreigaben gelten fuer alle Teilaufgaben, Erstellen braucht ein eigenes Recht.
-- Zuweisungen, Loeschen und Freigaben verwalten nur Ersteller und Admins.
+- Zuweisungen, Loeschen von Aufgaben/Teilaufgaben und Freigaben verwalten nur Ersteller und Admins.
   Das gilt auch fuer `assign_self`. Bei fremden Aufgaben muss der Ersteller
   oder ein Admin die Session zuweisen oder freigeben.
+- `file.list`, `file.read`, `file.write`, `file.mkdir`, `file.move` und
+  `file.delete` nutzen die konfigurierte lokale oder WebDAV-Projektablage.
+  `task_id` ist die Projekt-ID, Pfade sind relativ zu dessen Ablage.
+  Lesen braucht Leserechte, Dateiaenderungen brauchen Bearbeitungsrechte.
+- `file.read` liefert UTF-8 oder Base64 (Feld `encoding`). `file.write`
+  ersetzt die gesamte Datei, daher vorher lesen. Maximal 1 MiB je Datei beim
+  Lesen/Schreiben, groessere Dateien ueber die Web-UI. `file.list` liefert
+  bei weiteren Eintraegen `next_offset`. `file.delete` loescht Ordner samt Inhalt.
 - Gitea-Issues enthalten konkrete Findings/Bugs; Tareas enthaelt
   Zusammenfassung und Issue-IDs/Links.
 - Keine Secrets, Tokens, Passwoerter oder privaten Schluessel in Tareas-Notizen,
@@ -269,6 +279,12 @@ mcp__tareas__handoff.add
 mcp__tareas__handoff.list
 mcp__tareas__handoff.update
 mcp__tareas__handoff.delete
+mcp__tareas__file.list
+mcp__tareas__file.read
+mcp__tareas__file.write
+mcp__tareas__file.mkdir
+mcp__tareas__file.move
+mcp__tareas__file.delete
 ```
 
 Pruefablauf:
@@ -277,6 +293,8 @@ Pruefablauf:
 2. Erwarteten `display_name` und `auth_source: "mcp"` pruefen.
 3. `list_projects` aufrufen.
 4. Zielprojekt mit `get_project(project_id=...)` lesen.
+5. Bei konfigurierter Dateiablage (`file_storage_type` ist `local` oder `webdav`)
+   mit `file.list(task_id=...)` die Dateien und effektiven Schreibrechte pruefen.
 
 Wenn keine Tareas-MCP-Tools verfuegbar sind, keine lokale Ersatz-DB und keine
 Schattenquelle in einem anderen System anlegen. Erst MCP einrichten oder den
