@@ -454,5 +454,17 @@
   "permissions.empty": "Noch keine zusätzlichen Freigaben.",
   "permissions.denied": "Nur Ersteller und Administratoren dürfen Berechtigungen verwalten.",
   "permissions.conflict": "Die Berechtigungen wurden inzwischen geändert. Bitte den Dialog schließen und erneut öffnen. Dein Entwurf wurde nicht gespeichert.",
-  "permissions.saved": "Berechtigungen gespeichert"
+  "permissions.saved": "Berechtigungen gespeichert",
+  "textFile.expand": "Ausklappen",
+  "textFile.text": "Text",
+  "textFile.source": "Text-Quelltext",
+  "textFile.hint": "Text und Code werden unverändert gespeichert. Änderungen mit Speichern übernehmen.",
+  "textFile.discard": "Ungespeicherte Änderungen verwerfen und schließen?",
+  "textFile.popupFailed": "Das neue Fenster konnte nicht geöffnet werden. Bitte Pop-ups erlauben und erneut versuchen. Der Entwurf bleibt hier erhalten.",
+  "textFile.conflict": "Die Datei wurde zwischenzeitlich geändert. Dein Entwurf bleibt erhalten. Bitte sichere ihn und öffne die aktuelle Datei erneut.",
+  "textFile.tooLarge": "Diese Datei ist für den Texteditor zu groß (max. 2 MiB). Bitte herunterladen.",
+  "textFile.unsupportedEncoding": "Diese Zeichenkodierung wird nicht unterstützt. Unterstützt werden UTF-8 und UTF-16 mit BOM. Bitte herunterladen.",
+  "textFile.binary": "Diese Datei enthält Binärdaten. Bitte herunterladen.",
+  "textFile.unsupportedFormat": "Dieses Dateiformat wird im Texteditor nicht unterstützt. Bitte herunterladen.",
+  "textFile.readOnlyDraft": "Die Schreibrechte wurden entzogen. Dein Entwurf bleibt zum Kopieren sichtbar."
 }

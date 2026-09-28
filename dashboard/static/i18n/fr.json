@@ -454,5 +454,17 @@
   "permissions.empty": "Aucune autorisation de partage supplémentaire.",
   "permissions.denied": "Seuls le créateur et les administrateurs peuvent gérer les autorisations.",
   "permissions.conflict": "Les autorisations ont changé depuis l’ouverture de cette fenêtre. Fermez-la puis rouvrez-la. Votre brouillon n’a pas été enregistré.",
-  "permissions.saved": "Autorisations enregistrées"
+  "permissions.saved": "Autorisations enregistrées",
+  "textFile.expand": "Ouvrir dans une fenêtre",
+  "textFile.text": "Texte",
+  "textFile.source": "Texte source",
+  "textFile.hint": "Le texte et le code sont enregistrés tels quels. Appliquez les modifications avec Enregistrer.",
+  "textFile.discard": "Abandonner les modifications non enregistrées et fermer ?",
+  "textFile.popupFailed": "Impossible d’ouvrir la nouvelle fenêtre. Autorisez les fenêtres contextuelles et réessayez. Votre brouillon est conservé ici.",
+  "textFile.conflict": "Le fichier a changé depuis son ouverture. Votre brouillon est conservé. Copiez-le puis rouvrez le fichier actuel.",
+  "textFile.tooLarge": "Ce fichier est trop volumineux pour l’éditeur de texte (2 Mio max.). Téléchargez-le.",
+  "textFile.unsupportedEncoding": "Cet encodage n’est pas pris en charge. UTF-8 et UTF-16 avec BOM sont acceptés. Téléchargez le fichier.",
+  "textFile.binary": "Ce fichier contient des données binaires. Téléchargez-le.",
+  "textFile.unsupportedFormat": "Ce format n’est pas pris en charge par l’éditeur de texte. Téléchargez le fichier.",
+  "textFile.readOnlyDraft": "Le droit d’écriture a été retiré. Votre brouillon reste visible pour être copié."
 }

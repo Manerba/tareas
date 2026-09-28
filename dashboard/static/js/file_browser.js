@@ -133,13 +133,11 @@ class FileBrowser {
                 this.toggleTreeDir(expandBtn.dataset.togglePath);
                 return;
             }
-            // Grid: Edit-Button (OnlyOffice)
+            // Grid: Nativer Texteditor oder ONLYOFFICE
             const editBtn = e.target.closest('.fb-grid-edit[data-edit-path]');
             if (editBtn) {
                 e.stopPropagation();
-                if (typeof openOnlyOfficeEditor === 'function') {
-                    openOnlyOfficeEditor(this.taskId, editBtn.dataset.editPath);
-                }
+                this.openEditor(editBtn.dataset.editPath);
                 return;
             }
         });
@@ -256,7 +254,8 @@ class FileBrowser {
         this.items.forEach(item => {
             const icon = this._getFileIcon(item);
             const sizeStr = item.type === 'directory' ? '' : this._formatSize(item.size);
-            const isEditable = item.type === 'file' && typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(item.name, this.onlyOfficeConfigured);
+            const isEditable = item.type === 'file' && (item.text_format ||
+                (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(item.name, this.onlyOfficeConfigured)));
             const editIcon = isEditable
                 ? `<div class="fb-grid-edit" data-edit-path="${escapeAttr(this.currentPath ? this.currentPath + '/' + item.name : item.name)}" title="${t('files.openInEditor')}">${this._iconEdit()}</div>`
                 : '';
@@ -373,6 +372,31 @@ class FileBrowser {
     // Interaktionen
     // ========================================
 
+    textFormat(path) {
+        const slash = path.lastIndexOf('/');
+        const parent = slash < 0 ? '' : path.slice(0, slash);
+        const name = path.slice(slash + 1);
+        return (this.treeCache[parent] || []).find(item => item.name === name)?.text_format;
+    }
+
+    openEditor(path) {
+        if (this.textFormat(path)) {
+            openTextFileEditor(this.taskId, path, async () => {
+                const slash = path.lastIndexOf('/');
+                const parent = slash < 0 ? '' : path.slice(0, slash);
+                if (parent === this.currentPath) return this.loadDirectory(parent);
+                try {
+                    const response = await fetch(`/api/tasks/${this.taskId}/files?path=${encodeURIComponent(parent)}`);
+                    if (!response.ok) return;
+                    this.treeCache[parent] = (await response.json()).items || [];
+                    if (this.viewMode === 'tree') this.renderTree();
+                } catch (_) { /* Dateispeicherung war erfolgreich; Metadaten beim naechsten Laden erneuern. */ }
+            });
+        } else if (typeof openOnlyOfficeEditor === 'function') {
+            openOnlyOfficeEditor(this.taskId, path);
+        }
+    }
+
     onItemDblClick(name, type, parentPath) {
         if (type === 'directory') {
             const path = this.viewMode === 'tree' && parentPath !== undefined
@@ -380,13 +404,13 @@ class FileBrowser {
                 : (this.currentPath ? `${this.currentPath}/${name}` : name);
             this.loadDirectory(path);
         } else {
-            // ONLYOFFICE Editor oder Download
+            // Nativer Texteditor hat Vorrang, auch mit konfiguriertem ONLYOFFICE.
             const filePath = this.viewMode === 'tree' && parentPath !== undefined
                 ? (parentPath ? `${parentPath}/${name}` : name)
                 : (this.currentPath ? `${this.currentPath}/${name}` : name);
 
-            if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured)) {
-                openOnlyOfficeEditor(this.taskId, filePath);
+            if (this.textFormat(filePath) || (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured))) {
+                this.openEditor(filePath);
             } else if (this._isImageFile(name)) {
                 this.openFileInline(filePath);
             } else {
@@ -408,7 +432,7 @@ class FileBrowser {
 
         let html = '<div class="fb-ctx-menu">';
         if (type === 'file') {
-            if (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured)) {
+            if (this.textFormat(fullPath) || (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured))) {
                 html += `<div class="fb-ctx-item" data-action="edit" data-path="${escapeAttr(fullPath)}">${t('files.openInEditor')}</div>`;
             }
             if (this._isImageFile(name)) {
@@ -444,7 +468,7 @@ class FileBrowser {
             const path = item.dataset.path;
             switch (action) {
                 case 'edit':
-                    if (typeof openOnlyOfficeEditor === 'function') openOnlyOfficeEditor(this.taskId, path);
+                    this.openEditor(path);
                     break;
                 case 'view':
                     this.openFileInline(path);

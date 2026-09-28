@@ -66,7 +66,7 @@ def main():
     violations = []
     errors = []
     translations = json.loads((ROOT / 'dashboard/static/i18n/de.json').read_text())
-    items = [dict(name=name, type='file', size=12, last_modified='') for name in ('readme.md', 'Plan.docx', 'photo.png')]
+    items = [dict(name=name, type='file', size=12, last_modified='') for name in ('Budget.xlsx', 'Plan.docx', 'photo.png')]
     html = '''<html><body data-admin-mode="true"><div id="files"></div>
         <script src="/static/js/i18n.js"></script><script src="/static/js/app_core.js"></script>
         <script src="/static/js/file_browser.js"></script><script src="/static/js/onlyoffice_editor.js"></script>
@@ -155,19 +155,19 @@ def main():
         page.goto(f'{base_url}/')
         for view in ('tree', 'grid'):
             page.evaluate('view => { files.viewMode = view; files.currentPath = "Unterlagen"; return files.loadDirectory("Unterlagen"); }', view)
-            item = page.locator(f'.fb-{view}-' + ('row' if view == 'tree' else 'item') + '[data-name="readme.md"]')
+            item = page.locator(f'.fb-{view}-' + ('row' if view == 'tree' else 'item') + '[data-name="Plan.docx"]')
             expect(item).to_be_visible()
             expect(page.locator('.fb-grid-edit')).to_have_count(0)
             item.click(button='right')
             expect(page.locator('.fb-ctx-item[data-action="edit"]')).to_have_count(0)
             with page.expect_download() as download:
                 page.locator('.fb-ctx-item[data-action="download"]').click()
-            assert download.value.suggested_filename == 'readme.md', download.value.suggested_filename
+            assert download.value.suggested_filename == 'Plan.docx', download.value.suggested_filename
             assert Path(download.value.path()).read_text() == '# Projekt'
             before = len(requests)
             with page.expect_download() as download:
                 item.dblclick()
-            assert download.value.suggested_filename == 'readme.md', download.value.suggested_filename
+            assert download.value.suggested_filename == 'Plan.docx', download.value.suggested_filename
             assert Path(download.value.path()).read_text() == '# Projekt'
             assert len(requests) == before
 

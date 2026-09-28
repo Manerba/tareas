@@ -454,5 +454,17 @@
   "permissions.empty": "Nu există încă permisiuni suplimentare de partajare.",
   "permissions.denied": "Doar creatorul și administratorii pot gestiona permisiunile.",
   "permissions.conflict": "Permisiunile s-au schimbat de la deschiderea dialogului. Închide-l și redeschide-l. Modificările tale nu au fost salvate.",
-  "permissions.saved": "Permisiuni salvate"
+  "permissions.saved": "Permisiuni salvate",
+  "textFile.expand": "Deschide în fereastră",
+  "textFile.text": "Text",
+  "textFile.source": "Text sursă",
+  "textFile.hint": "Textul și codul sunt salvate așa cum au fost introduse. Aplică modificările cu Salvare.",
+  "textFile.discard": "Renunți la modificările nesalvate și închizi?",
+  "textFile.popupFailed": "Fereastra nouă nu a putut fi deschisă. Permite ferestrele pop-up și încearcă din nou. Ciorna rămâne aici.",
+  "textFile.conflict": "Fișierul s-a modificat de la deschidere. Ciorna este păstrată. Copiaz-o și redeschide fișierul curent.",
+  "textFile.tooLarge": "Fișierul este prea mare pentru editorul de text (max. 2 MiB). Descarcă-l.",
+  "textFile.unsupportedEncoding": "Această codificare nu este acceptată. Sunt acceptate UTF-8 și UTF-16 cu BOM. Descarcă fișierul.",
+  "textFile.binary": "Fișierul conține date binare. Descarcă-l.",
+  "textFile.unsupportedFormat": "Editorul de text nu acceptă acest format. Descarcă fișierul.",
+  "textFile.readOnlyDraft": "Dreptul de scriere a fost retras. Ciorna rămâne vizibilă pentru copiere."
 }

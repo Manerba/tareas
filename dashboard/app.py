@@ -351,6 +351,16 @@ async def editor_page(request: Request):
     return FileResponse(templates_dir / "editor.html")
 
 
+@app.get("/text-editor", response_class=HTMLResponse)
+async def text_editor_page(request: Request):
+    """Nativer Markdown-/Texteditor im separaten Fenster."""
+    if not _extract_user_from_request(request):
+        return RedirectResponse(url="/login", status_code=302)
+    return FileResponse(templates_dir / "text_editor.html", headers={
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'none';",
+    })
+
+
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(path: str, request: Request = None):
     """Catch-All fuer clientseitiges Routing (SPA)."""

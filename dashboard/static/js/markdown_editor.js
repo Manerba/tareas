@@ -58,8 +58,8 @@ class MarkdownEditor {
                 `}
             </div>
             <div class="markdown-body" data-md-preview></div>
-            <textarea class="markdown-source" aria-label="${escapeAttr(t('markdown.source'))}" spellcheck="false" hidden></textarea>
-            <p class="markdown-hint" hidden>${t('markdown.hint')}</p>
+            <textarea class="markdown-source" aria-label="${escapeAttr(t(this.options.plainText ? 'textFile.source' : 'markdown.source'))}" spellcheck="false" hidden></textarea>
+            <p class="markdown-hint" hidden>${t(this.options.plainText ? 'textFile.hint' : 'markdown.hint')}</p>
             <p class="markdown-error" role="alert" hidden></p>`;
         this.preview = this.container.querySelector('[data-md-preview]');
         this.input = this.container.querySelector('.markdown-source');
@@ -85,7 +85,14 @@ class MarkdownEditor {
     }
 
     updateView() {
-        this.preview.innerHTML = renderMarkdown(this.source) || `<em>${t('markdown.empty')}</em>`;
+        if (this.options.plainText) {
+            const text = document.createElement('pre');
+            text.className = 'text-file-plain';
+            text.textContent = this.source;
+            this.preview.replaceChildren(text);
+        } else {
+            this.preview.innerHTML = renderMarkdown(this.source) || `<em>${t('markdown.empty')}</em>`;
+        }
         this.preview.hidden = this.editing;
         this.input.hidden = !this.editing;
         this.container.querySelector('.markdown-hint').hidden = !this.editing;
@@ -111,7 +118,7 @@ class MarkdownEditor {
             this.editing = false;
         } catch (error) {
             MarkdownEditor.drafts.set(this.containerId, source);
-            this.error.textContent = t('common.saveError');
+            this.error.textContent = this.options.saveErrorMessage?.(error) || t('common.saveError');
             this.error.hidden = false;
         } finally {
             this.saving = false;

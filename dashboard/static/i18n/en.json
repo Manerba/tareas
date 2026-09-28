@@ -454,5 +454,17 @@
   "permissions.empty": "No additional sharing permissions yet.",
   "permissions.denied": "Only creators and administrators can manage permissions.",
   "permissions.conflict": "Permissions have changed since you opened this dialog. Close and reopen it. Your draft has not been saved.",
-  "permissions.saved": "Permissions saved"
+  "permissions.saved": "Permissions saved",
+  "textFile.expand": "Pop out",
+  "textFile.text": "Text",
+  "textFile.source": "Text source",
+  "textFile.hint": "Text and code are saved as entered. Apply changes with Save.",
+  "textFile.discard": "Discard unsaved changes and close?",
+  "textFile.popupFailed": "The new window could not be opened. Allow pop-ups and try again. Your draft remains here.",
+  "textFile.conflict": "The file has changed since it was opened. Your draft is retained. Copy it and reopen the current file.",
+  "textFile.tooLarge": "This file is too large for the text editor (max. 2 MiB). Please download it.",
+  "textFile.unsupportedEncoding": "This encoding is not supported. UTF-8 and UTF-16 with BOM are supported. Please download the file.",
+  "textFile.binary": "This file contains binary data. Please download it.",
+  "textFile.unsupportedFormat": "This file format is not supported by the text editor. Please download it.",
+  "textFile.readOnlyDraft": "Write access has been removed. Your draft remains visible for copying."
 }

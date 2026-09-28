@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.config_utils import get_masked_config, resolve_masked_password
@@ -19,6 +19,7 @@ from dashboard import webdav
 from dashboard.audit_log import log_change
 from dashboard.file_storage import get_task_storage, safe_rel_path as _safe_rel_path, safe_filename as _safe_filename
 from dashboard.csp_utils import get_onlyoffice_origin
+from dashboard.text_files import MAX_TEXT_BYTES, text_format, read_text_file, write_text_file
 from dashboard.logging_config import get_security_logger
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,11 @@ class MoveRequest(BaseModel):
 
 class MkdirRequest(BaseModel):
     name: str
+
+
+class TextFileRequest(BaseModel):
+    content: str = Field(max_length=MAX_TEXT_BYTES)
+    revision: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 # ============================================================
@@ -199,8 +205,26 @@ async def list_task_files(task_id: int, path: str = "", user=Depends(get_file_us
     storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path)
     items = await _file_operation(storage.list_directory, path)
+    for item in items:
+        item["text_format"] = text_format(item["name"]) if item["type"] == "file" else None
     return {"items": items, "path": path, "storage_type": storage.kind, "can_write": storage.can_write,
             "onlyoffice_configured": get_onlyoffice_origin() is not None}
+
+
+@files_router.get("/api/tasks/{task_id}/files/text")
+async def get_task_text_file(task_id: int, path: str = Query(...), user=Depends(get_file_user)):
+    storage = get_task_storage(task_id, user)
+    path = _safe_rel_path(path, allow_empty=False)
+    return await _file_operation(read_text_file, storage, path)
+
+
+@files_router.put("/api/tasks/{task_id}/files/text")
+async def save_task_text_file(task_id: int, body: TextFileRequest, path: str = Query(...), user=Depends(get_file_user)):
+    storage = get_task_storage(task_id, user, write=True)
+    path = _safe_rel_path(path, allow_empty=False)
+    result = await _file_operation(write_text_file, storage, path, body.content, body.revision)
+    log_change(user, "task", task_id, "file_edit", {"path": path, "storage_type": storage.kind})
+    return result
 
 
 @files_router.get("/api/tasks/{task_id}/files/download")

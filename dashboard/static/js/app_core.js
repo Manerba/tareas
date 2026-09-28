@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTaskTableHeaderOffset();
 
     // Admin-Mode Guard: Tabs nur in der Haupt-App initialisieren
-    if (!document.body.dataset.adminMode) {
+    if (!document.body.dataset.adminMode && !document.body.dataset.standalone) {
         loadCurrentUser();
         initTabs();
     }

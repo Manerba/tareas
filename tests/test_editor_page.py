@@ -96,6 +96,19 @@ class EditorPageTests(unittest.TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 401)
         self.assertEqual(self.client.get(self.url + '/edit', params={"path": "readme.md"}).status_code, 401)
 
+    def test_native_text_page_strict_csp_and_file_csrf(self):
+        response = self.client.get('/text-editor')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("script-src 'self';", response.headers['content-security-policy'])
+        self.assertNotRegex(response.text, re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>", re.I))
+        data = self.client.get(self.url + '/text', params={'path': 'readme.md'}).json()
+        params = dict(params={'path': 'readme.md'}, json={'content': '# Updated', 'revision': data['revision']})
+        self.assertEqual(self.client.put(self.url + '/text', **params).status_code, 403)
+        self.assertEqual(self.client.put(self.url + '/text', headers={'X-Requested-With': 'XMLHttpRequest'}, **params).status_code, 200)
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get('/text-editor', follow_redirects=False).status_code, 302)
+        self.assertEqual(self.client.get(self.url + '/text', params={'path': 'readme.md'}).status_code, 401)
+
 
 if __name__ == '__main__':
     unittest.main()

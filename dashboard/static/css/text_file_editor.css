@@ -1,0 +1,65 @@
+.text-file-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.text-file-shell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    width: min(1100px, 100%);
+    height: min(820px, 90dvh);
+    overflow: hidden;
+}
+.text-file-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+.text-file-title { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; margin: 0; font-size: 16px; }
+.text-file-status { margin: 0; padding: 8px 12px; color: var(--color-bearish); font-size: 13px; }
+.text-file-shell [hidden] { display: none !important; }
+.text-file-content { flex: 1; min-height: 0; overflow: auto; display: flex; }
+.text-file-content > .markdown-editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+}
+.text-file-content .markdown-body, .text-file-content .markdown-source {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    resize: none;
+}
+.text-file-content .markdown-source { white-space: pre; overflow-wrap: normal; }
+.text-file-content .text-file-plain {
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font: 13px/1.6 ui-monospace, monospace;
+    tab-size: 4;
+}
+body.text-file-page { margin: 0; padding: 0; height: 100dvh; overflow: hidden; }
+.text-file-page .text-file-shell { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+@media (max-width: 600px) {
+    .text-file-overlay { padding: 6px; }
+    .text-file-overlay .text-file-shell { height: 96dvh; }
+    .text-file-title { flex-basis: 100%; }
+}

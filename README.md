@@ -10,6 +10,7 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 - **Sharing & Permissions** - Creators and administrators share tasks and projects through Settings → Permissions. Read or edit access is separate from assignment; projects also offer permission to create subtasks. Changes are saved together or discarded with Cancel. Admins can edit all projects, tasks, notes and handoffs regardless of ownership.
 - **Markdown Descriptions & Notes** - Formatted reading view with source editing, lists, tables, and code blocks
 - **File Storage** - Dedicated local storage per task/project or a Nextcloud/WebDAV directory, with tree view, drag & drop upload and context menus
+- **Text File Editor** - Preview and edit Markdown, text and scripts in a dialog, with a pop-out window that retains unsaved edits
 - **ONLYOFFICE Integration** - Edit Office documents (docx, xlsx, pptx) directly in the browser via WOPI
 - **LDAP/Active Directory** - Authenticate users against AD, automatic sync, group-based access
 - **Email Notifications** - SMTP integration with configurable templates for assignments, status changes, deadlines
@@ -114,6 +115,23 @@ select an existing directory from the configured Nextcloud share. Local storage
 works without a Nextcloud configuration. Both options support the file browser
 and ONLYOFFICE editing when ONLYOFFICE is configured.
 
+Double-click a Markdown file to open its formatted preview in a dialog. Text and
+script files (including `.txt`, `.ps1`, `.sh`, `.py`, `.js`, JSON and YAML) open as
+literal text in the same editor, independently of ONLYOFFICE. Choose **Bearbeiten**
+to edit, then **Speichern** or **Abbrechen**, as with project descriptions. Read-only
+members can view files. The **Ausklappen** button moves the editor into a separate
+browser window and retains unsaved edits; the browser may choose a tab instead.
+If pop-ups are blocked, the draft stays in the dialog.
+
+The native editor supports files up to 2 MiB, encoded as UTF-8 (with or without
+BOM) or UTF-16 with BOM. It preserves the encoding, BOM and the existing newline
+style when saving. Binary files, unsupported encodings and larger files remain
+available for download. Saves check the loaded revision and report a conflict if
+the file has changed; the draft remains available to copy. Text editing uses
+`GET`/`PUT /api/tasks/{id}/files/text?path=...` with the existing file permissions,
+CSRF protection and audit logging. A PUT supplies `content` and the `revision`
+returned by GET.
+
 Local files are stored in `data/files/task-<ID>/` relative to the installation
 directory (`/opt/tareas/data/files/` for the Debian package). Directory names stay
 stable when tasks are renamed. Files are served through authenticated APIs using
@@ -169,6 +187,8 @@ takes precedence over a session cookie.
 |--------|----------|-------------------|
 | GET | `/api/tasks/{task_id}/files` | Optional `path` query for a subfolder |
 | GET | `/api/tasks/{task_id}/files/download` | `path` query, returns file bytes |
+| GET | `/api/tasks/{task_id}/files/text` | `path` query, returns text, format, write access and revision, maximum 2 MiB |
+| PUT | `/api/tasks/{task_id}/files/text` | `path` query, JSON `{"content": "text", "revision": "<revision from GET>"}` |
 | POST | `/api/tasks/{task_id}/files/upload` | Multipart field `file`, optional folder `path` query, maximum 500 MiB |
 | POST | `/api/tasks/{task_id}/files/mkdir` | JSON `{"name": "folder"}`, optional parent `path` query |
 | PUT | `/api/tasks/{task_id}/files/move` | JSON `{"source": "old.txt", "destination": "new.txt"}` |
