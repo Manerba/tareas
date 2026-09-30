@@ -32,6 +32,7 @@
 }
 .text-file-title { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; margin: 0; font-size: 16px; }
 .text-file-status { margin: 0; padding: 8px 12px; color: var(--color-bearish); font-size: 13px; }
+.text-file-meta { margin: 0; padding: 6px 12px; color: var(--text-secondary); font-size: 12px; border-bottom: 1px solid var(--border-color); }
 .text-file-shell [hidden] { display: none !important; }
 .text-file-content { flex: 1; min-height: 0; overflow: auto; display: flex; }
 .text-file-content > .markdown-editor {

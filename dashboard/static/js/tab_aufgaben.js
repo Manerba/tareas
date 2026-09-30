@@ -10,6 +10,7 @@ let cachedAreas = null;
 let cachedUsers = [];
 let ncConfigured = false;
 const projectDetailSizes = new Map();
+const subtaskDetailSizes = new Map();
 
 // Auto-Save: Debounce-Timer pro Feld
 const _autoSaveTimers = {};
@@ -624,7 +625,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
 
     html += `<div class="notes-section note-entries-list">
         <h5>${t('detail.noteHistory')}</h5>
-        <div class="subtask-notes-content" id="taskNoteEntries_${row.id}"><em>${t('common.loading')}</em></div>
+        <div class="subtask-notes-content handoff-grid" id="taskNoteEntries_${row.id}"><em>${t('common.loading')}</em></div>
     </div>`;
 
     // Dateiablage-Button fuer Aufgaben (nicht-Projekte)
@@ -740,13 +741,14 @@ function onTaskRowCollapsed(rowId) {
  * Hoehe der Beschreibung und bei Dateiablage auch die Spaltenbreiten anpassen.
  * Abmessungen bleiben beim erneuten Aufklappen innerhalb der Seite erhalten.
  */
-function initColumnResize(taskId) {
-    const columns = document.getElementById(`pdColumns_${taskId}`);
-    const heightHandle = document.getElementById(`pdResize_${taskId}`);
-    const splitHandle = document.getElementById(`pdSplit_${taskId}`);
-    if (!columns || !heightHandle) return;
-    const sizes = projectDetailSizes.get(taskId) || {};
-    projectDetailSizes.set(taskId, sizes);
+function initColumnResize(taskId, prefix = 'pd', sizeStore = projectDetailSizes) {
+    const columns = document.getElementById(`${prefix}Columns_${taskId}`);
+    const heightHandle = document.getElementById(`${prefix}Resize_${taskId}`);
+    const splitHandle = document.getElementById(`${prefix}Split_${taskId}`);
+    if (!columns || !heightHandle || columns._resizeInit) return;
+    columns._resizeInit = true;
+    const sizes = sizeStore.get(taskId) || {};
+    sizeStore.set(taskId, sizes);
 
     function setHeight(height) {
         sizes.height = Math.max(200, height);
@@ -815,6 +817,23 @@ function initColumnResize(taskId) {
         else if (event.key === 'End') setSplit(80);
         else setSplit((sizes.split || 50) + (event.key === 'ArrowRight' ? 5 : -5));
     });
+}
+
+function renderSubtaskDetailColumns(subtaskId, description, entriesId, prefix = 'st') {
+    return `<div class="project-detail-columns has-side-panel subtask-detail-columns" id="${prefix}Columns_${subtaskId}">
+        <div class="project-detail-left" id="${prefix}DescriptionPane_${subtaskId}">${description}</div>
+        <div class="project-detail-split" id="${prefix}Split_${subtaskId}" role="separator" tabindex="0"
+            aria-orientation="vertical" aria-controls="${prefix}DescriptionPane_${subtaskId}"
+            aria-valuemin="20" aria-valuemax="80" aria-valuenow="50"
+            aria-label="${escapeAttr(t('detail.resizeWidth'))}" title="${escapeAttr(t('detail.resizeWidth'))}"></div>
+        <div class="project-detail-right">
+            <section class="subtask-handoff-panel" aria-label="${escapeAttr(t('detail.noteHistory'))}">
+                <h5>${t('detail.noteHistory')}</h5>
+                <div class="subtask-notes-content handoff-grid subtask-handoff-grid" id="${entriesId}"><em>${t('common.loading')}</em></div>
+            </section>
+        </div>
+    </div>
+    <div class="project-detail-resize" id="${prefix}Resize_${subtaskId}" title="${escapeAttr(t('detail.resizeHeight'))}"></div>`;
 }
 
 // ========================================
@@ -933,10 +952,11 @@ async function onSubtaskViewExpanded(row, detailElement) {
         </div>` : ''}
     </div>`;
 
-    html += canEdit ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
+    const description = canEdit ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
         <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
         <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
     </div>`;
+    html += renderSubtaskDetailColumns(stId, description, `stViewNoteEntries_${stId}`, 'stView');
 
     // Eigene Notizen (Markdown)
     html += `<div class="notes-section">
@@ -951,13 +971,10 @@ async function onSubtaskViewExpanded(row, detailElement) {
         </div>`;
     }
 
-    html += `<div class="notes-section note-entries-list">
-        <h5>${t('detail.noteHistory')}</h5>
-        <div class="subtask-notes-content" id="stViewNoteEntries_${stId}"><em>${t('common.loading')}</em></div>
-    </div>`;
-
     html += `</div>`;
     detailElement.innerHTML = html;
+
+    initColumnResize(stId, 'stView', subtaskDetailSizes);
 
     if (canEdit) {
         createMarkdownField(`stViewDescription_${stId}`, row.description || '', {
@@ -1259,27 +1276,19 @@ function renderSubTasks(taskId, subtasks) {
         }
         html += `</td></tr>`;
 
-        // Detail-Zeile (versteckt): nur noch Beschreibung/WYSIWYG
+        // Detail-Zeile: Beschreibung und Handoff-Widgets mit gemeinsamem Resize.
         html += `<tr class="subtask-detail-row" data-subtask-detail-id="${st.id}">
             <td colspan="${colCount}">
                 <div class="subtask-detail-reveal"><div class="subtask-detail-clip">
                     <div class="subtask-detail-content">`;
 
-        // WYSIWYG oder Readonly-Beschreibung
-        if (canEdit) {
-            html += `<div id="stWysiwyg_${st.id}"></div>`;
-        } else {
-            html += `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
-        }
+        const description = canEdit ? `<div id="stWysiwyg_${st.id}"></div>`
+            : `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
+        html += renderSubtaskDetailColumns(st.id, description, `stNoteEntriesContent_${st.id}`);
 
         html += `<div class="notes-section subtask-notes-list">
             <h5>${t('detail.notes')}</h5>
             <div class="subtask-notes-content" id="stAllNotesContent_${st.id}"><em>${t('common.loading')}</em></div>
-        </div>`;
-
-        html += `<div class="notes-section note-entries-list">
-            <h5>${t('detail.noteHistory')}</h5>
-            <div class="subtask-notes-content" id="stNoteEntriesContent_${st.id}"><em>${t('common.loading')}</em></div>
         </div>`;
 
         html += `</div></div></div>
@@ -1319,25 +1328,19 @@ function renderSubTaskNotesList(notes) {
     }).join('');
 }
 
-function mountAdminNoteEditors(container, items, url, isHandoff = false) {
+function mountAdminNoteEditors(container, items, url) {
     if (!currentUser?.is_admin) return;
     const bodies = container.querySelectorAll('.subtask-note-body');
     items.forEach((item, index) => {
         const body = bodies[index];
         if (!body) return;
-        const id = isHandoff ? item.id : item.user_id;
+        const id = item.user_id;
         const editorId = `${container.id}_editor_${id}`;
         body.classList.remove('markdown-body');
         body.innerHTML = `<div id="${editorId}"></div>`;
         createMarkdownField(editorId, item.content || '', {
             url: `${url}/${id}`, field: 'content', model: item,
-            label: t(isHandoff ? 'detail.noteHistory' : 'detail.notes'),
-            onSaved: source => {
-                if (isHandoff) {
-                    const preview = body.closest('.note-entry-item')?.querySelector('.note-entry-preview');
-                    if (preview) preview.textContent = getNoteEntryPreview(renderMarkdown(source)) || t('detail.noNoteEntries');
-                }
-            },
+            label: t('detail.notes'),
         });
     });
 }
@@ -1369,61 +1372,80 @@ function getNoteEntryPreview(html) {
     return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-function renderNoteEntriesList(entries) {
-    if (!entries || entries.length === 0) {
-        return `<em>${t('detail.noNoteEntries')}</em>`;
-    }
-
-    return entries.map(entry => {
-        const userName = entry.user_name || `User ${entry.user_id}`;
-        const createdAt = entry.created_at ? `<span>${escapeHtml(entry.created_at)}</span>` : '';
-        const sanitizedContent = renderMarkdown(entry.content || '', entry.content_format);
-        const emptyText = t('detail.noNoteEntries');
-        const preview = getNoteEntryPreview(sanitizedContent) || emptyText;
-        const body = sanitizedContent || `<em>${emptyText}</em>`;
-        return `<details class="subtask-note-item note-entry-item">
-            <summary class="note-entry-summary">
-                <span class="subtask-note-meta">
-                    <span>#${escapeHtml(entry.id)} <strong>${escapeHtml(userName)}</strong></span>
-                    <span class="note-entry-meta-end">
-                        ${createdAt}
-                        <span class="note-entry-toggle-icon" aria-hidden="true">&#9660;</span>
-                    </span>
-                </span>
-                <span class="note-entry-preview">${escapeHtml(preview)}</span>
-            </summary>
-            <div class="subtask-note-body markdown-body">${body}</div>
-        </details>`;
-    }).join('');
+function loadTaskNoteEntries(taskId) {
+    return loadHandoffEntries(taskId, null, `taskNoteEntries_${taskId}`);
 }
 
-async function loadTaskNoteEntries(taskId) {
-    const entriesContent = document.getElementById(`taskNoteEntries_${taskId}`);
-    if (!entriesContent) return;
-    try {
-        const resp = await fetch(`/api/tasks/${taskId}/note-entries`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        entriesContent.innerHTML = renderNoteEntriesList(data.items || []);
-        mountAdminNoteEditors(entriesContent, data.items || [], `/api/tasks/${taskId}/note-entries`, true);
-    } catch (e) {
-        entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
-    }
+function loadSubtaskNoteEntries(taskId, subtaskId, elementId) {
+    return loadHandoffEntries(taskId, subtaskId, elementId);
 }
 
-async function loadSubtaskNoteEntries(taskId, subtaskId, elementId) {
+async function loadHandoffEntries(taskId, subtaskId, elementId) {
     const entriesContent = document.getElementById(elementId);
     if (!entriesContent) return;
     try {
-        const resp = await fetch(`/api/tasks/${taskId}/subtasks/${subtaskId}/note-entries`);
+        const subtask = subtaskId === null ? '' : `/subtasks/${subtaskId}`;
+        const resp = await fetch(`/api/tasks/${taskId}${subtask}/note-entries`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        entriesContent.innerHTML = renderNoteEntriesList(data.items || []);
-        mountAdminNoteEditors(entriesContent, data.items || [], `/api/tasks/${taskId}/subtasks/${subtaskId}/note-entries`, true);
+        entriesContent.dataset.handoffTask = taskId;
+        entriesContent.dataset.handoffSubtask = subtaskId ?? '';
+        entriesContent.innerHTML = renderHandoffWidgets(data.items || []);
+        bindHandoffWidgets(entriesContent, taskId, subtaskId);
     } catch (e) {
         entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
     }
 }
+
+function renderHandoffWidgets(entries) {
+    if (!entries.length) return `<em>${t('detail.noNoteEntries')}</em>`;
+    return entries.map(entry => {
+        const userName = entry.user_name || `User ${entry.user_id}`;
+        const preview = getNoteEntryPreview(renderMarkdown(entry.content || '', entry.content_format)) || t('detail.noNoteEntries');
+        return `<button type="button" class="subtask-note-item handoff-widget" data-handoff-id="${escapeAttr(entry.id)}" aria-haspopup="dialog">
+            <span class="subtask-note-meta">
+                <span class="handoff-author">#${escapeHtml(entry.id)} <strong>${escapeHtml(userName)}</strong></span>
+                <span class="handoff-timestamp">${escapeHtml(entry.created_at || '')}</span>
+            </span>
+            <span class="note-entry-preview">${escapeHtml(preview)}</span>
+        </button>`;
+    }).join('');
+}
+
+function bindHandoffWidgets(container, taskId, subtaskId) {
+    // Browser senden beim Doppelklick zuerst zwei click-Events.
+    clearTimeout(container._handoffClickTimer);
+    container.onclick = event => {
+        const widget = event.target.closest('[data-handoff-id]');
+        if (!widget) return;
+        event.stopPropagation();
+        clearTimeout(container._handoffClickTimer);
+        if (event.detail > 1) return;
+        const open = () => {
+            if (widget.isConnected) openHandoffEditor(taskId, subtaskId, Number(widget.dataset.handoffId));
+        };
+        if (event.detail === 0) open(); // Enter/Leertaste ohne Wartezeit.
+        else container._handoffClickTimer = setTimeout(open, 500);
+    };
+    container.ondblclick = event => {
+        const widget = event.target.closest('[data-handoff-id]');
+        if (!widget) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearTimeout(container._handoffClickTimer);
+        openHandoffEditor(taskId, subtaskId, Number(widget.dataset.handoffId), true);
+    };
+}
+
+window.addEventListener('handoff-saved', event => {
+    const { taskId, subtaskId } = event.detail;
+    document.querySelectorAll('.handoff-grid').forEach(container => {
+        const scope = container.dataset.handoffSubtask ? Number(container.dataset.handoffSubtask) : null;
+        if (Number(container.dataset.handoffTask) === taskId && scope === subtaskId) {
+            loadHandoffEntries(taskId, subtaskId, container.id);
+        }
+    });
+});
 
 function reserveProjectScrollSpace(tableBody, rowShift = 0) {
     if (!tableBody) return;
@@ -1497,6 +1519,7 @@ async function toggleSubTaskDetail(taskId, subtaskId, animate = true) {
 
     // Editor vor dem Animationsstart aufbauen; CSS Grid folgt auch spaeter geladenen Notizen.
     if (isExpanding) {
+        initColumnResize(subtaskId, 'st', subtaskDetailSizes);
         const editorContainer = document.getElementById(`stWysiwyg_${subtaskId}`);
         if (editorContainer && !editorContainer._editorInit) {
             const container = document.getElementById(`subtaskContainer_${taskId}`);

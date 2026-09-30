@@ -48,6 +48,8 @@ def main():
             data = {'items': [subtask]}
         elif path.endswith('/notes'):
             data = {'items': [note]}
+        elif path in ('/api/tasks/1/note-entries/1', '/api/tasks/1/subtasks/2/note-entries/1'):
+            data = dict(note, id=1, format=note['content_format'], can_write=True, revision='a' * 64)
         elif path.endswith('/note-entries'):
             data = {'items': [dict(note, id=1)]}
         elif path == '/':
@@ -65,9 +67,9 @@ def main():
         translations = json.loads((ROOT / 'dashboard/static/i18n/en.json').read_text())
         page.evaluate('(translations) => window.t = key => translations[key] || key', translations)
         for name in ['expandable_table.js', 'wysiwyg_editor.js', 'app_core.js',
-                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'tab_aufgaben.js', 'task_settings.js']:
+                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'text_file_editor.js', 'tab_aufgaben.js', 'task_settings.js']:
             page.add_script_tag(content=(ROOT / 'dashboard/static/js' / name).read_text())
-        for name in ['style.css', 'expandable_table.css', 'aufgaben.css', 'file_browser.css', 'markdown_editor.css']:
+        for name in ['style.css', 'expandable_table.css', 'aufgaben.css', 'file_browser.css', 'markdown_editor.css', 'text_file_editor.css']:
             page.add_style_tag(content=(ROOT / 'dashboard/static/css' / name).read_text())
         page.add_style_tag(content='body { padding: 25px; } * { animation: none !important; transition: none !important; }')
         page.evaluate('''task => {
@@ -179,9 +181,10 @@ def main():
         ]:
             card = page.locator(f'#{container}')
             expect(card.locator('.subtask-note-meta strong')).to_have_text('Original author')
-            if handoff:
-                card.locator('summary').click()
-            note_editor = page.locator(f'#{container}_editor_{editor_id}')
+            widget = handoff
+            if widget:
+                card.locator('.handoff-widget').click()
+            note_editor = page.locator('.text-file-content > .markdown-editor') if widget else page.locator(f'#{container}_editor_{editor_id}')
             expect(note_editor.locator('textarea')).to_be_hidden()
             note_editor.get_by_role('button', name='Edit', exact=True).click()
             note_editor.locator('textarea').fill('## Admin correction')
@@ -189,9 +192,11 @@ def main():
             expect(note_editor.locator('textarea')).to_be_hidden()
             expect(note_editor.locator('.markdown-body h2')).to_have_text('Admin correction')
             expect(card.locator('.subtask-note-meta strong')).to_have_text('Original author')
-            assert saved[-1] == (endpoint, {'content': '## Admin correction'})
+            assert saved[-1] == (endpoint, {'content': '## Admin correction', **({'revision': 'a' * 64} if widget else {})})
             if handoff:
                 expect(card.locator('.note-entry-preview')).to_have_text('Admin correction')
+            if widget:
+                page.locator('[data-file-close]').click()
 
         # Read-only viewers, including the network detail dialog.
         page.evaluate('''() => _openNetzplanNodeDetails(0, aufgabenTable.filteredData[0], [], 'Project')''')

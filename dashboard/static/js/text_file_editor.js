@@ -1,18 +1,42 @@
 /** Native Markdown-/Textdateien: derselbe Editor im Dialog und eigenen Fenster. */
 let textFileSequence = 0;
 let activeTextFileDialog = null;
+const handoffWindows = new Map();
 
 function textFileError(error) {
-    return error.message?.startsWith('textFile.') ? t(error.message) : (error.message || t('common.error'));
+    return /^(textFile|handoff)\./.test(error.message || '') ? t(error.message) : (error.message || t('common.error'));
 }
 
+function handoffPageUrl(taskId, handoff) {
+    const params = new URLSearchParams({ taskId, entryId: handoff.entryId });
+    if (handoff.subtaskId !== null) params.set('subtaskId', handoff.subtaskId);
+    return `/handoff?${params}`;
+}
+
+function handoffIdentity(taskId, handoff) {
+    return { taskId: Number(taskId), subtaskId: handoff.subtaskId === null ? null : Number(handoff.subtaskId), entryId: Number(handoff.entryId) };
+}
+
+function watchHandoffWindow(popup, taskId, handoff) {
+    for (const existing of handoffWindows.keys()) if (existing.closed) handoffWindows.delete(existing);
+    if (popup) handoffWindows.set(popup, handoffIdentity(taskId, handoff));
+}
+
+window.addEventListener('message', event => {
+    const expected = handoffWindows.get(event.source);
+    if (event.origin !== location.origin || !expected || event.data?.type !== 'handoff-saved') return;
+    if (!Object.keys(expected).every(key => expected[key] === event.data[key])) return;
+    window.dispatchEvent(new CustomEvent('handoff-saved', { detail: expected }));
+});
+
 class TextFileEditor {
-    constructor(shell, taskId, path, { overlay = null, onSaved = null } = {}) {
+    constructor(shell, taskId, path, { overlay = null, onSaved = null, handoff = null } = {}) {
         this.shell = shell;
         this.taskId = taskId;
         this.path = path;
         this.overlay = overlay;
         this.onSaved = onSaved;
+        this.handoff = handoff;
         this.editorId = `text-file-editor-${++textFileSequence}`;
         this.previousFocus = document.activeElement;
         this.controller = new AbortController();
@@ -22,10 +46,11 @@ class TextFileEditor {
         shell.innerHTML = `
             <header class="text-file-header">
                 <h1 class="text-file-title" id="${titleId}"></h1>
-                <a class="control-btn" data-file-download>${t('files.download')}</a>
+                ${handoff ? '' : `<a class="control-btn" data-file-download>${t('files.download')}</a>`}
                 ${overlay ? `<button type="button" class="control-btn" data-file-expand disabled>${t('textFile.expand')}</button>` : ''}
                 <button type="button" class="control-btn" data-file-close>${t('common.close')}</button>
             </header>
+            <p class="text-file-meta" hidden></p>
             <p class="text-file-status" role="alert" hidden></p>
             <div class="text-file-content"><div id="${this.editorId}">${t('common.loading')}</div></div>`;
         shell.querySelector('.text-file-title').textContent = path;
@@ -38,8 +63,10 @@ class TextFileEditor {
         this.expandButton = shell.querySelector('[data-file-expand]');
         this.closeButton = shell.querySelector('[data-file-close]');
         const download = shell.querySelector('[data-file-download]');
-        download.href = `/api/tasks/${encodeURIComponent(taskId)}/files/download?path=${encodeURIComponent(path)}`;
-        download.download = '';
+        if (download) {
+            download.href = `/api/tasks/${encodeURIComponent(taskId)}/files/download?path=${encodeURIComponent(path)}`;
+            download.download = '';
+        }
         this.closeButton.addEventListener('click', () => this.close());
         this.expandButton?.addEventListener('click', () => this.expand());
         this.beforeUnload = event => {
@@ -69,6 +96,10 @@ class TextFileEditor {
     }
 
     endpoint() {
+        if (this.handoff) {
+            const subtask = this.handoff.subtaskId === null ? '' : `/subtasks/${encodeURIComponent(this.handoff.subtaskId)}`;
+            return `/api/tasks/${encodeURIComponent(this.taskId)}${subtask}/note-entries/${encodeURIComponent(this.handoff.entryId)}`;
+        }
         return `/api/tasks/${encodeURIComponent(this.taskId)}/files/text?path=${encodeURIComponent(this.path)}`;
     }
 
@@ -85,12 +116,21 @@ class TextFileEditor {
         try {
             const data = await this.request();
             if (this.closed) return false;
+            if (this.handoff) {
+                const title = `#${data.id} ${data.user_name || `User ${data.user_id}`}`;
+                this.shell.querySelector('.text-file-title').textContent = title;
+                const meta = this.shell.querySelector('.text-file-meta');
+                meta.textContent = data.created_at || '';
+                meta.hidden = !data.created_at;
+                if (!this.overlay) document.title = `${title} – Tareas`;
+            }
             // Die Revision des Entwurfs bleibt erhalten: fremde Aenderungen nicht ueberschreiben.
             const draft = snapshot?.editing ? snapshot : null;
             this.revision = draft ? draft.revision : data.revision;
             this.editor = new MarkdownEditor(this.editorId, draft ? draft.source : data.content, {
-                label: data.can_write ? (data.format === 'markdown' ? 'Markdown' : t('textFile.text')) : t('editor.readonly'),
-                plainText: data.format !== 'markdown',
+                label: data.can_write ? (this.handoff ? t('detail.noteHistory') : (data.format === 'markdown' ? 'Markdown' : t('textFile.text'))) : t('editor.readonly'),
+                format: this.handoff && !draft ? data.format : 'markdown',
+                plainText: !this.handoff && data.format !== 'markdown',
                 readOnly: !data.can_write,
                 saveErrorMessage: textFileError,
                 onSave: async content => {
@@ -100,6 +140,11 @@ class TextFileEditor {
                     });
                     this.revision = result.revision;
                     this.onSaved?.();
+                    if (this.handoff) {
+                        const detail = handoffIdentity(this.taskId, this.handoff);
+                        window.dispatchEvent(new CustomEvent('handoff-saved', { detail }));
+                        window.opener?.postMessage({ type: 'handoff-saved', ...detail }, location.origin);
+                    }
                 },
             });
             // Preview-Links verlassen weder den Dialog noch einen offenen Entwurf.
@@ -168,7 +213,9 @@ class TextFileEditor {
             selectionEnd: this.editor.input.selectionEnd, scrollTop: this.editor.input.scrollTop,
         };
         // Entwuerfe nur im Speicher uebertragen, nie in URLs oder localStorage schreiben.
-        const url = `/text-editor?taskId=${encodeURIComponent(this.taskId)}&path=${encodeURIComponent(this.path)}#${token}`;
+        const pageUrl = this.handoff ? handoffPageUrl(this.taskId, this.handoff)
+            : `/text-editor?taskId=${encodeURIComponent(this.taskId)}&path=${encodeURIComponent(this.path)}`;
+        const url = `${pageUrl}#${token}`;
         let popup;
         const finish = (success, message = '') => {
             clearTimeout(timeout);
@@ -194,6 +241,7 @@ class TextFileEditor {
         const timeout = setTimeout(() => finish(false), 30000);
         popup = window.open(url, '_blank', 'popup,width=1100,height=820');
         if (!popup) { finish(false); return; }
+        if (this.handoff) watchHandoffWindow(popup, this.taskId, this.handoff);
         this.busy = true;
         this.editor.saving = true;
         this.editor.updateView();
@@ -203,7 +251,7 @@ class TextFileEditor {
     }
 }
 
-function openTextFileEditor(taskId, path, onSaved) {
+function openTextFileEditor(taskId, path, onSaved, handoff = null) {
     if (activeTextFileDialog && !activeTextFileDialog.close()) return;
     const overlay = document.createElement('div');
     overlay.className = 'text-file-overlay';
@@ -211,9 +259,20 @@ function openTextFileEditor(taskId, path, onSaved) {
     shell.className = 'text-file-shell';
     overlay.appendChild(shell);
     document.body.appendChild(overlay);
-    const editor = new TextFileEditor(shell, taskId, path, { overlay, onSaved });
+    const editor = new TextFileEditor(shell, taskId, path, { overlay, onSaved, handoff });
     activeTextFileDialog = editor;
     editor.load();
+}
+
+function openHandoffEditor(taskId, subtaskId, entryId, separateWindow = false) {
+    const handoff = { subtaskId, entryId };
+    if (separateWindow) {
+        const popup = window.open(handoffPageUrl(taskId, handoff), '_blank', 'popup,width=1100,height=820');
+        if (popup) watchHandoffWindow(popup, taskId, handoff);
+        else showNotification(t('handoff.popupFailed'), 'error');
+    } else {
+        openTextFileEditor(taskId, `#${entryId}`, null, handoff);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -221,12 +280,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!shell) return;
     const params = new URLSearchParams(location.search);
     const taskId = params.get('taskId'), path = params.get('path');
-    if (!/^[1-9]\d*$/.test(taskId || '') || !path) {
+    const handoff = location.pathname === '/handoff' ? { subtaskId: params.get('subtaskId'), entryId: params.get('entryId') } : null;
+    const validHandoff = handoff && /^[1-9]\d*$/.test(handoff.entryId || '')
+        && (handoff.subtaskId === null || /^[1-9]\d*$/.test(handoff.subtaskId));
+    if (!/^[1-9]\d*$/.test(taskId || '') || (handoff ? !validHandoff : !path)) {
         shell.textContent = t('editor.missingParams');
         return;
     }
-    document.title = `${path.split('/').pop()} – Tareas`;
-    const editor = new TextFileEditor(shell, taskId, path);
+    const title = handoff ? `#${handoff.entryId}` : path.split('/').pop();
+    document.title = `${title} – Tareas`;
+    const editor = new TextFileEditor(shell, taskId, handoff ? title : path, { handoff });
     const token = location.hash.slice(1);
     if (token && window.opener) {
         const receive = async event => {

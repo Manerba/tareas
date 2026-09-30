@@ -52,9 +52,13 @@ class MarkdownEditor {
             <div class="markdown-toolbar">
                 <span class="markdown-label">${escapeHtml(this.options.label || t('detail.description'))}</span>
                 ${this.options.readOnly ? '' : `
-                    <button type="button" class="control-btn" data-md-action="edit">${t('markdown.edit')}</button>
-                    <button type="button" class="control-btn primary" data-md-action="save" hidden>${t('common.save')}</button>
-                    <button type="button" class="control-btn" data-md-action="cancel" hidden>${t('common.cancel')}</button>
+                    <span class="markdown-actions">
+                        <button type="button" class="control-btn" data-md-action="edit">${t('markdown.edit')}</button>
+                        <span class="markdown-save-actions">
+                            <button type="button" class="control-btn primary" data-md-action="save" hidden>${t('common.save')}</button>
+                            <button type="button" class="control-btn" data-md-action="cancel" hidden>${t('common.cancel')}</button>
+                        </span>
+                    </span>
                 `}
             </div>
             <div class="markdown-body" data-md-preview></div>

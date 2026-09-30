@@ -109,6 +109,17 @@ class EditorPageTests(unittest.TestCase):
         self.assertEqual(self.client.get('/text-editor', follow_redirects=False).status_code, 302)
         self.assertEqual(self.client.get(self.url + '/text', params={'path': 'readme.md'}).status_code, 401)
 
+    def test_handoff_window_authentication_and_strict_csp(self):
+        for query in ('taskId=1&entryId=3', 'taskId=1&subtaskId=2&entryId=3'):
+            response = self.client.get('/handoff?' + query)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("script-src 'self';", response.headers['content-security-policy'])
+            self.assertNotRegex(response.text, re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>", re.I))
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get('/handoff', follow_redirects=False).status_code, 302)
+        self.assertEqual(self.client.get('/api/tasks/1/subtasks/2/note-entries/3').status_code, 401)
+        self.assertEqual(self.client.get('/api/tasks/1/note-entries/3').status_code, 401)
+
 
 if __name__ == '__main__':
     unittest.main()

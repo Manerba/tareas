@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dashboard.audit_log import log_change
 from dashboard.db_utils import db_query, db_transaction
@@ -17,7 +17,7 @@ from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
 from dashboard.mail_service import notify_event
-from dashboard.note_service import update_note_as_admin
+from dashboard.note_service import update_note_as_admin, handoff_revision
 from dashboard.permissions import require_task_access, require_subtask_access, task_permissions, subtask_permissions, task_visibility_sql
 from dashboard.file_storage import ensure_local_directory, remove_local_directory, safe_rel_path, storage_type
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
@@ -101,6 +101,10 @@ class NoteUpdate(BaseModel):
     content: str
 
 
+class HandoffUpdate(NoteUpdate):
+    revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
 # ============================================================
 # Hilfsfunktionen
 # ============================================================
@@ -176,6 +180,17 @@ def _require_task_read_access(db, task_id: int, user: dict):
 
 def _require_subtask_read_access(db, task_id: int, subtask_id: int, user: dict):
     return require_subtask_access(db, subtask_id, user, task_id=task_id)[0]
+
+
+def _handoff_response(entry, task_id: int, subtask_id: int | None, user: dict):
+    if not entry:
+        raise HTTPException(status_code=404, detail="handoff.notFound")
+    return {"id": entry["id"], "task_id": task_id, "subtask_id": subtask_id,
+            "user_id": entry["user_id"], "user_name": (entry["user_name"] or "").strip(),
+            "created_at": _format_datetime(entry["created_at"]),
+            "content": entry["content"] or "", "format": entry["content_format"],
+            "can_write": bool(user.get("is_admin")),
+            "revision": handoff_revision(entry["content"] or "", entry["content_format"])}
 
 
 async def _send_assignment_mail(user_id, task_name, actor_name, deadline, priority):
@@ -941,8 +956,21 @@ async def admin_update_task_note(task_id: int, note_user_id: int, note: NoteUpda
 
 
 @router.put("/api/tasks/{task_id}/note-entries/{entry_id}")
-async def admin_update_task_handoff(task_id: int, entry_id: int, note: NoteUpdate, user=Depends(get_current_user)):
-    return update_note_as_admin(task_id, note.content, user, entry_id=entry_id)
+async def admin_update_task_handoff(task_id: int, entry_id: int, note: HandoffUpdate, user=Depends(get_current_user)):
+    return update_note_as_admin(task_id, note.content, user, entry_id=entry_id, revision=note.revision)
+
+
+@router.get("/api/tasks/{task_id}/note-entries/{entry_id}")
+async def get_task_handoff(task_id: int, entry_id: int, user=Depends(get_current_user)):
+    """Einzelnes Projekt-/Aufgaben-Handoff fuer Dialog und Fenster."""
+    with db_query() as db:
+        _require_task_read_access(db, task_id, user)
+        entry = db.execute(
+            """SELECT tne.*, u.vorname || ' ' || u.nachname AS user_name
+               FROM task_note_entries tne JOIN users u ON tne.user_id = u.id
+               WHERE tne.task_id = ? AND tne.id = ?""", (task_id, entry_id),
+        ).fetchone()
+        return _handoff_response(entry, task_id, None, user)
 
 
 @router.put("/api/tasks/{task_id}/subtasks/{subtask_id}/notes/{note_user_id}")
@@ -951,8 +979,21 @@ async def admin_update_subtask_note(task_id: int, subtask_id: int, note_user_id:
 
 
 @router.put("/api/tasks/{task_id}/subtasks/{subtask_id}/note-entries/{entry_id}")
-async def admin_update_subtask_handoff(task_id: int, subtask_id: int, entry_id: int, note: NoteUpdate, user=Depends(get_current_user)):
-    return update_note_as_admin(task_id, note.content, user, subtask_id=subtask_id, entry_id=entry_id)
+async def admin_update_subtask_handoff(task_id: int, subtask_id: int, entry_id: int, note: HandoffUpdate, user=Depends(get_current_user)):
+    return update_note_as_admin(task_id, note.content, user, subtask_id=subtask_id, entry_id=entry_id, revision=note.revision)
+
+
+@router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/note-entries/{entry_id}")
+async def get_subtask_handoff(task_id: int, subtask_id: int, entry_id: int, user=Depends(get_current_user)):
+    """Einzelnes Handoff fuer Dialog/Fenster, unabhaengig vom Limit der Verlaufsliste."""
+    with db_query() as db:
+        _require_subtask_read_access(db, task_id, subtask_id, user)
+        entry = db.execute(
+            """SELECT sne.*, u.vorname || ' ' || u.nachname AS user_name
+               FROM sub_task_note_entries sne JOIN users u ON sne.user_id = u.id
+               WHERE sne.sub_task_id = ? AND sne.id = ?""", (subtask_id, entry_id),
+        ).fetchone()
+        return _handoff_response(entry, task_id, subtask_id, user)
 
 
 @router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/notes")

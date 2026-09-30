@@ -466,5 +466,8 @@
   "textFile.unsupportedEncoding": "Esta codificación no es compatible. Se admiten UTF-8 y UTF-16 con BOM. Descarga el archivo.",
   "textFile.binary": "El archivo contiene datos binarios. Descárgalo.",
   "textFile.unsupportedFormat": "El editor de texto no admite este formato. Descarga el archivo.",
-  "textFile.readOnlyDraft": "Se ha retirado el permiso de escritura. El borrador sigue visible para copiarlo."
+  "textFile.readOnlyDraft": "Se ha retirado el permiso de escritura. El borrador sigue visible para copiarlo.",
+  "handoff.conflict": "El handoff ha cambiado desde que se abrió. El borrador se conserva. Cópialo y vuelve a abrir el handoff.",
+  "handoff.notFound": "No se encontró el handoff.",
+  "handoff.popupFailed": "No se pudo abrir la nueva ventana. Permite las ventanas emergentes e inténtalo de nuevo."
 }

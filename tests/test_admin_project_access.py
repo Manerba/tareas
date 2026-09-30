@@ -194,6 +194,61 @@ class AdminProjectAccessTests(unittest.TestCase):
         # Existing own-note writes still work and keep their semantics.
         self.request_ok("PUT", f"/api/tasks/{self.project}/notes", {"content": "My own note"})
 
+    def test_single_handoffs_check_scope_read_rights_and_list_limit(self):
+        for table, rid, url in self.records[-2:]:
+            with self.subTest(table=table):
+                is_subtask = table == 'sub_task_note_entries'
+                before = self.row(table, rid)
+                for user in (self.admin, self.users['owner'], self.users['assignee'], self.users['reader']):
+                    self.user = user
+                    data = self.request_ok('GET', url)
+                    self.assertEqual(data['content'], before['content'])
+                    self.assertEqual(data['format'], 'legacy')
+                    self.assertEqual(data['user_id'], before['user_id'])
+                    self.assertEqual(data['task_id'], self.project)
+                    self.assertEqual(data['subtask_id'], self.subtask if is_subtask else None)
+                    self.assertEqual(data['can_write'], bool(user['is_admin']))
+                    self.assertEqual(len(data['revision']), 64)
+                with closing(database.get_db()) as db, db:
+                    db.execute('DELETE FROM project_members WHERE project_id=? AND user_id=?', (self.project, self.users['reader']['id']))
+                self.assertEqual(self.client.get(url).status_code, 403)
+                self.user = self.users['outsider']
+                self.assertEqual(self.client.get(url).status_code, 403)
+                self.user = self.admin
+                wrong_paths = [url.replace(f'/tasks/{self.project}/', f'/tasks/{self.other}/'), url.rsplit('/', 1)[0] + '/999999']
+                if is_subtask:
+                    wrong_paths.append(url.replace(f'/subtasks/{self.subtask}/', f'/subtasks/{self.other_subtask}/'))
+                for path in wrong_paths:
+                    self.assertEqual(self.client.get(path).status_code, 404)
+                column, scope = ('sub_task_id', self.subtask) if is_subtask else ('task_id', self.project)
+                with closing(database.get_db()) as db, db:
+                    db.executemany(f'INSERT INTO {table} ({column}, user_id, content) VALUES (?, ?, ?)',
+                                   [(scope, self.admin['id'], f'New handoff {index}') for index in range(201)])
+                    db.execute('INSERT INTO project_members (project_id, user_id) VALUES (?, ?)', (self.project, self.users['reader']['id']))
+                listing = self.request_ok('GET', url.rsplit('/', 1)[0])['items']
+                self.assertNotIn(rid, [item['id'] for item in listing])
+                self.assertEqual(self.request_ok('GET', url)['id'], rid)
+
+    def test_handoff_revision_protects_popup_edits_and_preserves_author_timestamp(self):
+        for table, rid, url in self.records[-2:]:
+            with self.subTest(table=table):
+                self.user = self.admin
+                original = self.row(table, rid)
+                revision = self.request_ok('GET', url)['revision']
+                result = self.request_ok('PUT', url, {'content': '## First window', 'revision': revision})
+                self.assertEqual(result['revision'], self.request_ok('GET', url)['revision'])
+                self.assertNotEqual(result['revision'], revision)
+                rejected = self.client.put(url, json={'content': 'Stale window', 'revision': revision})
+                self.assertEqual(rejected.status_code, 409)
+                self.assertEqual(rejected.json()['detail'], 'handoff.conflict')
+                after = self.row(table, rid)
+                self.assertEqual(after['content'], '## First window')
+                self.assertEqual(after['user_id'], original['user_id'])
+                self.assertEqual(after['created_at'], original['created_at'])
+                self.assertEqual(self.client.put(url, json={'content': 'Invalid', 'revision': 'bad'}).status_code, 422)
+                self.user = self.users['assignee']
+                self.assertEqual(self.client.put(url, json={'content': 'Not admin', 'revision': result['revision']}).status_code, 403)
+
     def test_mcp_admin_can_correct_notes_and_typed_handoffs_with_scope_checks(self):
         token = mcp_server.current_mcp_user.set(self.admin)
         self.addCleanup(mcp_server.current_mcp_user.reset, token)

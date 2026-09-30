@@ -466,5 +466,8 @@
   "textFile.unsupportedEncoding": "Diese Zeichenkodierung wird nicht unterstützt. Unterstützt werden UTF-8 und UTF-16 mit BOM. Bitte herunterladen.",
   "textFile.binary": "Diese Datei enthält Binärdaten. Bitte herunterladen.",
   "textFile.unsupportedFormat": "Dieses Dateiformat wird im Texteditor nicht unterstützt. Bitte herunterladen.",
-  "textFile.readOnlyDraft": "Die Schreibrechte wurden entzogen. Dein Entwurf bleibt zum Kopieren sichtbar."
+  "textFile.readOnlyDraft": "Die Schreibrechte wurden entzogen. Dein Entwurf bleibt zum Kopieren sichtbar.",
+  "handoff.conflict": "Das Handoff wurde zwischenzeitlich geändert. Dein Entwurf bleibt erhalten. Bitte sichere ihn und öffne das Handoff erneut.",
+  "handoff.notFound": "Handoff nicht gefunden.",
+  "handoff.popupFailed": "Das neue Fenster konnte nicht geöffnet werden. Bitte Pop-ups erlauben und erneut versuchen."
 }

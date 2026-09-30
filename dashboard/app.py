@@ -352,8 +352,9 @@ async def editor_page(request: Request):
 
 
 @app.get("/text-editor", response_class=HTMLResponse)
+@app.get("/handoff", response_class=HTMLResponse)
 async def text_editor_page(request: Request):
-    """Nativer Markdown-/Texteditor im separaten Fenster."""
+    """Nativer Markdown-/Texteditor und Handoffs im separaten Fenster."""
     if not _extract_user_from_request(request):
         return RedirectResponse(url="/login", status_code=302)
     return FileResponse(templates_dir / "text_editor.html", headers={

@@ -13,6 +13,11 @@
     border-bottom: 1px solid var(--border-color);
 }
 .markdown-label { margin-right: auto; font-weight: 600; font-size: 13px; }
+.markdown-actions { display: grid; }
+.markdown-actions > * { grid-area: 1 / 1; }
+.markdown-actions > [data-md-action="edit"] { justify-self: end; }
+.markdown-save-actions { display: flex; gap: 8px; pointer-events: none; }
+.markdown-save-actions > button { pointer-events: auto; }
 .markdown-editor [hidden] { display: none !important; }
 .markdown-body {
     white-space: normal;
@@ -58,3 +63,15 @@
 .project-detail-left .markdown-editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .project-detail-left .markdown-editor > .markdown-body,
 .project-detail-left .markdown-source { flex: 1; min-height: 0; resize: none; }
+/* Aktionen und Hilfe beanspruchen in beiden Modi denselben Platz. */
+.project-detail-left .markdown-actions [data-md-action][hidden] {
+    display: inline-flex !important;
+    visibility: hidden;
+}
+.project-detail-left .markdown-hint[hidden] {
+    display: block !important;
+    visibility: hidden;
+}
+.project-detail-left .markdown-toolbar,
+.project-detail-left .markdown-hint,
+.project-detail-left .markdown-error { flex-shrink: 0; }

@@ -397,6 +397,7 @@
 
 .subtask-section {
     margin-top: 12px;
+    container-type: inline-size;
 }
 
 .subtask-section h4 {
@@ -595,6 +596,8 @@
 
 .subtask-detail-content {
     padding: 12px 16px;
+    /* Tabellenkoepfe duerfen breiter sein; der Detailbereich nutzt die sichtbare Projektbreite. */
+    max-width: 100cqw;
     background-color: var(--bg-detail-nested);
     border-radius: 4px;
     margin: 4px 0;
@@ -1064,57 +1067,6 @@
     overflow-wrap: anywhere;
 }
 
-.note-entry-item {
-    border-left: 3px solid var(--accent-primary);
-    padding: 0;
-    overflow: hidden;
-}
-
-.note-entry-summary {
-    padding: 8px 10px;
-    cursor: pointer;
-    list-style: none;
-    transition: background-color 0.15s;
-}
-
-.note-entry-summary::-webkit-details-marker {
-    display: none;
-}
-
-.note-entry-summary::marker {
-    content: '';
-}
-
-.note-entry-summary:hover {
-    background-color: var(--bg-row-hover);
-}
-
-.note-entry-summary:focus-visible {
-    outline: 2px solid var(--accent-primary);
-    outline-offset: -2px;
-}
-
-.note-entry-summary .subtask-note-meta {
-    margin-bottom: 4px;
-}
-
-.note-entry-meta-end {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-}
-
-.note-entry-toggle-icon {
-    display: inline-block;
-    font-size: 9px;
-    transition: transform 0.2s;
-}
-
-.note-entry-item:not([open]) .note-entry-toggle-icon {
-    transform: rotate(-90deg);
-}
-
 .note-entry-preview {
     display: block;
     overflow: hidden;
@@ -1124,20 +1076,53 @@
     white-space: nowrap;
 }
 
-.note-entry-item[open] .note-entry-preview {
-    display: none;
+.subtask-handoff-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    overflow: hidden;
 }
-
-.note-entry-item[open] .subtask-note-body {
-    padding: 0 10px 8px;
+.subtask-handoff-panel > h5 {
+    margin: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
 }
-
-.note-entry-item .subtask-note-body > :first-child {
-    margin-top: 0;
+.handoff-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    align-content: start;
+    align-items: start;
+    min-width: 0;
 }
-
-.note-entry-item .subtask-note-body > :last-child {
-    margin-bottom: 0;
+.subtask-handoff-grid {
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+.handoff-widget {
+    min-width: 0;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: var(--text-primary);
+    cursor: pointer;
+    border-left: 3px solid var(--accent-primary);
+}
+.handoff-widget:hover { background: var(--bg-row-hover); }
+.handoff-widget:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
+.handoff-widget .subtask-note-meta { flex-wrap: wrap; gap: 4px 10px; }
+.handoff-author { min-width: 0; overflow-wrap: anywhere; }
+.handoff-timestamp { white-space: nowrap; margin-left: auto; }
+.handoff-widget .note-entry-preview {
+    font-size: 13px;
 }
 
 /* ----------------------------------------

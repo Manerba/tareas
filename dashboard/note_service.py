@@ -1,5 +1,7 @@
 """Gemeinsame Admin-Bearbeitung bestehender Notizen und Handoffs fuer REST/MCP."""
 
+import hashlib
+
 from fastapi import HTTPException
 
 from dashboard.audit_log import log_change
@@ -21,21 +23,25 @@ _STATEMENTS = {
         "sub_task_note",
     ),
     (False, True): (
-        "SELECT id, user_id FROM task_note_entries WHERE task_id = ? AND id = ?",
+        "SELECT id, user_id, content, content_format FROM task_note_entries WHERE task_id = ? AND id = ?",
         "UPDATE task_note_entries SET content = ?, content_format = 'markdown' WHERE id = ?",
         "task_handoff",
     ),
     (True, True): (
-        "SELECT id, user_id FROM sub_task_note_entries WHERE sub_task_id = ? AND id = ?",
+        "SELECT id, user_id, content, content_format FROM sub_task_note_entries WHERE sub_task_id = ? AND id = ?",
         "UPDATE sub_task_note_entries SET content = ?, content_format = 'markdown' WHERE id = ?",
         "sub_task_handoff",
     ),
 }
 
 
+def handoff_revision(content: str, content_format: str) -> str:
+    return hashlib.sha256(f"{content_format}\0{content}".encode()).hexdigest()
+
+
 def update_note_as_admin(
     task_id: int, content: str, user: dict, *, subtask_id: int | None = None,
-    note_user_id: int | None = None, entry_id: int | None = None,
+    note_user_id: int | None = None, entry_id: int | None = None, revision: str | None = None,
 ) -> dict:
     """Aendert Inhalt, bewahrt Autor/Zeitpunkt und protokolliert den Admin als Akteur."""
     if not user.get("is_admin"):
@@ -47,6 +53,7 @@ def update_note_as_admin(
         raise HTTPException(status_code=422, detail="Handoff darf nicht leer sein")
 
     with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
         if not db.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone():
             raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
         if subtask_id is not None and not db.execute(
@@ -59,6 +66,8 @@ def update_note_as_admin(
         existing = db.execute(select, (entity_id, entry_id if is_handoff else note_user_id)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Notiz oder Handoff nicht gefunden")
+        if is_handoff and revision is not None and revision != handoff_revision(existing["content"] or "", existing["content_format"]):
+            raise HTTPException(status_code=409, detail="handoff.conflict")
         db.execute(update, (content, existing["id"]))
 
     changes = {
@@ -68,4 +77,7 @@ def update_note_as_admin(
     if is_handoff:
         changes["handoff_id"] = f"{'subtask' if subtask_id is not None else 'task'}:{entry_id}"
     log_change(user, entity_type, entity_id, "update", changes)
-    return {"updated": True, "task_id": task_id, "subtask_id": subtask_id, **changes}
+    result = {"updated": True, "task_id": task_id, "subtask_id": subtask_id, **changes}
+    if is_handoff:
+        result["revision"] = handoff_revision(content, "markdown")
+    return result

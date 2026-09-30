@@ -101,6 +101,17 @@ and the main table header and filter bar. Collapsing it restores the list and
 filter bar with the current filters and sort order. The subtask table header
 stays visible within the project.
 
+Subtask handoffs appear as a responsive grid beside the description. Each compact
+widget shows its ID, author, timestamp and a single-line preview of the note.
+Drag the separator to adjust the column widths or the bottom handle to resize
+their shared height. Project and task handoffs use the same widgets in a grid
+that grows with its content, without a resizable frame.
+Click a handoff to open its dialog, or double-click to open a separate browser
+window directly. The dialog's **Ausklappen** button also opens a window and retains
+unsaved edits. Administrators can edit existing handoffs; saving preserves the
+original author and timestamp. Description panels retain their size when
+switching between reading and editing.
+
 Dependencies must belong to the same project and cannot form cycles or redundant
 direct links. If C depends on B and B depends on A, C only needs B as a direct
 predecessor. This is enforced in the UI, REST API and MCP tools, including when

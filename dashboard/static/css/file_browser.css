@@ -12,7 +12,8 @@
     height: var(--project-detail-height, 360px);
 }
 
-.project-detail-columns.has-file-storage {
+.project-detail-columns.has-file-storage,
+.project-detail-columns.has-side-panel {
     grid-template-columns: minmax(0, var(--project-description-width, 1fr)) 16px minmax(0, var(--project-files-width, 1fr));
 }
 
@@ -125,7 +126,8 @@
 }
 
 @media (max-width: 900px) {
-    .project-detail-columns.has-file-storage {
+    .project-detail-columns.has-file-storage,
+    .project-detail-columns.has-side-panel {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
         row-gap: 12px;
