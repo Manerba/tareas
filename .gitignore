@@ -26,6 +26,7 @@ data/*.db-wal
 data/*.db.init.lock
 data/secret.key
 data/files/
+data/.file-locks/
 
 # Build
 build/

@@ -1,11 +1,14 @@
 """Projektgebundene Dateiablage auf dem Server oder ueber WebDAV."""
 
+import fcntl
+import hashlib
 import mimetypes
 import os
 import posixpath
 import shutil
 import stat
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
@@ -171,7 +174,37 @@ class TaskStorage:
         if max_bytes is not None and size > max_bytes:
             raise HTTPException(status_code=413, detail=f"Datei zu gross fuer diesen Abruf (max. {max_bytes} Bytes)")
 
+    @contextmanager
+    def _write_lock(self, path: str):
+        """Nur den Speichervorgang sperren, gemeinsam fuer alle Dienstprozesse.
+
+        Der Ablagepfad identifiziert die Datei auch bei mehreren Projekten mit
+        derselben WebDAV-Zuordnung. Separate Lockdateien ueberstehen os.replace;
+        sie duerfen nicht geloescht werden, solange Dienste darauf zugreifen.
+        """
+        target = self._path(path)
+        key = hashlib.sha256(f"{self.kind}:{target}".encode()).hexdigest()
+        directory = database.DB_DIR / ".file-locks"
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with (directory / f"{key}.lock").open("a") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            yield
+        # close() gibt die Sperre auch bei Fehlern frei; bei Prozessende der Kernel.
+
     def upload_file(self, path: str, content: bytes, content_type: str = "application/octet-stream"):
+        with self._write_lock(path):
+            return self._upload_file(path, content, content_type)
+
+    def update_file(self, path: str, transform, *, max_bytes: int):
+        """Aktuellen Inhalt pruefen/umwandeln und unter derselben Sperre ersetzen."""
+        with self._write_lock(path):
+            original, content_type = self.get_file(path, max_bytes=max_bytes)
+            content = transform(original)
+            self._upload_file(path, content, content_type)
+            return content
+
+    def _upload_file(self, path: str, content: bytes, content_type: str):
+        """Schreiben innerhalb von upload_file/update_file, die bereits sperren."""
         target = self._path(path)
         if self.kind == "webdav":
             return webdav.upload_file(target, content, content_type)

@@ -25,6 +25,11 @@ class FileBrowser {
         return document.getElementById(this.containerId);
     }
 
+    _errorMessage(detail, fallback = 'common.error') {
+        if (typeof detail !== 'string' || !detail) return t(fallback);
+        return detail.startsWith('files.') ? t(detail) : detail;
+    }
+
     // ========================================
     // Rendering
     // ========================================
@@ -184,7 +189,7 @@ class FileBrowser {
             const resp = await fetch(`/api/tasks/${this.taskId}/files?path=${encodeURIComponent(path)}`);
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || t('common.loadError'));
+                throw new Error(this._errorMessage(err.detail, 'common.loadError'));
             }
             const data = await resp.json();
             this.canWrite = data.can_write === true;
@@ -338,12 +343,17 @@ class FileBrowser {
             if (!this.treeCache[path]) {
                 try {
                     const resp = await fetch(`/api/tasks/${this.taskId}/files?path=${encodeURIComponent(path)}`);
-                    if (resp.ok) {
-                        const data = await resp.json();
-                        this.treeCache[path] = data.items || [];
-                        this.onlyOfficeConfigured = data.onlyoffice_configured === true;
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({}));
+                        throw new Error(this._errorMessage(err.detail, 'common.loadError'));
                     }
-                } catch (e) { /* ignore */ }
+                    const data = await resp.json();
+                    this.treeCache[path] = data.items || [];
+                    this.onlyOfficeConfigured = data.onlyoffice_configured === true;
+                } catch (error) {
+                    this.expandedDirs.delete(path);
+                    showNotification(error.message, 'error');
+                }
             }
         }
         this.renderTree();
@@ -574,7 +584,7 @@ class FileBrowser {
                 );
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
-                    throw new Error(err.detail || t('files.uploadFailed'));
+                    throw new Error(this._errorMessage(err.detail, 'files.uploadFailed'));
                 }
                 done++;
                 if (progressFill) progressFill.style.width = `${(done / total) * 100}%`;
@@ -609,7 +619,7 @@ class FileBrowser {
             );
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || t('common.error'));
+                throw new Error(this._errorMessage(err.detail));
             }
             showNotification(t('files.folderCreated', { name: name.trim() }), 'success');
             this.loadDirectory(this.currentPath);
@@ -631,7 +641,7 @@ class FileBrowser {
             );
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || t('common.error'));
+                throw new Error(this._errorMessage(err.detail));
             }
             showNotification(t('files.deleted'), 'success');
             this.loadDirectory(this.currentPath);
@@ -657,7 +667,7 @@ class FileBrowser {
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || t('common.error'));
+                throw new Error(this._errorMessage(err.detail));
             }
             showNotification(t('files.renamed'), 'success');
             this.loadDirectory(this.currentPath);

@@ -101,6 +101,8 @@ function renderMcpStatusSection() {
             <div class="ldap-status-info ${statusClass}">
                 <strong>Status:</strong> ${statusLabel}<br>
                 <strong>Endpoint:</strong> <code>${escapeHtml(cfg.server_url || '(unbekannt)')}</code><br>
+                <strong>${t('mcp.dedicatedEndpoint')}:</strong> <code>${escapeHtml(cfg.dedicated_server_url || '')}</code><br>
+                <p>${t('mcp.sharedEndpoints')}</p>
                 <strong>Aktive Tokens:</strong> ${cfg.active_token_count}<br>
                 <strong>Tools (${(cfg.available_tools || []).length}):</strong><br>
                 <div style="margin-top:6px;line-height:1.8">${toolsHtml}</div>
@@ -361,7 +363,7 @@ function showTokenOnce(data) {
   "mcpServers": {
     "tareas": {
       "type": "http",
-      "url": "${escapeHtml((mcpConfig && mcpConfig.server_url) || 'http://localhost:8504/mcp/')}",
+      "url": "${escapeHtml((mcpConfig && (mcpConfig.dedicated_server_url || mcpConfig.server_url)) || 'http://localhost:8506/mcp/')}",
       "headers": { "Authorization": "Bearer ${escapeHtml(tokenStr)}" }
     }
   }

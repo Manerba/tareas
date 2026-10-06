@@ -20,6 +20,7 @@ from dashboard.auth import (
 )
 from dashboard.audit_log import log_change
 from dashboard.db_utils import db_query
+from dashboard.agent_guide import build_agent_metadata
 from dashboard.logging_config import get_security_logger
 
 security_log = get_security_logger()
@@ -63,17 +64,7 @@ async def mcp_get_config(user=Depends(get_admin_user)):
     """Liefert MCP-Status + Server-URL + Tool-Liste."""
     cfg = get_mcp_config()
 
-    # Server-URL aus app_config zusammenbauen (best-effort)
-    server_url = None
-    try:
-        with db_query() as db:
-            row = db.execute("SELECT server_address FROM app_config WHERE id = 1").fetchone()
-            tls = db.execute("SELECT enabled FROM tls_config WHERE id = 1").fetchone()
-        protocol = "https" if (tls and tls["enabled"]) else "http"
-        addr = (row["server_address"] if row else None) or "localhost:8504"
-        server_url = f"{protocol}://{addr}/mcp/"
-    except Exception:
-        server_url = "http://localhost:8504/mcp/"
+    endpoints = build_agent_metadata()["mcp"]
 
     # Aktive Token zaehlen
     active_tokens = 0
@@ -88,7 +79,8 @@ async def mcp_get_config(user=Depends(get_admin_user)):
 
     return {
         "enabled": cfg["enabled"],
-        "server_url": server_url,
+        "server_url": endpoints["legacy_endpoint"],
+        "dedicated_server_url": endpoints["dedicated_endpoint"],
         "available_tools": MCP_TOOLS,
         "active_token_count": active_tokens,
     }

@@ -3,7 +3,6 @@
 import codecs
 import hashlib
 import re
-from threading import Lock
 
 from fastapi import HTTPException
 
@@ -18,8 +17,6 @@ TEXT_EXTENSIONS = {
     "rst", "properties", "service", "timer", "desktop", "gitignore", "gitattributes", "editorconfig",
 }
 TEXT_NAMES = {"dockerfile", "containerfile", "makefile", "cmakelists.txt", "readme", "license", "copying", ".bashrc", ".zshrc", ".profile"}
-# Serialisiert konkurrierende native Speichervorgaenge im App-Prozess.
-_write_locks = [Lock() for _ in range(64)]
 
 
 def text_format(path: str) -> str | None:
@@ -78,9 +75,10 @@ def read_text_file(storage, path):
 
 
 def write_text_file(storage, path, text, revision):
-    lock_key = f"{storage.task_id}:{storage.kind}:{storage.base_path}:{path}".encode()
-    with _write_locks[hashlib.sha256(lock_key).digest()[0] % len(_write_locks)]:
-        original, content_type = _read(storage, path)
+    if not text_format(path):
+        raise HTTPException(415, "textFile.unsupportedFormat")
+
+    def transform(original):
         if revision != _revision(storage, original):
             raise HTTPException(409, "textFile.conflict")
         old_text, encoding, bom = _decode(original)
@@ -98,5 +96,12 @@ def write_text_file(storage, path, text, revision):
                 raise HTTPException(415, "textFile.unsupportedEncoding")
         if len(content) > MAX_TEXT_BYTES:
             raise HTTPException(413, "textFile.tooLarge")
-        storage.upload_file(path, content, content_type)
-        return {"revision": _revision(storage, content)}
+        return content
+
+    try:
+        content = storage.update_file(path, transform, max_bytes=MAX_TEXT_BYTES)
+    except HTTPException as exc:
+        if exc.status_code == 413:
+            raise HTTPException(413, "textFile.tooLarge") from exc
+        raise
+    return {"revision": _revision(storage, content)}

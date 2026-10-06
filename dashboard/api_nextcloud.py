@@ -7,9 +7,14 @@ import asyncio
 import logging
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
+import httpx
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from python_multipart.exceptions import MultipartParseError
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
+from starlette.requests import ClientDisconnect
 
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.config_utils import get_masked_config, resolve_masked_password
@@ -31,6 +36,56 @@ security_log = get_security_logger()
 # ============================================================
 
 MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB
+UPLOAD_TOO_LARGE = "Datei zu gross (max. 500 MB)"
+
+
+class _UploadTooLarge(MultiPartException):
+    pass
+
+
+class _LimitedUploadParser(MultiPartParser):
+    """Dateibytes vor dem Schreiben in die temporaere Upload-Datei begrenzen."""
+
+    def __init__(self, headers, stream):
+        # Der Endpoint erwartet genau ein Multipart-Dateifeld, Pfade sind Query-Parameter.
+        super().__init__(headers, stream, max_files=1, max_fields=0)
+        self.file_bytes = 0
+
+    def on_part_data(self, data, start, end):
+        if self._current_part.file is not None:
+            self.file_bytes += end - start
+            if self.file_bytes > MAX_UPLOAD_SIZE:
+                raise _UploadTooLarge(UPLOAD_TOO_LARGE)
+        super().on_part_data(data, start, end)
+
+    def close(self):
+        # Auch bei Verbindungsabbruch oder unvollstaendigen Multipart-Bodies
+        # muessen alle angelegten Dateien geschlossen werden, nicht nur FormData.
+        for file in self._files_to_close_on_error:
+            file.close()
+
+
+async def _parse_upload(request: Request):
+    # Keine Content-Length-Vorabpruefung: Es zaehlen die tatsaechlichen Dateibytes,
+    # auch bei Chunked-Uploads. Multipart-Rahmen zaehlen nicht zum Dateilimit.
+    parser = _LimitedUploadParser(request.headers, request.stream())
+    try:
+        try:
+            form = await parser.parse()
+        except _UploadTooLarge as exc:
+            raise HTTPException(status_code=413, detail=UPLOAD_TOO_LARGE) from exc
+        except MultiPartException as exc:
+            raise HTTPException(status_code=400, detail=exc.message) from exc
+        except (MultipartParseError, ClientDisconnect) as exc:
+            raise HTTPException(status_code=400, detail="There was an error parsing the body") from exc
+        file = form.get("file")
+        if not isinstance(file, StarletteUploadFile):
+            raise HTTPException(status_code=422, detail=[{
+                "type": "missing", "loc": ["body", "file"], "msg": "Field required", "input": None,
+            }])
+        yield file
+    finally:
+        parser.close()
 
 
 # ============================================================
@@ -39,6 +94,7 @@ MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB
 
 admin_router = APIRouter(prefix="/api/admin/nextcloud", tags=["nextcloud-admin"])
 files_router = APIRouter(tags=["files"])
+file_operations_router = APIRouter(tags=["files"])
 
 
 # ============================================================
@@ -191,6 +247,12 @@ def _get_task_nextcloud_path(task_id: int, user: dict) -> str:
 async def _file_operation(operation, *args):
     try:
         return await asyncio.to_thread(operation, *args)
+    except httpx.TimeoutException as exc:
+        logger.warning("Zeitueberschreitung beim Zugriff auf Nextcloud/WebDAV (%s)", type(exc).__name__, exc_info=True)
+        raise HTTPException(status_code=504, detail="files.webdavTimeout") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Nextcloud/WebDAV nicht erreichbar (%s)", type(exc).__name__, exc_info=True)
+        raise HTTPException(status_code=503, detail="files.webdavConnectionError") from exc
     except (FileNotFoundError, NotADirectoryError):
         raise HTTPException(status_code=404, detail="Datei oder Verzeichnis nicht gefunden")
     except (FileExistsError, IsADirectoryError):
@@ -200,7 +262,7 @@ async def _file_operation(operation, *args):
         raise HTTPException(status_code=500, detail="Dateioperation fehlgeschlagen")
 
 
-@files_router.get("/api/tasks/{task_id}/files")
+@file_operations_router.get("/api/tasks/{task_id}/files")
 async def list_task_files(task_id: int, path: str = "", user=Depends(get_file_user)):
     storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path)
@@ -211,14 +273,14 @@ async def list_task_files(task_id: int, path: str = "", user=Depends(get_file_us
             "onlyoffice_configured": get_onlyoffice_origin() is not None}
 
 
-@files_router.get("/api/tasks/{task_id}/files/text")
+@file_operations_router.get("/api/tasks/{task_id}/files/text")
 async def get_task_text_file(task_id: int, path: str = Query(...), user=Depends(get_file_user)):
     storage = get_task_storage(task_id, user)
     path = _safe_rel_path(path, allow_empty=False)
     return await _file_operation(read_text_file, storage, path)
 
 
-@files_router.put("/api/tasks/{task_id}/files/text")
+@file_operations_router.put("/api/tasks/{task_id}/files/text")
 async def save_task_text_file(task_id: int, body: TextFileRequest, path: str = Query(...), user=Depends(get_file_user)):
     storage = get_task_storage(task_id, user, write=True)
     path = _safe_rel_path(path, allow_empty=False)
@@ -227,7 +289,7 @@ async def save_task_text_file(task_id: int, body: TextFileRequest, path: str = Q
     return result
 
 
-@files_router.get("/api/tasks/{task_id}/files/download")
+@file_operations_router.get("/api/tasks/{task_id}/files/download")
 async def download_task_file(
     task_id: int,
     path: str = Query(..., description="Relativer Pfad zur Datei"),
@@ -246,9 +308,14 @@ async def download_task_file(
     })
 
 
-@files_router.post("/api/tasks/{task_id}/files/upload")
+@file_operations_router.post("/api/tasks/{task_id}/files/upload", openapi_extra={
+    "requestBody": {"required": True, "content": {"multipart/form-data": {"schema": {
+        "type": "object", "required": ["file"],
+        "properties": {"file": {"type": "string", "format": "binary"}},
+    }}}},
+})
 async def upload_task_file(
-    task_id: int, file: UploadFile = File(...),
+    task_id: int, file: UploadFile = Depends(_parse_upload),
     path: str = Query("", description="Zielordner (relativ)"),
     user=Depends(get_file_user),
 ):
@@ -258,13 +325,13 @@ async def upload_task_file(
     target = f"{path}/{filename}" if path else filename
     content = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(status_code=413, detail="Datei zu gross (max. 500 MB)")
+        raise HTTPException(status_code=413, detail=UPLOAD_TOO_LARGE)
     await _file_operation(storage.upload_file, target, content, file.content_type or "application/octet-stream")
     log_change(user, "task", task_id, "file_upload", {"path": target, "storage_type": storage.kind})
     return {"message": f"Datei '{filename}' hochgeladen", "filename": filename}
 
 
-@files_router.post("/api/tasks/{task_id}/files/mkdir")
+@file_operations_router.post("/api/tasks/{task_id}/files/mkdir")
 async def create_task_directory(
     task_id: int, body: MkdirRequest,
     path: str = Query("", description="Uebergeordneter Ordner (relativ)"),
@@ -279,7 +346,7 @@ async def create_task_directory(
     return {"message": f"Ordner '{dirname}' erstellt"}
 
 
-@files_router.delete("/api/tasks/{task_id}/files")
+@file_operations_router.delete("/api/tasks/{task_id}/files")
 async def delete_task_file(
     task_id: int, path: str = Query(..., description="Zu loeschender Pfad (relativ)"),
     user=Depends(get_file_user),
@@ -291,7 +358,7 @@ async def delete_task_file(
     return {"message": "Geloescht"}
 
 
-@files_router.put("/api/tasks/{task_id}/files/move")
+@file_operations_router.put("/api/tasks/{task_id}/files/move")
 async def move_task_file(task_id: int, body: MoveRequest, user=Depends(get_file_user)):
     storage = get_task_storage(task_id, user, write=True)
     source = _safe_rel_path(body.source, allow_empty=False)
@@ -299,3 +366,6 @@ async def move_task_file(task_id: int, body: MoveRequest, user=Depends(get_file_
     await _file_operation(storage.move_item, source, destination)
     log_change(user, "task", task_id, "file_move", {"source": source, "destination": destination, "storage_type": storage.kind})
     return {"message": "Verschoben"}
+
+
+files_router.include_router(file_operations_router)

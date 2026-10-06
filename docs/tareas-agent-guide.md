@@ -29,11 +29,18 @@ Token niemals ins Repo schreiben.
 - Agent-Guide: `http://10.0.12.7:8504/agent-guide.md`
 - Agent-Bootstrap-JSON: `http://10.0.12.7:8504/.well-known/tareas-agent.json`
 - MCP-Endpoint: `http://10.0.12.7:8504/mcp/`
+- Separater MCP-Dienst: `http://10.0.12.7:8506/mcp/`
 - MCP-Transport: Streamable HTTP
 - MCP-Servername: `tareas`
 - Admin-UI fuer MCP-Tokens: `http://10.0.12.7:8505`, Tab `MCP`
 
 `10.0.12.16:8505` ist in dieser Umgebung Kiron, nicht Tareas.
+
+Beide MCP-Zugaenge verwenden dieselben Werkzeuge, Tokens und Projektrechte.
+Bestehende Konfigurationen mit Port 8504 bleiben gueltig. Fuer eine separate
+Firewall-Freigabe kann Port 8506 verwendet werden: Dort stehen auch Datei-REST,
+`/agent-guide.md` und `/.well-known/tareas-agent.json` bereit, aber keine Web-UI.
+Dateitransfers koennen damit ebenfalls vollstaendig ueber Port 8506 laufen.
 
 Die laufende Tareas-Instanz ist die kanonische Quelle fuer diesen Guide. Das
 Gitea-Repo versioniert die Dokumentation nur; neue Projekte sollen den Guide

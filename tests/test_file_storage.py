@@ -342,6 +342,27 @@ class FileStorageTests(unittest.TestCase):
         with closing(database.get_db()) as db:
             self.assertIsNone(db.execute("SELECT nextcloud_path FROM tasks WHERE id = ?", (self.other_id,)).fetchone()[0])
 
+    def test_webdav_connection_failures_return_json_and_recover(self):
+        self.assign("webdav", nextcloud_path="projects/example")
+        for error, status, detail in (
+            (httpx.ConnectError("Temporary failure in name resolution: private-server"), 503, "files.webdavConnectionError"),
+            (httpx.ReadTimeout("Timed out reading private-server"), 504, "files.webdavTimeout"),
+        ):
+            for operation, method, path, kwargs in (
+                ("list_directory", "GET", "/files", {}),
+                ("get_file_stream", "GET", "/files/text", {"params": {"path": "readme.md"}}),
+                ("upload_file", "POST", "/files/upload", {"files": {"file": ("Plan.txt", b"replacement")}}),
+            ):
+                with self.subTest(error=type(error).__name__, operation=operation):
+                    with patch.object(webdav, operation, side_effect=error) as request:
+                        response = self.client.request(method, self.url + path, **kwargs)
+                    self.assertEqual(response.status_code, status)
+                    self.assertEqual(response.json(), {"detail": detail})
+                    self.assertNotIn("private-server", response.text)
+                    self.assertEqual(request.call_count, 1)
+        with patch.object(webdav, "list_directory", return_value=[]):
+            self.assertEqual(self.ok("GET", self.url + "/files").json()["items"], [])
+
     def test_migration_keeps_existing_webdav_mapping_and_is_repeatable(self):
         with closing(database.get_db()) as db, db:
             db.execute("UPDATE tasks SET nextcloud_path = 'keep' WHERE id = ?", (self.task_id,))

@@ -25,7 +25,7 @@ def main():
     files = {'readme.md': source, 'notes.txt': '# No heading\n<tag>literal</tag>\n',
              'scripts/run.PS1': '# PowerShell\nWrite-Host "Grüße"\n', 'run.sh': '#!/bin/sh\nprintf "%s" "<b>literal</b>"\n',
              'Plan.docx': 'office', 'large.txt': 'x'}
-    state = {'office': False, 'write': True, 'fail_save': False, 'fail_load': False}
+    state = {'office': False, 'write': True, 'fail_save': False, 'fail_load': False, 'transport_error': None}
     saved, errors, violations, office_requests = [], [], [], []
     # Kein Lifespan: Tests duerfen die produktive Datenbank nicht initialisieren.
     client = TestClient(app)
@@ -65,7 +65,10 @@ def main():
             route.fulfill(content_type=mimetypes.guess_type(file)[0] or 'application/octet-stream', body=file.read_bytes())
             return
         status, data = 200, {}
-        if path.endswith('/files/text'):
+        if state['transport_error'] and path.startswith('/api/tasks/1/files'):
+            status, key = state['transport_error']
+            data = {'detail': key}
+        elif path.endswith('/files/text'):
             name = query['path'][0]
             if route.request.method == 'PUT':
                 assert route.request.headers['x-requested-with'] == 'XMLHttpRequest'
@@ -126,6 +129,31 @@ def main():
             dialog.locator('[data-file-close]').click()
             expect(dialog).to_have_count(0)
 
+        # Verbindungsfehler sind lesbar, erneutes Laden und Unterordner funktionieren danach.
+        translations = json.loads((ROOT / 'dashboard/static/i18n/de.json').read_text())
+        for view, failure in (('tree', (503, 'files.webdavConnectionError')), ('grid', (504, 'files.webdavTimeout'))):
+            state['transport_error'] = failure
+            page.evaluate('view => { files.viewMode = view; return files.loadDirectory(""); }', view)
+            expect(page.locator('.fb-error')).to_have_text(translations[failure[1]])
+            state['transport_error'] = None
+            page.evaluate('files.loadDirectory("")')
+            expect(page.locator('.fb-error')).to_have_count(0)
+        page.evaluate('files.viewMode = "tree"; files.renderTree()')
+        state['transport_error'] = (503, 'files.webdavConnectionError')
+        page.locator('[data-toggle-path="scripts"]').click()
+        expect(page.locator('.notification-error')).to_have_text(translations['files.webdavConnectionError'])
+        assert not page.evaluate('files.expandedDirs.has("scripts") || Object.hasOwn(files.treeCache, "scripts")')
+        state['transport_error'] = None
+        page.locator('[data-toggle-path="scripts"]').click()
+        expect(page.locator('.fb-tree-row[data-itempath="scripts/run.PS1"]')).to_be_visible()
+        page.locator('[data-toggle-path="scripts"]').click()
+
+        state['transport_error'] = (503, 'files.webdavConnectionError')
+        page.locator('.fb-tree-row[data-name="readme.md"]').dblclick()
+        expect(dialog.locator('.text-file-status')).to_have_text(translations['files.webdavConnectionError'])
+        close()
+        state['transport_error'] = None
+
         # Markdown: Vorschau, sicheres HTML, explizites Bearbeiten, Speichern und Abbrechen.
         open_file('readme.md')
         expect(dialog.locator('h1').last).to_have_text('Vorschau')
@@ -145,6 +173,11 @@ def main():
         expect(dialog.locator('.markdown-error')).to_have_text('Try again')
         expect(dialog.locator('textarea')).to_have_value('# Neuer Stand')
         state['fail_save'] = False
+        state['transport_error'] = (504, 'files.webdavTimeout')
+        dialog.locator('[data-md-action="save"]').click()
+        expect(dialog.locator('.markdown-error')).to_have_text(translations['files.webdavTimeout'])
+        expect(dialog.locator('textarea')).to_have_value('# Neuer Stand')
+        state['transport_error'] = None
         dialog.locator('[data-md-action="save"]').click()
         expect(dialog.locator('.markdown-body h1')).to_have_text('Neuer Stand')
         assert saved[-1] == ('readme.md', '# Neuer Stand')
@@ -232,6 +265,13 @@ def main():
         assert popup.url.endswith('/text-editor?taskId=1&path=readme.md')
         popup.locator('[data-md-action="save"]').click()
         expect(popup.locator('.markdown-error')).to_contain_text('zwischenzeitlich geändert')
+        expect(popup.locator('textarea')).to_be_visible()
+        expect(popup.locator('textarea')).to_have_value('# Retained draft')
+        expect(popup.locator('[data-md-action="save"]')).to_be_enabled()
+        # Auch ein erneuter Speicherversuch darf die veraltete Revision nicht verwerfen.
+        popup.locator('[data-md-action="save"]').click()
+        expect(popup.locator('.markdown-error')).to_contain_text('zwischenzeitlich geändert')
+        expect(popup.locator('textarea')).to_have_value('# Retained draft')
         assert files['readme.md'] == '# External change'
         popup.locator('[data-md-action="cancel"]').click()
         popup.close()

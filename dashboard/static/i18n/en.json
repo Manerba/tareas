@@ -469,5 +469,9 @@
   "textFile.readOnlyDraft": "Write access has been removed. Your draft remains visible for copying.",
   "handoff.conflict": "The handoff has changed since it was opened. Your draft is retained. Copy it and reopen the handoff.",
   "handoff.notFound": "Handoff not found.",
-  "handoff.popupFailed": "The new window could not be opened. Allow pop-ups and try again."
+  "handoff.popupFailed": "The new window could not be opened. Allow pop-ups and try again.",
+  "files.webdavTimeout": "The Nextcloud/WebDAV request timed out. Please try again.",
+  "files.webdavConnectionError": "Nextcloud/WebDAV is unreachable. Check the network and DNS, then try again.",
+  "mcp.dedicatedEndpoint": "Dedicated MCP endpoint",
+  "mcp.sharedEndpoints": "Both endpoints use the same tokens, permissions and tools. Existing connections through port 8504 continue to work."
 }

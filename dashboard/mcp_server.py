@@ -2,10 +2,10 @@
 Tareas - MCP-Server (Model Context Protocol)
 
 Exponiert Tareas-Funktionen als MCP-Tools fuer remote Claude-Code-Instanzen.
-Mountet sich an /mcp/ in app.py via FastMCP.http_app().
+Wird ueber mcp_transport.py an /mcp/ in app.py und mcp_app.py eingebunden.
 
-Authentifizierung: Bearer-Token (Middleware in app.py setzt current_mcp_user
-ContextVar). Jeder MCP-User ist ein eigener Eintrag in der users-Tabelle mit
+Authentifizierung: Bearer-Token (gemeinsame Middleware setzt request.state.mcp_user).
+Jeder MCP-User ist ein eigener Eintrag in der users-Tabelle mit
 auth_source='mcp'.
 
 Persistenz: direkter Zugriff auf SQLite (selbe DB wie REST-API), Schreib-Ops
@@ -22,6 +22,7 @@ from typing import Literal
 import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
 from fastapi import HTTPException
 
 from dashboard.agent_guide import build_agent_guide_markdown, build_agent_metadata
@@ -35,13 +36,21 @@ from dashboard.file_storage import get_task_storage, safe_rel_path, storage_type
 
 logger = logging.getLogger(__name__)
 
-# Wird von der MCP-Auth-Middleware in app.py pro Request gesetzt.
+# Benutzerkontext fuer direkte Aufrufe ohne HTTP, z.B. in Tests.
 current_mcp_user: ContextVar[dict | None] = ContextVar("current_mcp_user", default=None)
 
 
 def _user() -> dict:
     """Aktuellen MCP-User aus dem Request-Kontext holen."""
-    u = current_mcp_user.get()
+    try:
+        request = get_http_request()
+    except RuntimeError:
+        u = current_mcp_user.get()
+    else:
+        # MCP-Sessions laufen in langlebigen Tasks und erben ContextVars beim
+        # Initialisieren. Die Identitaet muss aus dem aktuellen HTTP-Request
+        # stammen, damit Token-/Rollenwechsel sofort wirksam werden.
+        u = getattr(request.state, "mcp_user", None)
     if not u:
         raise ToolError("MCP-User-Kontext fehlt (Bearer-Token nicht akzeptiert?)")
     return u

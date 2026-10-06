@@ -4,7 +4,7 @@ let activeTextFileDialog = null;
 const handoffWindows = new Map();
 
 function textFileError(error) {
-    return /^(textFile|handoff)\./.test(error.message || '') ? t(error.message) : (error.message || t('common.error'));
+    return /^(textFile|handoff|files)\./.test(error.message || '') ? t(error.message) : (error.message || t('common.error'));
 }
 
 function handoffPageUrl(taskId, handoff) {

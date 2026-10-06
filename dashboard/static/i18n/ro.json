@@ -469,5 +469,9 @@
   "textFile.readOnlyDraft": "Dreptul de scriere a fost retras. Ciorna rămâne vizibilă pentru copiere.",
   "handoff.conflict": "Handoff-ul s-a modificat de la deschidere. Ciorna este păstrată. Copiaz-o și redeschide handoff-ul.",
   "handoff.notFound": "Handoff-ul nu a fost găsit.",
-  "handoff.popupFailed": "Fereastra nouă nu a putut fi deschisă. Permite ferestrele pop-up și încearcă din nou."
+  "handoff.popupFailed": "Fereastra nouă nu a putut fi deschisă. Permite ferestrele pop-up și încearcă din nou.",
+  "files.webdavTimeout": "Cererea către Nextcloud/WebDAV a expirat. Încearcă din nou.",
+  "files.webdavConnectionError": "Nextcloud/WebDAV nu poate fi accesat. Verifică rețeaua și DNS-ul, apoi încearcă din nou.",
+  "mcp.dedicatedEndpoint": "Endpoint MCP separat",
+  "mcp.sharedEndpoints": "Ambele endpointuri folosesc aceleași tokenuri, permisiuni și instrumente. Conexiunile existente prin portul 8504 continuă să funcționeze."
 }

@@ -469,5 +469,9 @@
   "textFile.readOnlyDraft": "Le droit d’écriture a été retiré. Votre brouillon reste visible pour être copié.",
   "handoff.conflict": "Le handoff a changé depuis son ouverture. Votre brouillon est conservé. Copiez-le puis rouvrez le handoff.",
   "handoff.notFound": "Handoff introuvable.",
-  "handoff.popupFailed": "Impossible d’ouvrir la nouvelle fenêtre. Autorisez les fenêtres contextuelles et réessayez."
+  "handoff.popupFailed": "Impossible d’ouvrir la nouvelle fenêtre. Autorisez les fenêtres contextuelles et réessayez.",
+  "files.webdavTimeout": "Le délai de la requête Nextcloud/WebDAV est dépassé. Veuillez réessayer.",
+  "files.webdavConnectionError": "Nextcloud/WebDAV est inaccessible. Vérifiez le réseau et le DNS, puis réessayez.",
+  "mcp.dedicatedEndpoint": "Point de terminaison MCP dédié",
+  "mcp.sharedEndpoints": "Les deux points de terminaison utilisent les mêmes jetons, droits et outils. Les connexions existantes via le port 8504 restent fonctionnelles."
 }

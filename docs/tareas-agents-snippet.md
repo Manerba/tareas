@@ -3,6 +3,9 @@
 Kopiere diesen Abschnitt in die `AGENTS.md` eines Zielprojekts und ersetze die
 Platzhalter.
 
+Der MCP-Endpoint kann auch `http://10.0.12.7:8506/mcp/` sein. Der separate Dienst
+nutzt dieselben Tokens und Rechte; bestehende Verbindungen auf 8504 bleiben gueltig.
+
 ```markdown
 ## Tareas-Projektplanung
 

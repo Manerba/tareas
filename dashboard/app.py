@@ -6,7 +6,6 @@ FastAPI Backend, Port 8504
 import logging
 import logging.handlers
 import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Sicherstellen, dass 'dashboard' als Package importierbar ist
@@ -42,13 +41,10 @@ for _uv_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
 
 from fastapi import FastAPI, Depends, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, PlainTextResponse
 import uvicorn
 
-from dashboard.database import init_db
 from dashboard.agent_guide import build_agent_guide_markdown, build_agent_metadata
-from dashboard.crypto_utils import migrate_plaintext_credentials
-from dashboard.logging_config import setup_security_logger
 from dashboard.csp_utils import get_onlyoffice_origin
 from dashboard.api_tasks import router as tasks_router
 from dashboard.api_auth import router as auth_router
@@ -56,27 +52,12 @@ from dashboard.api_teams import router as teams_router
 from dashboard.api_nextcloud import files_router as nextcloud_files_router
 from dashboard.api_onlyoffice import wopi_router, editor_router
 from dashboard.api_mail import mail_user_router
-from dashboard.auth import get_current_user, _extract_user_from_request, _extract_bearer_token, validate_mcp_bearer
-from dashboard.mcp_server import mcp, current_mcp_user
+from dashboard.auth import get_current_user, _extract_user_from_request
+from dashboard.mcp_transport import install_mcp, mcp_lifespan, api_csrf_protection
 from dashboard.tls_utils import get_tls_config
 
 
-# MCP-ASGI-App bauen. Lifespan muss zwingend in den FastAPI-Lifespan eingebunden
-# werden, sonst Runtime-Fehler "Task group is not initialized".
-mcp_app = mcp.http_app(path="/", transport="streamable-http")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup/Shutdown Events."""
-    init_db()
-    migrate_plaintext_credentials()
-    setup_security_logger()
-    async with mcp_app.lifespan(app):
-        yield
-
-
-app = FastAPI(title="Tareas", lifespan=lifespan)
+app = FastAPI(title="Tareas", lifespan=mcp_lifespan)
 
 # Auth-Router OHNE globale Dependency (login muss oeffentlich sein)
 app.include_router(auth_router)
@@ -99,8 +80,8 @@ app.include_router(editor_router, dependencies=[Depends(get_current_user)])
 # Mail User-Router MIT auth Dependency
 app.include_router(mail_user_router, dependencies=[Depends(get_current_user)])
 
-# MCP-Server an /mcp/ mounten. Bearer-Token-Auth via mcp_auth-Middleware (s. unten).
-app.mount("/mcp", mcp_app)
+# Der bisherige MCP-Endpunkt nutzt denselben Code wie der Dienst auf Port 8506.
+install_mcp(app)
 
 # Verzeichnisse
 static_dir = Path(__file__).parent / "static"
@@ -110,21 +91,7 @@ project_root = Path(__file__).parent.parent
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
-@app.middleware("http")
-async def csrf_protection(request: Request, call_next):
-    """CSRF-Schutz: Mutierende API-Requests muessen X-Requested-With Header senden."""
-    if (
-        request.method in ("POST", "PUT", "DELETE", "PATCH")
-        and request.url.path.startswith("/api/")
-        and not request.url.path.startswith("/api/wopi/")
-        and not request.url.path.startswith("/api/onlyoffice/callback")
-    ):
-        if request.headers.get("X-Requested-With") != "XMLHttpRequest":
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "CSRF-Validierung fehlgeschlagen"},
-            )
-    return await call_next(request)
+app.middleware("http")(api_csrf_protection)
 
 
 @app.middleware("http")
@@ -175,27 +142,6 @@ async def no_cache_static(request, call_next):
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
-
-
-@app.middleware("http")
-async def mcp_auth(request: Request, call_next):
-    """Bearer-Token-Auth fuer /mcp/*. Setzt current_mcp_user ContextVar."""
-    if not request.url.path.startswith("/mcp"):
-        return await call_next(request)
-    token = _extract_bearer_token(request)
-    if not token:
-        return JSONResponse({"error": "Bearer-Token fehlt"}, status_code=401)
-    user = validate_mcp_bearer(token)
-    if not user:
-        return JSONResponse(
-            {"error": "Ungueltiges/widerrufenes Token oder MCP deaktiviert"},
-            status_code=401,
-        )
-    ctx_token = current_mcp_user.set(user)
-    try:
-        return await call_next(request)
-    finally:
-        current_mcp_user.reset(ctx_token)
 
 
 # ============================================================

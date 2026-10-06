@@ -108,11 +108,11 @@ async def no_cache_static(request, call_next):
 async def restart_dashboard(user=Depends(get_admin_user)):
     """Startet den Dashboard-Service neu (nur Admins)."""
     subprocess.Popen(
-        ["systemctl", "restart", "tareas.service", "tareas-admin.service"],
+        ["systemctl", "restart", "tareas.service", "tareas-admin.service", "tareas-mcp.service"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    return {"status": "restarting", "message": "Dashboard und Admin werden neu gestartet..."}
+    return {"status": "restarting", "message": "Dashboard, Admin und MCP werden neu gestartet..."}
 
 
 # ============================================================

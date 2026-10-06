@@ -7,6 +7,7 @@ neue Projekte nicht von externen Repos oder statischen Kopien abhaengen.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -18,6 +19,7 @@ from dashboard.db_utils import db_query
 DEFAULT_ADDRESS = "localhost:8504"
 MCP_SERVER_NAME = "tareas"
 MCP_TRANSPORT = "streamable_http"
+current_agent_base_url: ContextVar[str | None] = ContextVar("current_agent_base_url", default=None)
 
 
 def _strip_protocol(address: str) -> str:
@@ -74,16 +76,21 @@ def _with_port(base_url: str, port: int) -> str:
     hostname = parts.hostname or parts.netloc.split(":")[0]
     if not hostname:
         return base_url
-    netloc = f"{hostname}:{port}"
+    netloc = f"[{hostname}]:{port}" if ":" in hostname else f"{hostname}:{port}"
     return urlunsplit((parts.scheme or "http", netloc, "", "", "")).rstrip("/")
 
 
-def build_agent_metadata(request: Request | None = None) -> dict[str, Any]:
+def build_agent_metadata(request: Request | None = None, *, mcp_base_url: str | None = None) -> dict[str, Any]:
     base_url = public_base_url(request)
+    agent_base = mcp_base_url or current_agent_base_url.get()
+    if agent_base and not _get_configured_address():
+        base_url = _with_port(agent_base, 8504)
+    dedicated_endpoint = f"{agent_base or _with_port(base_url, 8506)}/mcp/"
+    agent_base = agent_base or base_url
     web_ui = f"{base_url}/"
-    mcp_endpoint = f"{base_url}/mcp/"
-    guide_url = f"{base_url}/agent-guide.md"
-    well_known_url = f"{base_url}/.well-known/tareas-agent.json"
+    mcp_endpoint = f"{agent_base}/mcp/"
+    guide_url = f"{agent_base}/agent-guide.md"
+    well_known_url = f"{agent_base}/.well-known/tareas-agent.json"
     admin_url = _with_port(base_url, 8505)
     snippet = build_agents_snippet(web_ui, mcp_endpoint)
 
@@ -91,11 +98,14 @@ def build_agent_metadata(request: Request | None = None) -> dict[str, Any]:
         "name": "Tareas",
         "description": "Shared project planning and audit layer for AI-agent collaboration.",
         "web_ui": web_ui,
+        "file_api_base_url": agent_base,
         "agent_guide_url": guide_url,
         "well_known_url": well_known_url,
         "mcp": {
             "server_name": MCP_SERVER_NAME,
             "endpoint": mcp_endpoint,
+            "legacy_endpoint": f"{base_url}/mcp/",
+            "dedicated_endpoint": dedicated_endpoint,
             "transport": MCP_TRANSPORT,
             "authorization_header": "Authorization: Bearer <token>",
             "token_placeholder": "<token>",
@@ -205,6 +215,7 @@ Arbeitsregeln:
 
 def build_agent_guide_markdown(metadata: dict[str, Any]) -> str:
     web_ui = metadata["web_ui"]
+    file_api = metadata.get("file_api_base_url", web_ui.rstrip("/"))
     mcp_endpoint = metadata["mcp"]["endpoint"]
     admin_url = metadata["mcp"]["token_admin_url"]
     guide_url = metadata["agent_guide_url"]
@@ -238,6 +249,8 @@ Token niemals ins Repo schreiben.
 
 - Web-UI: `{web_ui}`
 - MCP-Endpoint: `{mcp_endpoint}`
+- Separater MCP-Dienst: `{metadata['mcp']['dedicated_endpoint']}`
+- Bisheriger MCP-Zugang: `{metadata['mcp']['legacy_endpoint']}` (weiterhin nutzbar)
 - MCP-Transport: `{MCP_TRANSPORT}`
 - MCP-Servername: `{MCP_SERVER_NAME}`
 - Admin-UI fuer MCP-Tokens: `{admin_url}`, Tab `MCP`
@@ -330,11 +343,11 @@ Andere REST-Endpunkte, Ablagekonfiguration und Office-Editor brauchen weiterhin
 eine Web-Anmeldung.
 
 ```bash
-curl --fail --get '{web_ui}api/tasks/<task_id>/files/download' \\
+curl --fail --get '{file_api}/api/tasks/<task_id>/files/download' \\
   --header 'Authorization: Bearer <token>' \\
   --data-urlencode 'path=Unterlagen/Plan.pdf' --output Plan.pdf
 
-curl --fail '{web_ui}api/tasks/<task_id>/files/upload' \\
+curl --fail '{file_api}/api/tasks/<task_id>/files/upload' \\
   --header 'Authorization: Bearer <token>' \\
   --header 'X-Requested-With: XMLHttpRequest' \\
   --form 'file=@Plan.pdf'

@@ -70,8 +70,9 @@ After manual installation, copy the service files:
 ```bash
 cp scripts/tareas.service /etc/systemd/system/
 cp scripts/tareas-admin.service /etc/systemd/system/
+cp scripts/tareas-mcp.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now tareas tareas-admin
+systemctl enable --now tareas tareas-admin tareas-mcp
 ```
 
 ## Configuration
@@ -126,6 +127,11 @@ select an existing directory from the configured Nextcloud share. Local storage
 works without a Nextcloud configuration. Both options support the file browser
 and ONLYOFFICE editing when ONLYOFFICE is configured.
 
+File uploads accept one multipart file up to 500 MiB. The limit is enforced
+while receiving the file, including uploads without `Content-Length`.
+Oversized uploads stop with HTTP 413 and their temporary files are closed;
+the existing stored file is preserved. No size preflight is required.
+
 Double-click a Markdown file to open its formatted preview in a dialog. Text and
 script files (including `.txt`, `.ps1`, `.sh`, `.py`, `.js`, JSON and YAML) open as
 literal text in the same editor, independently of ONLYOFFICE. Choose **Bearbeiten**
@@ -138,7 +144,11 @@ The native editor supports files up to 2 MiB, encoded as UTF-8 (with or without
 BOM) or UTF-16 with BOM. It preserves the encoding, BOM and the existing newline
 style when saving. Binary files, unsupported encodings and larger files remain
 available for download. Saves check the loaded revision and report a conflict if
-the file has changed; the draft remains available to copy. Text editing uses
+the file has changed; the editor stays in edit mode and retains the draft.
+Revision checks and writes use a shared process lock in the file storage layer,
+including saves on ports 8504/8506, MCP writes and uploads. This lock lasts only
+for the save operation; opening or editing a file does not reserve it.
+Text editing uses
 `GET`/`PUT /api/tasks/{id}/files/text?path=...` with the existing file permissions,
 CSRF protection and audit logging. A PUT supplies `content` and the `revision`
 returned by GET.
@@ -163,7 +173,26 @@ reopening active Office editors.
 
 ### MCP Server
 
-Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents and remote coding assistants. The server is mounted in the main app on port `8504` and uses Streamable HTTP via FastMCP.
+Tareas exposes a Model Context Protocol (MCP) server at `/mcp/` for AI agents and
+remote coding assistants, using Streamable HTTP via FastMCP. The dedicated
+`tareas-mcp.service` listens on port `8506`. The existing endpoint on port `8504`
+remains available, so connected agents do not need to change their configuration.
+Both services share the same tool definitions, authentication, tokens, database,
+project permissions, audit log and global MCP switch.
+
+Port `8506` exposes MCP, the project file REST API, `/agent-guide.md` and
+`/.well-known/tareas-agent.json`. It serves no web UI, login, admin UI or general
+task REST API. File requests on this port require a MCP Bearer token even if a
+browser session cookie is present. Tokens are checked before reading the request
+body and checked again after receiving an upload. This lets a firewall expose only port `8506`
+while keeping UI ports `8504` and `8505` internal. The dedicated service uses the
+same TLS configuration and certificate as the main app. Use HTTPS for external
+access; installation does not change firewall rules.
+
+The Admin MCP tab shows both addresses and uses port `8506` in new connection
+examples. Agent guides requested through the dedicated service also use its
+address for REST file transfers. The services can restart independently; active
+MCP transport sessions belong to the endpoint where they were established.
 
 - Authentication uses `Authorization: Bearer <token>`.
 - MCP tokens are created in the Admin Panel under **MCP** and are shown only once.
@@ -233,6 +262,8 @@ Tareas/
 ├── dashboard/
 │   ├── app.py              # Main FastAPI app (Port 8504)
 │   ├── admin_app.py         # Admin FastAPI app (Port 8505)
+│   ├── mcp_app.py           # Dedicated MCP and file API (Port 8506)
+│   ├── mcp_transport.py     # Shared MCP transport, lifecycle and authentication
 │   ├── api_*.py             # API routers (tasks, auth, teams, etc.)
 │   ├── mcp_server.py        # MCP tools for AI agents
 │   ├── components/          # Reusable Python components
@@ -268,6 +299,7 @@ Tareas/
 source venv/bin/activate
 python dashboard/app.py        # Main app on :8504
 python dashboard/admin_app.py  # Admin app on :8505
+python dashboard/mcp_app.py    # Dedicated MCP on :8506; :8504/mcp/ stays available
 ```
 
 ### Adding a New Tab

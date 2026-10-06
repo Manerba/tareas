@@ -469,5 +469,9 @@
   "textFile.readOnlyDraft": "Se ha retirado el permiso de escritura. El borrador sigue visible para copiarlo.",
   "handoff.conflict": "El handoff ha cambiado desde que se abrió. El borrador se conserva. Cópialo y vuelve a abrir el handoff.",
   "handoff.notFound": "No se encontró el handoff.",
-  "handoff.popupFailed": "No se pudo abrir la nueva ventana. Permite las ventanas emergentes e inténtalo de nuevo."
+  "handoff.popupFailed": "No se pudo abrir la nueva ventana. Permite las ventanas emergentes e inténtalo de nuevo.",
+  "files.webdavTimeout": "La solicitud a Nextcloud/WebDAV ha agotado el tiempo de espera. Inténtalo de nuevo.",
+  "files.webdavConnectionError": "No se puede acceder a Nextcloud/WebDAV. Comprueba la red y el DNS e inténtalo de nuevo.",
+  "mcp.dedicatedEndpoint": "Endpoint MCP independiente",
+  "mcp.sharedEndpoints": "Ambos endpoints usan los mismos tokens, permisos y herramientas. Las conexiones existentes por el puerto 8504 siguen funcionando."
 }
