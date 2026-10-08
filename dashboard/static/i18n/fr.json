@@ -473,5 +473,15 @@
   "files.webdavTimeout": "Le délai de la requête Nextcloud/WebDAV est dépassé. Veuillez réessayer.",
   "files.webdavConnectionError": "Nextcloud/WebDAV est inaccessible. Vérifiez le réseau et le DNS, puis réessayez.",
   "mcp.dedicatedEndpoint": "Point de terminaison MCP dédié",
-  "mcp.sharedEndpoints": "Les deux points de terminaison utilisent les mêmes jetons, droits et outils. Les connexions existantes via le port 8504 restent fonctionnelles."
+  "mcp.sharedEndpoints": "Les deux points de terminaison utilisent les mêmes jetons, droits et outils. Les connexions existantes via le port 8504 restent fonctionnelles.",
+  "tasks.col.pid": "PID",
+  "projectLink.parent": "Sous-tâche parente (PID)",
+  "projectLink.child": "Projet enfant",
+  "projectLink.automatic": "Progression automatique : proportion de sous-tâches terminées dans le projet enfant.",
+  "projectLink.link": "Lier un projet",
+  "projectLink.manage": "Lien du projet",
+  "projectLink.create": "Créer un projet enfant",
+  "projectLink.detachHint": "La dissociation conserve la dernière progression et permet de la modifier à nouveau. Les deux projets sont conservés.",
+  "projectLink.detach": "Dissocier le projet",
+  "projectLink.unavailable": "Le projet lié est indisponible ou vous ne disposez pas du droit de lecture."
 }

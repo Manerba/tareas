@@ -15,6 +15,7 @@ from fastmcp.exceptions import ToolError
 
 from dashboard import database, file_storage, mcp_server as api, webdav
 from dashboard.api_admin_mcp import MCP_TOOLS
+from dashboard.mcp_errors import MCPToolError
 
 
 class MCPFileTests(unittest.TestCase):
@@ -190,6 +191,77 @@ class MCPFileTests(unittest.TestCase):
                 denied = await client.call_tool("file.read", {"task_id": self.other, "path": "x"}, raise_on_error=False)
                 self.assertTrue(denied.is_error)
         asyncio.run(protocol_check())
+
+    def test_missing_storage_explains_setup_for_all_mcp_file_tools_without_writes(self):
+        with closing(database.get_db()) as db, db:
+            db.execute("UPDATE tasks SET file_storage_type = NULL, nextcloud_path = NULL WHERE id = ?", (self.task,))
+            before = dict(db.execute("SELECT * FROM tasks WHERE id = ?", (self.task,)).fetchone())
+        self.files.rmdir()
+
+        async def protocol_check():
+            async with Client(api.mcp) as client:
+                for tool, args in (
+                    ("file.list", {}),
+                    ("file.read", {"path": "missing.txt"}),
+                    ("file.write", {"path": "new.txt", "content": "do not write"}),
+                    ("file.mkdir", {"path": "new"}),
+                    ("file.move", {"source": "missing.txt", "destination": "new.txt"}),
+                    ("file.delete", {"path": "missing.txt"}),
+                ):
+                    with self.subTest(tool=tool):
+                        result = await client.call_tool(tool, {"task_id": self.task, **args}, raise_on_error=False)
+                        self.assertTrue(result.is_error)
+                        payload = result.structured_content
+                        self.assertEqual(payload["code"], "storage_not_configured")
+                        self.assertEqual(payload["field"], "file_storage_type")
+                        self.assertEqual(json.loads(result.content[0].text), payload)
+                        message = payload["message"]
+                        for instruction in ("Weboberflaeche", "Aufgabe/das Projekt", "Button 'Dateiablage'",
+                                            "lokale Ablage", "WebDAV", "Header des Dateibrowsers",
+                                            "Ersteller", "Admin", "Bearbeitungsfreigabe"):
+                            self.assertIn(instruction, message)
+                        self.assertIn("eine reine Zuweisung oder Lesefreigabe reicht dort nicht", message)
+
+        with patch.object(file_storage, "ensure_local_directory") as local_setup, \
+                patch.object(webdav, "create_directory") as remote_setup, \
+                patch.object(api, "log_change") as audit:
+            asyncio.run(protocol_check())
+            local_setup.assert_not_called()
+            remote_setup.assert_not_called()
+            audit.assert_not_called()
+        self.assertFalse(self.files.exists())
+        with closing(database.get_db()) as db:
+            self.assertEqual(dict(db.execute("SELECT * FROM tasks WHERE id = ?", (self.task,)).fetchone()), before)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0], 0)
+
+    def test_missing_storage_hint_respects_current_read_and_write_permissions(self):
+        with closing(database.get_db()) as db, db:
+            db.execute("UPDATE tasks SET file_storage_type = NULL, nextcloud_path = NULL WHERE id = ?", (self.task,))
+        reads = (lambda: api.file_list(self.task), lambda: api.file_read(self.task, "missing.txt"))
+        writes = (
+            lambda: api.file_write(self.task, "new.txt", "no write"),
+            lambda: api.file_mkdir(self.task, "new"),
+            lambda: api.file_move(self.task, "missing.txt", "new.txt"),
+            lambda: api.file_delete(self.task, "missing.txt"),
+        )
+        for name in ("owner", "admin", "editor", "assignee", "reader", "outsider"):
+            self.login(name)
+            for write, operations in ((False, reads), (True, writes)):
+                expected = "permission_denied" if name == "outsider" or (write and name == "reader") else "storage_not_configured"
+                for operation in operations:
+                    with self.subTest(user=name, write=write), self.assertRaises(MCPToolError) as caught:
+                        operation()
+                    self.assertEqual(caught.exception.code, expected)
+                    if expected == "permission_denied":
+                        self.assertNotIn("Dateiablage", str(caught.exception))
+                        self.assertNotIn("Weboberflaeche", str(caught.exception))
+        # Eine widerrufene Freigabe muss auch bei fehlender Ablage sofort greifen.
+        self.login("editor")
+        with closing(database.get_db()) as db, db:
+            db.execute("DELETE FROM project_members WHERE project_id = ? AND user_id = ?", (self.task, self.users["editor"]["id"]))
+        with self.assertRaises(MCPToolError) as caught:
+            api.file_list(self.task)
+        self.assertEqual(caught.exception.code, "permission_denied")
 
     def test_webdav_operations_stay_in_project_directory_and_close_streams(self):
         with closing(database.get_db()) as db, db:

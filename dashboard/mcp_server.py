@@ -17,22 +17,30 @@ import binascii
 import logging
 import mimetypes
 from contextvars import ContextVar
-from typing import Literal
+from typing import Annotated, Literal
 
 import httpx
 from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from fastapi import HTTPException
+from pydantic import Field
 
 from dashboard.agent_guide import build_agent_guide_markdown, build_agent_metadata
 from dashboard.audit_log import log_change, diff_fields
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.task_types import normalize_task_type
+from dashboard.task_status import TASK_STATUS_CTE, task_with_status
+from dashboard.task_validation import (
+    ProjectStatus, StatusPercent, validate_project_status, validate_status_percent,
+)
 from dashboard.note_service import update_note_as_admin
 from dashboard.permissions import require_task_access, require_subtask_access, task_visibility_sql
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
+from dashboard.project_links import (
+    SUBTASK_LINK_SELECT, ensure_manual_progress, refresh_parent_progress, set_parent_subtask,
+)
 from dashboard.file_storage import get_task_storage, safe_rel_path, storage_type
+from dashboard.mcp_errors import MCPToolError, StructuredToolErrors, tool_error_from_http
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +60,7 @@ def _user() -> dict:
         # stammen, damit Token-/Rollenwechsel sofort wirksam werden.
         u = getattr(request.state, "mcp_user", None)
     if not u:
-        raise ToolError("MCP-User-Kontext fehlt (Bearer-Token nicht akzeptiert?)")
+        raise MCPToolError("authentication_required", "MCP-User-Kontext fehlt (Bearer-Token nicht akzeptiert?)")
     return u
 
 
@@ -60,20 +68,21 @@ def _change_dependencies(operation, *args, **kwargs):
     try:
         return operation(*args, **kwargs)
     except HTTPException as exc:
-        raise ToolError(exc.detail) from exc
+        raise tool_error_from_http(exc) from exc
 
 
 # ============================================================
 # Row-Serialisierung
 # ============================================================
 
-def _task_to_dict(row) -> dict:
-    return {
+def _task_to_dict(row, *, include_description: bool = True) -> dict:
+    result = {
         "id": row["id"],
+        "parent_subtask_id": row["parent_subtask_id"],
+        "parent_project_id": row["parent_project_id"],
+        "progress_percent": row["progress_percent"],
         "name": row["name"],
-        "description": row["description"] or "",
-        "description_format": row["description_format"],
-        "status": row["status"],
+        "status": row["effective_status"],
         "priority": row["priority"],
         "task_type": row["task_type"],
         "deadline": row["deadline"],
@@ -83,6 +92,10 @@ def _task_to_dict(row) -> dict:
         "nextcloud_path": row["nextcloud_path"] if "nextcloud_path" in row.keys() else None,
         "file_storage_type": storage_type(row),
     }
+    if include_description:
+        result["description"] = row["description"] or ""
+        result["description_format"] = row["description_format"]
+    return result
 
 
 def _subtask_to_dict(row) -> dict:
@@ -96,6 +109,8 @@ def _subtask_to_dict(row) -> dict:
         "deadline": row["deadline"],
         "priority": row["priority"],
         "status_percent": row["status_percent"],
+        "child_project_id": row["child_project_id"],
+        "progress_automatic": row["child_project_id"] is not None,
         "position_number": row["position_number"],
         "created_at": row["created_at"],
         "created_by": row["created_by"],
@@ -126,9 +141,9 @@ def _renumber_project_subtasks(db, ordered_ids: list[int]) -> dict[int, int]:
 
 
 def _subtask_with_predecessors(db, subtask_id: int) -> dict:
-    row = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
+    row = db.execute(SUBTASK_LINK_SELECT + " WHERE st.id = ?", (subtask_id,)).fetchone()
     if not row:
-        raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+        raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
     preds = db.execute(
         "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ?",
         (subtask_id,),
@@ -144,6 +159,11 @@ def _subtask_with_predecessors(db, subtask_id: int) -> dict:
 
 mcp = FastMCP(
     name="Tareas",
+    middleware=[StructuredToolErrors()],
+    mask_error_details=True,
+    # Pydantic validiert dieselben Tooltypen im Middleware-Kontext. Die optionale
+    # vorgelagerte JSON-Schema-Pruefung des SDK liefert nur Freitextfehler.
+    strict_input_validation=False,
     instructions=(
         "Tareas-Aufgabenverwaltung. Du bist als eigener MCP-User in der DB "
         "registriert; alle Aenderungen werden im Audit-Log protokolliert. "
@@ -171,30 +191,101 @@ def get_agent_guide() -> dict:
 # ============================================================
 
 @mcp.tool
-def list_projects(status: str | None = None) -> list[dict]:
-    """Listet alle Projekte (Top-Level-Aufgaben). Statusfilter: offen, in_arbeit, erledigt, abgebrochen."""
+def list_projects(status: ProjectStatus | None = None) -> list[dict]:
+    """Listet alle Projekte (Top-Level-Aufgaben).
+
+    Statusfilter: offen, in_arbeit, erledigt, abgebrochen. Der Projektstatus
+    wird wie in der Weboberflaeche aus erledigten Teilaufgaben berechnet.
+    """
     user = _user()
+    if status is not None:
+        _access(validate_project_status, status)
     with db_query() as db:
         visibility, params = task_visibility_sql(user)
-        status_sql = " AND t.status = ?" if status else ""
+        status_sql = " AND t.effective_status = ?" if status else ""
         rows = db.execute(
-            "SELECT t.* FROM tasks t WHERE " + visibility + status_sql + " ORDER BY t.priority DESC, t.created_at DESC",
+            TASK_STATUS_CTE + "SELECT t.* FROM tasks_with_status t WHERE " + visibility + status_sql
+            + " ORDER BY t.priority DESC, t.created_at DESC, t.id DESC",
             [*params, *([status] if status else [])],
         ).fetchall()
         return [_task_to_dict(row) for row in rows]
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+def list_projects_page(
+    status: ProjectStatus | None = None,
+    offset: Annotated[int, Field(strict=True, ge=0)] = 0,
+    limit: Annotated[int, Field(strict=True, ge=1, le=500)] = 50,
+    include_description: bool = False,
+) -> dict:
+    """Listet sichtbare Aufgaben/Projekte kompakt und seitenweise.
+
+    Ohne Beschreibungen; Details bei Bedarf mit get_project nachladen oder
+    include_description=true setzen. Sortierung: Prioritaet, Erstellzeit,
+    ID absteigend. status filtert den wie im Web berechneten Projektstatus.
+    next_offset ist der Start der naechsten Seite oder null am Listenende.
+    Bei Aenderungen zwischen Seiten kann sich die Reihenfolge verschieben.
+    Das bisherige list_projects liefert weiterhin die vollstaendige Liste.
+    """
+    user = _user()
+    if status is not None:
+        _access(validate_project_status, status)
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        raise MCPToolError("invalid_pagination", "offset muss eine Ganzzahl ab 0 sein", field="offset")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 500:
+        raise MCPToolError("invalid_pagination", "limit muss eine Ganzzahl von 1 bis 500 sein", field="limit")
+
+    visibility, params = task_visibility_sql(user)
+    where = " FROM tasks_with_status t WHERE " + visibility
+    if status is not None:
+        where += " AND t.effective_status = ?"
+        params.append(status)
+    columns = (
+        "t.id, t.name, t.effective_status, t.priority, t.task_type, t.deadline, "
+        "t.created_at, t.created_by, t.assigned_to, t.nextcloud_path, t.file_storage_type, "
+        "t.parent_subtask_id, t.parent_project_id, t.progress_percent"
+    )
+    if include_description:
+        columns += ", t.description, t.description_format"
+
+    with db_query() as db:
+        # Beide SELECTs sehen denselben WAL-Snapshot; keine Schreibsperre.
+        db.execute("BEGIN")
+        total = db.execute(TASK_STATUS_CTE + "SELECT COUNT(*)" + where, params).fetchone()[0]
+        # Auch sehr grosse gueltige Offsets bleiben leere Seiten, statt am
+        # 64-Bit-Limit von SQLite-Parametern zu scheitern.
+        rows = []
+        if offset < total:
+            rows = db.execute(
+                TASK_STATUS_CTE + "SELECT " + columns + where
+                + " ORDER BY t.priority DESC, t.created_at DESC, t.id DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+    items = [_task_to_dict(row, include_description=include_description) for row in rows]
+    return {
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "next_offset": offset + len(items) if offset + len(items) < total else None,
+    }
+
 
 @mcp.tool
 def get_project(project_id: int) -> dict:
-    """Holt ein Projekt inkl. aller Subtasks und ihrer Abhaengigkeiten in einem Call."""
+    """Holt ein Projekt inkl. aller Subtasks und ihrer Abhaengigkeiten in einem Call.
+
+    Der Status folgt erledigten Teilaufgaben: keine = offen, einige =
+    in_arbeit, alle = erledigt. Leere Projekte sind offen, abgebrochen hat
+    Vorrang. Normale Aufgaben behalten ihren manuell gesetzten Status.
+    """
     with db_query() as db:
-        task = db.execute("SELECT * FROM tasks WHERE id = ?", (project_id,)).fetchone()
+        task = task_with_status(db, project_id)
         if not task:
-            raise ToolError(f"Projekt {project_id} nicht gefunden")
+            raise MCPToolError("task_not_found", f"Projekt {project_id} nicht gefunden", field="project_id")
         _require_task_read_access(db, project_id, _user())
         subs = db.execute(
-            "SELECT * FROM sub_tasks WHERE project_id = ? ORDER BY position_number ASC, id ASC",
+            SUBTASK_LINK_SELECT + " WHERE st.project_id = ? ORDER BY st.position_number ASC, st.id ASC",
             (project_id,),
         ).fetchall()
         deps = db.execute(
@@ -221,28 +312,38 @@ def create_project(
     description: str = "",
     deadline: str | None = None,
     priority: int = 50,
-    status: str = "offen",
+    status: ProjectStatus = "offen",
     task_type: str = "projekt",
+    parent_subtask_id: Annotated[int, Field(strict=True, ge=0)] | None = None,
 ) -> dict:
-    """Legt ein neues Projekt an. Gibt das angelegte Projekt-Dict (mit id) zurueck."""
+    """Legt ein Projekt an, optional als Kind von parent_subtask_id (PID).
+    Ein Kind-Projekt pro Teilaufgabe, keine Zyklen, Schreibrechte auf beiden Seiten.
+    Der Eltern-Subtask uebernimmt den Anteil erledigter Teilaufgaben in Prozent;
+    sein status_percent ist danach schreibgeschuetzt. Keine Rechtevererbung.
+    """
     user = _user()
+    status = _access(validate_project_status, status)
     if not name.strip():
-        raise ToolError("name darf nicht leer sein")
+        raise MCPToolError("empty_name", "name darf nicht leer sein", field="name")
     try:
         task_type = normalize_task_type(task_type)
     except ValueError as exc:
-        raise ToolError(str(exc))
+        raise MCPToolError("invalid_task_type", "task_type muss aufgabe oder projekt sein", field="task_type") from exc
     with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
         cursor = db.execute(
             """INSERT INTO tasks (name, description, deadline, priority, status, task_type, created_by, assigned_to)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (name.strip(), description, deadline, priority, status, task_type, user["id"], user["id"]),
         )
         task_id = cursor.lastrowid
-        row = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if parent_subtask_id is not None:
+            _access(set_parent_subtask, db, task_id, parent_subtask_id, user)
+        row = task_with_status(db, task_id)
     log_change(user, "task", task_id, "create", {
         "name": name, "description": description, "priority": priority,
         "status": status, "task_type": task_type, "deadline": deadline,
+        "parent_subtask_id": parent_subtask_id or None,
     })
     return _task_to_dict(row)
 
@@ -254,27 +355,39 @@ def update_project(
     description: str | None = None,
     deadline: str | None = None,
     priority: int | None = None,
-    status: str | None = None,
+    status: ProjectStatus | None = None,
     assigned_to: int | None = None,
+    parent_subtask_id: Annotated[int, Field(strict=True, ge=0)] | None = None,
 ) -> dict:
     """Aktualisiert ein Projekt. Nur uebergebene Felder werden geaendert.
 
     status='abgebrochen' bricht Aufgaben/Projekte ab, ohne Inhalte zu loeschen.
     Mit status='offen' wird ein abgebrochenes Projekt wieder aufgenommen;
-    die Weboberflaeche berechnet seinen Status dann wieder aus den Teilaufgaben.
+    MCP und Weboberflaeche berechnen seinen Status dann wieder aus erledigten
+    Teilaufgaben. Manuelle Werte offen/in_arbeit/erledigt ueberschreiben bei
+    Projekten diese Ableitung nicht; normale Aufgaben behalten diese Werte.
+    parent_subtask_id verknuepft mit einer Eltern-Teilaufgabe (PID), 0 trennt.
+    Beim Trennen bleibt deren letzter Fortschritt erhalten und wird editierbar.
+    Verknuepfung/Trennung brauchen Schreibrechte auf Projekt und Eltern-Subtask.
     """
     user = _user()
+    if status is not None:
+        status = _access(validate_project_status, status)
     with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
         before = db.execute("SELECT * FROM tasks WHERE id = ?", (project_id,)).fetchone()
         if not before:
-            raise ToolError(f"Projekt {project_id} nicht gefunden")
+            raise MCPToolError("task_not_found", f"Projekt {project_id} nicht gefunden", field="project_id")
         _, rights = _access(require_task_access, db, project_id, user, "edit_status")
         if assigned_to is not None and not rights["can_manage"]:
-            raise ToolError("Nur Ersteller und Admins duerfen Zuweisungen aendern")
+            raise MCPToolError("permission_denied", "Nur Ersteller und Admins duerfen Zuweisungen aendern", field="assigned_to")
         if not rights["can_edit"] and any(v is not None for v in (name, description, deadline, priority)):
-            raise ToolError("Nur Statusaenderungen sind erlaubt")
+            raise MCPToolError("permission_denied", "Nur Statusaenderungen sind erlaubt")
         updates, values = [], []
         new_vals = {}
+        if parent_subtask_id is not None:
+            _access(set_parent_subtask, db, project_id, parent_subtask_id, user)
+            new_vals["parent_subtask_id"] = parent_subtask_id or None
         if name is not None:
             updates.append("name = ?"); values.append(name); new_vals["name"] = name
         if description is not None:
@@ -291,11 +404,12 @@ def update_project(
                 updates.append("assigned_to = NULL"); new_vals["assigned_to"] = None
             else:
                 updates.append("assigned_to = ?"); values.append(assigned_to); new_vals["assigned_to"] = assigned_to
-        if not updates:
-            raise ToolError("Keine Felder zum Aktualisieren angegeben")
-        values.append(project_id)
-        db.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
-        after = db.execute("SELECT * FROM tasks WHERE id = ?", (project_id,)).fetchone()
+        if not new_vals:
+            raise MCPToolError("empty_update", "Keine Felder zum Aktualisieren angegeben")
+        if updates:
+            values.append(project_id)
+            db.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
+        after = task_with_status(db, project_id)
     changes = diff_fields(dict(before), {**dict(before), **new_vals}, list(new_vals.keys()))
     log_change(user, "task", project_id, "update", changes)
     return _task_to_dict(after)
@@ -309,7 +423,7 @@ def delete_project(project_id: int) -> dict:
         _access(require_task_access, db, project_id, user, "manage")
         row = db.execute("SELECT id, name FROM tasks WHERE id = ?", (project_id,)).fetchone()
         if not row:
-            raise ToolError(f"Projekt {project_id} nicht gefunden")
+            raise MCPToolError("task_not_found", f"Projekt {project_id} nicht gefunden", field="project_id")
         db.execute("DELETE FROM tasks WHERE id = ?", (project_id,))
     log_change(user, "task", project_id, "delete", {"name": row["name"]})
     return {"deleted": True, "id": project_id}
@@ -328,11 +442,11 @@ def list_subtasks(project_id: int) -> list[dict]:
         if not rights["can_read"] and not db.execute(
             "SELECT 1 FROM sub_tasks WHERE project_id = ? AND assigned_to = ?", (project_id, user["id"]),
         ).fetchone():
-            raise ToolError("Keine Leseberechtigung")
+            raise MCPToolError("permission_denied", "Keine Leseberechtigung", field="project_id")
         if not db.execute("SELECT id FROM tasks WHERE id = ?", (project_id,)).fetchone():
-            raise ToolError(f"Projekt {project_id} nicht gefunden")
+            raise MCPToolError("task_not_found", f"Projekt {project_id} nicht gefunden", field="project_id")
         subs = db.execute(
-            "SELECT * FROM sub_tasks WHERE project_id = ? ORDER BY position_number ASC, id ASC",
+            SUBTASK_LINK_SELECT + " WHERE st.project_id = ? ORDER BY st.position_number ASC, st.id ASC",
             (project_id,),
         ).fetchall()
         deps = db.execute(
@@ -358,9 +472,9 @@ def get_subtask(subtask_id: int) -> dict:
     """Holt eine einzelne Teilaufgabe inkl. predecessor_ids."""
     with db_query() as db:
         _access(require_subtask_access, db, subtask_id, _user())
-        row = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
+        row = db.execute(SUBTASK_LINK_SELECT + " WHERE st.id = ?", (subtask_id,)).fetchone()
         if not row:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
         preds = db.execute(
             "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ?",
             (subtask_id,),
@@ -378,7 +492,7 @@ def create_subtask(
     area_id: int | None = None,
     deadline: str | None = None,
     priority: int = 50,
-    status_percent: int = 0,
+    status_percent: StatusPercent = 0,
     predecessor_ids: list[int] | None = None,
     assigned_to: int | None = None,
     depends_on_project: bool = False,
@@ -386,17 +500,19 @@ def create_subtask(
     """Legt eine Teilaufgabe an. Vorgaenger muessen zum Projekt gehoeren.
     Keine Zyklen oder transitiv redundanten Abhaengigkeiten."""
     user = _user()
+    status_percent = _access(validate_status_percent, status_percent)
     if not name.strip():
-        raise ToolError("name darf nicht leer sein")
+        raise MCPToolError("empty_name", "name darf nicht leer sein", field="name")
     predecessor_ids = list(predecessor_ids or [])
     if depends_on_project and 0 not in predecessor_ids:
         predecessor_ids.append(0)
     with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
         _, rights = _access(require_task_access, db, project_id, user, "create")
         if assigned_to not in (None, user["id"]) and not rights["can_manage"]:
-            raise ToolError("Nur Ersteller und Admins duerfen Zuweisungen aendern")
+            raise MCPToolError("permission_denied", "Nur Ersteller und Admins duerfen Zuweisungen aendern", field="assigned_to")
         if not db.execute("SELECT id FROM tasks WHERE id = ?", (project_id,)).fetchone():
-            raise ToolError(f"Projekt {project_id} nicht gefunden")
+            raise MCPToolError("task_not_found", f"Projekt {project_id} nicht gefunden", field="project_id")
         # naechste position_number ermitteln
         next_pos = db.execute(
             "SELECT COALESCE(MAX(position_number), 0) + 1 AS p FROM sub_tasks WHERE project_id = ?",
@@ -413,7 +529,8 @@ def create_subtask(
         )
         subtask_id = cursor.lastrowid
         _change_dependencies(set_subtask_predecessors, db, subtask_id, predecessor_ids)
-        row = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
+        _access(refresh_parent_progress, db, project_id)
+        row = db.execute(SUBTASK_LINK_SELECT + " WHERE st.id = ?", (subtask_id,)).fetchone()
     log_change(user, "sub_task", subtask_id, "create", {
         "project_id": project_id, "name": name, "description": description,
         "priority": priority, "deadline": deadline,
@@ -432,21 +549,28 @@ def update_subtask(
     area_id: int | None = None,
     deadline: str | None = None,
     priority: int | None = None,
-    status_percent: int | None = None,
+    status_percent: StatusPercent | None = None,
     assigned_to: int | None = None,
     predecessor_ids: list[int] | None = None,
 ) -> dict:
     """Aktualisiert eine Teilaufgabe. Nur uebergebene Felder werden geaendert.
     predecessor_ids ersetzt KOMPLETT die bestehenden Vorgaenger.
-    Keine Zyklen oder transitiv redundanten Abhaengigkeiten, auch nicht an anderen Teilaufgaben."""
+    Keine Zyklen oder transitiv redundanten Abhaengigkeiten, auch nicht an anderen Teilaufgaben.
+    Bei progress_automatic=true ist status_percent gesperrt (Fehlercode
+    linked_project_progress_readonly). Stattdessen das Kind-Projekt bearbeiten."""
     user = _user()
+    if status_percent is not None:
+        status_percent = _access(validate_status_percent, status_percent)
     with db_transaction() as db:
-        before = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
+        db.execute("BEGIN IMMEDIATE")
+        before = db.execute(SUBTASK_LINK_SELECT + " WHERE st.id = ?", (subtask_id,)).fetchone()
         if not before:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
         _, rights = _access(require_subtask_access, db, subtask_id, user, "edit")
+        if status_percent is not None:
+            _access(ensure_manual_progress, db, subtask_id)
         if assigned_to is not None and not rights["can_manage"]:
-            raise ToolError("Nur Ersteller und Admins duerfen Zuweisungen aendern")
+            raise MCPToolError("permission_denied", "Nur Ersteller und Admins duerfen Zuweisungen aendern", field="assigned_to")
         if predecessor_ids is not None:
             _access(require_task_access, db, before["project_id"], user, "structure")
         updates, values = [], []
@@ -475,7 +599,9 @@ def update_subtask(
         if predecessor_ids is not None:
             _change_dependencies(set_subtask_predecessors, db, subtask_id, predecessor_ids)
             new_vals["predecessor_ids"] = predecessor_ids
-        after = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
+        if status_percent is not None:
+            _access(refresh_parent_progress, db, before["project_id"])
+        after = db.execute(SUBTASK_LINK_SELECT + " WHERE st.id = ?", (subtask_id,)).fetchone()
         preds = db.execute(
             "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ?",
             (subtask_id,),
@@ -492,11 +618,13 @@ def delete_subtask(subtask_id: int) -> dict:
     """Loescht eine Teilaufgabe."""
     user = _user()
     with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
         _access(require_subtask_access, db, subtask_id, user, "manage")
         row = db.execute("SELECT id, name, project_id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
         if not row:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
         db.execute("DELETE FROM sub_tasks WHERE id = ?", (subtask_id,))
+        _access(refresh_parent_progress, db, row["project_id"])
     log_change(user, "sub_task", subtask_id, "delete", {
         "name": row["name"], "project_id": row["project_id"],
     })
@@ -510,7 +638,7 @@ def move_subtask(subtask_id: int, direction: str) -> dict:
     user = _user()
     direction = (direction or "").strip().lower()
     if direction not in {"up", "down"}:
-        raise ToolError("direction muss 'up' oder 'down' sein")
+        raise MCPToolError("invalid_direction", "direction muss 'up' oder 'down' sein", field="direction")
 
     with db_transaction() as db:
         subtask, _ = _access(require_subtask_access, db, subtask_id, user)
@@ -520,14 +648,14 @@ def move_subtask(subtask_id: int, direction: str) -> dict:
             (subtask_id,),
         ).fetchone()
         if not current:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
 
         rows = _ordered_subtask_rows(db, current["project_id"])
         ordered_ids = [row["id"] for row in rows]
         try:
             old_index = ordered_ids.index(subtask_id)
         except ValueError:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
 
         target_index = old_index - 1 if direction == "up" else old_index + 1
         if target_index < 0 or target_index >= len(ordered_ids):
@@ -575,7 +703,7 @@ def set_subtask_position(subtask_id: int, position_number: int) -> dict:
     Zu grosse Positionswerte werden auf die letzte Position geklemmt. Abhaengigkeiten bleiben unveraendert."""
     user = _user()
     if position_number is None or position_number < 1:
-        raise ToolError("position_number muss groesser oder gleich 1 sein")
+        raise MCPToolError("invalid_position", "position_number muss groesser oder gleich 1 sein", field="position_number")
 
     with db_transaction() as db:
         subtask, _ = _access(require_subtask_access, db, subtask_id, user)
@@ -585,14 +713,14 @@ def set_subtask_position(subtask_id: int, position_number: int) -> dict:
             (subtask_id,),
         ).fetchone()
         if not current:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
 
         rows = _ordered_subtask_rows(db, current["project_id"])
         ordered_ids = [row["id"] for row in rows]
         try:
             old_index = ordered_ids.index(subtask_id)
         except ValueError:
-            raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+            raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
 
         ordered_ids.pop(old_index)
         target_index = min(position_number, len(rows)) - 1
@@ -670,7 +798,7 @@ def _access(operation, *args, **kwargs):
     try:
         return operation(*args, **kwargs)
     except HTTPException as exc:
-        raise ToolError(exc.detail) from exc
+        raise tool_error_from_http(exc) from exc
 
 
 def _task_readable(db, task, user: dict) -> bool:
@@ -721,16 +849,16 @@ def _make_handoff_id(scope: str, local_id: int) -> str:
 def _parse_handoff_id(handoff_id: str) -> tuple[str, int]:
     value = str(handoff_id).strip()
     if ":" not in value:
-        raise ToolError("handoff_id muss typisiert sein, z.B. 'task:123' oder 'subtask:456'")
+        raise MCPToolError("invalid_handoff_id", "handoff_id muss typisiert sein, z.B. 'task:123' oder 'subtask:456'", field="handoff_id")
     scope, raw_id = value.split(":", 1)
     if scope not in {"task", "subtask"}:
-        raise ToolError("handoff_id muss mit 'task:' oder 'subtask:' beginnen")
+        raise MCPToolError("invalid_handoff_id", "handoff_id muss mit 'task:' oder 'subtask:' beginnen", field="handoff_id")
     try:
         local_id = int(raw_id)
     except ValueError as exc:
-        raise ToolError("handoff_id enthaelt keine gueltige numerische ID") from exc
+        raise MCPToolError("invalid_handoff_id", "handoff_id enthaelt keine gueltige numerische ID", field="handoff_id") from exc
     if local_id < 1:
-        raise ToolError("handoff_id muss eine positive ID enthalten")
+        raise MCPToolError("invalid_handoff_id", "handoff_id muss eine positive ID enthalten", field="handoff_id")
     return scope, local_id
 
 
@@ -824,7 +952,7 @@ def note_update(task_id: int, user_id: int, content: str, subtask_id: int | None
     try:
         return update_note_as_admin(task_id, content, _user(), subtask_id=subtask_id, note_user_id=user_id)
     except HTTPException as exc:
-        raise ToolError(exc.detail) from exc
+        raise tool_error_from_http(exc) from exc
 
 
 @mcp.tool(name="note.delete")
@@ -929,7 +1057,7 @@ def handoff_add(task_id: int, content: str, subtask_id: int | None = None) -> di
     """
     user = _user()
     if not content.strip():
-        raise ToolError("content darf nicht leer sein")
+        raise MCPToolError("empty_content", "content darf nicht leer sein", field="content")
 
     with db_transaction() as db:
         if subtask_id is not None:
@@ -979,10 +1107,10 @@ def handoff_update(task_id: int, handoff_id: str, content: str, subtask_id: int 
     """
     user = _user()
     if not user.get("is_admin"):
-        raise ToolError("Nur Admins duerfen Handoffs bearbeiten")
+        raise MCPToolError("permission_denied", "Nur Admins duerfen Handoffs bearbeiten")
     scope, local_id = _parse_handoff_id(handoff_id)
     if scope == "task" and subtask_id is not None:
-        raise ToolError("task-Handoff darf nicht mit subtask_id bearbeitet werden")
+        raise MCPToolError("invalid_handoff_target", "task-Handoff darf nicht mit subtask_id bearbeitet werden", fields=["handoff_id", "subtask_id"])
     if scope == "subtask" and subtask_id is None:
         with db_query() as db:
             row = db.execute(
@@ -991,12 +1119,12 @@ def handoff_update(task_id: int, handoff_id: str, content: str, subtask_id: int 
                    WHERE sne.id = ? AND st.project_id = ?""", (local_id, task_id),
             ).fetchone()
             if not row:
-                raise ToolError("Handoff nicht gefunden")
+                raise MCPToolError("handoff_not_found", "Handoff nicht gefunden", field="handoff_id")
             subtask_id = row["sub_task_id"]
     try:
         return update_note_as_admin(task_id, content, user, subtask_id=subtask_id, entry_id=local_id)
     except HTTPException as exc:
-        raise ToolError(exc.detail) from exc
+        raise tool_error_from_http(exc) from exc
 
 
 @mcp.tool(name="handoff.delete")
@@ -1028,7 +1156,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
                     _require_task_read_access(db, task_id, user)
                     return {"deleted": False, "handoff_id": handoff_id, "task_id": task_id, "subtask_id": None}
                 if not _subtask_readable(db, row, user):
-                    raise ToolError(f"Keine Leseberechtigung fuer Aufgabe/Projekt {task_id}")
+                    raise MCPToolError("permission_denied", f"Keine Leseberechtigung fuer Aufgabe/Projekt {task_id}", field="task_id")
                 subtask_id = row["subtask_id"]
                 existing = row
             else:
@@ -1042,7 +1170,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
                 return {"deleted": False, "handoff_id": handoff_id, "task_id": task_id, "subtask_id": subtask_id}
             _access(require_subtask_access, db, subtask_id, user, "contribute", task_id=task_id)
             if existing["user_id"] != user["id"] and not user.get("is_admin"):
-                raise ToolError("Nur eigene Handoffs koennen geloescht werden")
+                raise MCPToolError("permission_denied", "Nur eigene Handoffs koennen geloescht werden", field="handoff_id")
             db.execute(
                 "DELETE FROM sub_task_note_entries WHERE id = ? AND sub_task_id = ?",
                 (local_id, subtask_id),
@@ -1051,7 +1179,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
             entity_type = "sub_task_handoff"
         else:
             if subtask_id is not None:
-                raise ToolError("task-Handoff darf nicht mit subtask_id geloescht werden")
+                raise MCPToolError("invalid_handoff_target", "task-Handoff darf nicht mit subtask_id geloescht werden", fields=["handoff_id", "subtask_id"])
             _access(require_task_access, db, task_id, user, "contribute")
             existing = db.execute(
                 "SELECT id, user_id, content FROM task_note_entries WHERE id = ? AND task_id = ?",
@@ -1060,7 +1188,7 @@ def handoff_delete(task_id: int, handoff_id: str, subtask_id: int | None = None)
             if not existing:
                 return {"deleted": False, "handoff_id": handoff_id, "task_id": task_id, "subtask_id": None}
             if existing["user_id"] != user["id"] and not user.get("is_admin"):
-                raise ToolError("Nur eigene Handoffs koennen geloescht werden")
+                raise MCPToolError("permission_denied", "Nur eigene Handoffs koennen geloescht werden", field="handoff_id")
             db.execute(
                 "DELETE FROM task_note_entries WHERE id = ? AND task_id = ?",
                 (local_id, task_id),
@@ -1090,19 +1218,46 @@ def _file_operation(operation, *args, **kwargs):
     try:
         return operation(*args, **kwargs)
     except HTTPException as exc:
-        raise ToolError(exc.detail) from exc
+        raise tool_error_from_http(exc) from exc
     except (FileNotFoundError, NotADirectoryError) as exc:
-        raise ToolError("Datei oder Verzeichnis nicht gefunden") from exc
+        raise MCPToolError("file_not_found", "Datei oder Verzeichnis nicht gefunden", field="path") from exc
     except (FileExistsError, IsADirectoryError) as exc:
-        raise ToolError("Zieldatei oder Verzeichnis existiert bereits") from exc
-    except (OSError, RuntimeError, httpx.RequestError) as exc:
+        raise MCPToolError("file_exists", "Zieldatei oder Verzeichnis existiert bereits", field="path") from exc
+    except httpx.TimeoutException as exc:
+        logger.exception("Zeitueberschreitung bei MCP-Dateioperation")
+        raise MCPToolError("storage_timeout", "Zeitueberschreitung beim Zugriff auf die Dateiablage") from exc
+    except httpx.RequestError as exc:
+        logger.exception("Verbindungsfehler bei MCP-Dateioperation")
+        raise MCPToolError("storage_unavailable", "Dateiablage ist momentan nicht erreichbar") from exc
+    except (OSError, RuntimeError) as exc:
         logger.exception("MCP-Dateioperation fehlgeschlagen")
-        raise ToolError("Dateioperation fehlgeschlagen") from exc
+        raise MCPToolError("file_operation_failed", "Dateioperation fehlgeschlagen") from exc
 
 
 def _file_context(task_id: int, path: str, *, write: bool = False, allow_empty: bool = False):
     user = _user()
-    storage = _access(get_task_storage, task_id, user, write=write)
+    try:
+        storage = _access(get_task_storage, task_id, user, write=write)
+    except MCPToolError as exc:
+        if exc.code != "storage_not_configured":
+            raise
+        # Nur MCP bekommt die Einrichtungsanleitung; REST/UI-detail bleibt
+        # unveraendert. get_task_storage hat die aktuellen Rechte schon geprueft.
+        raise MCPToolError(
+            exc.code,
+            f"{exc.message}. In der Tareas-Weboberflaeche die Aufgabe/das Projekt "
+            "oeffnen und ueber den Button 'Dateiablage' eine lokale Ablage oder "
+            "WebDAV zuordnen. Bei bestehender Ablage liegt die Konfiguration im "
+            "Header des Dateibrowsers. WebDAV muss zuvor von einem Admin "
+            "eingerichtet sein. Die Einrichtung im Browser braucht "
+            "Bearbeitungsrechte (Ersteller, Admin oder Bearbeitungsfreigabe); "
+            "eine reine Zuweisung oder Lesefreigabe reicht dort nicht. "
+            "Falls diese Rechte fehlen, den Ersteller oder einen Admin um "
+            "Einrichtung bitten. MCP-Dateiwerkzeuge legen keine Ablage "
+            "automatisch an.",
+            field=exc.field,
+            fields=exc.fields,
+        ) from exc
     path = _access(safe_rel_path, path, allow_empty=allow_empty)
     return user, storage, path
 
@@ -1117,7 +1272,8 @@ def file_list(task_id: int, path: str = "", offset: int = 0, limit: int = 200) -
     """
     _, storage, path = _file_context(task_id, path, allow_empty=True)
     if offset < 0 or not 1 <= limit <= 500:
-        raise ToolError("offset muss >= 0 sein, limit zwischen 1 und 500")
+        raise MCPToolError("invalid_pagination", "offset muss >= 0 sein, limit zwischen 1 und 500",
+                           fields=[field for field, invalid in (("offset", offset < 0), ("limit", not 1 <= limit <= 500)) if invalid])
     entries = _file_operation(storage.list_directory, path)
     items = []
     for entry in entries[offset:offset + limit]:
@@ -1141,7 +1297,7 @@ def file_read(task_id: int, path: str, encoding: Literal["auto", "utf-8", "base6
     """
     _, storage, path = _file_context(task_id, path)
     if encoding not in ("auto", "utf-8", "base64"):
-        raise ToolError("encoding muss auto, utf-8 oder base64 sein")
+        raise MCPToolError("invalid_encoding", "encoding muss auto, utf-8 oder base64 sein", field="encoding")
     raw, content_type = _file_operation(storage.get_file, path, max_bytes=MCP_FILE_MAX_BYTES)
     text = None
     if encoding != "base64":
@@ -1149,7 +1305,7 @@ def file_read(task_id: int, path: str, encoding: Literal["auto", "utf-8", "base6
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             if encoding == "utf-8":
-                raise ToolError("Datei ist kein UTF-8-Text. encoding=base64 verwenden") from exc
+                raise MCPToolError("invalid_encoding", "Datei ist kein UTF-8-Text. encoding=base64 verwenden", field="encoding") from exc
     if encoding == "auto" and text is not None and any(ord(char) < 32 and char not in "\t\r\n" for char in text):
         text = None
     return {"task_id": task_id, "path": path, "storage_type": storage.kind,
@@ -1167,16 +1323,16 @@ def file_write(task_id: int, path: str, content: str, encoding: Literal["utf-8",
     """
     user, storage, path = _file_context(task_id, path, write=True)
     if encoding not in ("utf-8", "base64"):
-        raise ToolError("encoding muss utf-8 oder base64 sein")
+        raise MCPToolError("invalid_encoding", "encoding muss utf-8 oder base64 sein", field="encoding")
     max_chars = MCP_FILE_MAX_BYTES if encoding == "utf-8" else 4 * ((MCP_FILE_MAX_BYTES + 2) // 3)
     if len(content) > max_chars:
-        raise ToolError("Datei zu gross (max. 1 MiB pro MCP-Aufruf)")
+        raise MCPToolError("file_too_large", "Datei zu gross (max. 1 MiB pro MCP-Aufruf)", field="content")
     try:
         raw = content.encode("utf-8") if encoding == "utf-8" else base64.b64decode(content, validate=True)
     except (UnicodeError, ValueError, binascii.Error) as exc:
-        raise ToolError("Ungueltiger Dateiinhalt fuer die angegebene Kodierung") from exc
+        raise MCPToolError("invalid_content", "Ungueltiger Dateiinhalt fuer die angegebene Kodierung", field="content") from exc
     if len(raw) > MCP_FILE_MAX_BYTES:
-        raise ToolError("Datei zu gross (max. 1 MiB pro MCP-Aufruf)")
+        raise MCPToolError("file_too_large", "Datei zu gross (max. 1 MiB pro MCP-Aufruf)", field="content")
     content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
     _file_operation(storage.upload_file, path, raw, content_type)
     log_change(user, "task", task_id, "file_upload", {"path": path, "size": len(raw), "storage_type": storage.kind})
@@ -1192,14 +1348,25 @@ def file_mkdir(task_id: int, path: str) -> dict:
     return {"task_id": task_id, "path": path, "created": True}
 
 
+def _file_argument_path(value: str, field: str) -> str:
+    """Pfadvalidierung mit dem tatsaechlichen Argumentnamen des Werkzeugs."""
+    try:
+        return safe_rel_path(value, allow_empty=False)
+    except HTTPException as exc:
+        error = tool_error_from_http(exc)
+        error.field = field
+        raise error from exc
+
+
 @mcp.tool(name="file.move", annotations={"readOnlyHint": False, "destructiveHint": True})
 def file_move(task_id: int, source: str, destination: str) -> dict:
     """Datei/Ordner innerhalb derselben Projektablage verschieben oder umbenennen.
 
     Benoetigt Bearbeitungsrechte. Beide Pfade relativ, Ziel darf nicht existieren.
     """
-    user, storage, source = _file_context(task_id, source, write=True)
-    destination = _access(safe_rel_path, destination, allow_empty=False)
+    user, storage, _ = _file_context(task_id, "", write=True, allow_empty=True)
+    source = _file_argument_path(source, "source")
+    destination = _file_argument_path(destination, "destination")
     _file_operation(storage.move_item, source, destination)
     log_change(user, "task", task_id, "file_move", {"source": source, "destination": destination, "storage_type": storage.kind})
     return {"task_id": task_id, "source": source, "destination": destination, "moved": True}
@@ -1371,18 +1538,18 @@ def assign_self(task_id: int | None = None, subtask_id: int | None = None) -> di
     """Weist die Aufgabe oder Teilaufgabe dem aufrufenden MCP-User zu."""
     user = _user()
     if task_id is None and subtask_id is None:
-        raise ToolError("task_id oder subtask_id erforderlich")
+        raise MCPToolError("missing_target", "task_id oder subtask_id erforderlich", fields=["task_id", "subtask_id"])
     with db_transaction() as db:
         if subtask_id is not None:
             _access(require_subtask_access, db, subtask_id, user, "manage", task_id=task_id)
             if not db.execute("SELECT id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone():
-                raise ToolError(f"Teilaufgabe {subtask_id} nicht gefunden")
+                raise MCPToolError("subtask_not_found", f"Teilaufgabe {subtask_id} nicht gefunden", field="subtask_id")
             db.execute("UPDATE sub_tasks SET assigned_to = ? WHERE id = ?", (user["id"], subtask_id))
             entity_type, entity_id = "sub_task", subtask_id
         else:
             _access(require_task_access, db, task_id, user, "manage")
             if not db.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone():
-                raise ToolError(f"Projekt {task_id} nicht gefunden")
+                raise MCPToolError("task_not_found", f"Projekt {task_id} nicht gefunden", field="task_id")
             db.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (user["id"], task_id))
             entity_type, entity_id = "task", task_id
     log_change(user, entity_type, entity_id, "update", {"assigned_to": {"new": user["id"]}})

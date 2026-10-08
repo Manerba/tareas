@@ -131,6 +131,101 @@ class MCPEndpointTests(unittest.TestCase):
         self.assertTrue(logs)
         self.assertTrue(all(row['actor_type'] == 'mcp' and row['actor_user_id'] == self.users['owner'] for row in logs))
 
+    def test_feedback_features_work_together_on_both_endpoints(self):
+        for app, port in ((legacy_app, 8504), (dedicated_app, 8506)):
+            with self.subTest(port=port), TestClient(app, base_url=f'http://tareas.test:{port}') as client:
+                headers = self.initialize(client)
+                _, catalog = self.rpc(client, 'tools/list', {}, headers)
+                tools = {tool['name']: tool for tool in catalog['tools']}
+                self.assertIn('list_projects_page', tools)
+                progress_schema = tools['create_subtask']['inputSchema']['properties']['status_percent']
+                self.assertEqual((progress_schema['minimum'], progress_schema['maximum']), (0, 100))
+
+                bad_page = self.call(client, headers, 'list_projects_page', {'limit': 501}, error=True)
+                self.assertEqual(bad_page['structuredContent']['code'], 'invalid_pagination')
+                self.assertEqual(bad_page['structuredContent']['field'], 'limit')
+
+                project = self.call(client, headers, 'create_project', {
+                    'name': f'Feedback {port}', 'description': 'Long description ' * 1000,
+                })
+                pid = project['id']
+                invalid = self.call(client, headers, 'update_project', {
+                    'project_id': pid, 'name': 'Must not be saved', 'status': 'invalid-secret-value',
+                }, error=True)
+                self.assertEqual(invalid['structuredContent']['code'], 'invalid_status')
+                self.assertEqual(invalid['structuredContent']['field'], 'status')
+                self.assertNotIn('invalid-secret-value', json.dumps(invalid))
+                self.assertEqual(self.call(client, headers, 'get_project', {'project_id': pid})['name'], project['name'])
+
+                subtasks = [self.call(client, headers, 'create_subtask', {
+                    'project_id': pid, 'name': f'Part {index}', 'status_percent': 100,
+                }) for index in range(4)]
+                invalid = self.call(client, headers, 'update_subtask', {
+                    'subtask_id': subtasks[0]['id'], 'status_percent': 101,
+                }, error=True)
+                self.assertEqual(invalid['structuredContent']['code'], 'invalid_progress')
+                self.assertEqual(invalid['structuredContent']['field'], 'status_percent')
+                self.assertEqual(self.call(client, headers, 'get_project', {'project_id': pid})['status'], 'erledigt')
+
+                page = self.call(client, headers, 'list_projects_page', {'status': 'erledigt', 'limit': 1})
+                self.assertEqual(page['items'][0]['id'], pid)
+                self.assertNotIn('description', page['items'][0])
+                self.assertIn('next_offset', page)
+                self.assertLess(len(json.dumps(page)), len(project['description']))
+                legacy = self.call(client, headers, 'list_projects', {'status': 'erledigt'})
+                legacy = legacy['result'] if isinstance(legacy, dict) else legacy
+                self.assertIsInstance(legacy, list)
+                self.assertEqual(next(item for item in legacy if item['id'] == pid)['description'], project['description'])
+
+                self.call(client, headers, 'add_dependency', {
+                    'subtask_id': subtasks[1]['id'], 'depends_on_id': subtasks[0]['id'],
+                })
+                cycle = self.call(client, headers, 'add_dependency', {
+                    'subtask_id': subtasks[0]['id'], 'depends_on_id': subtasks[1]['id'],
+                }, error=True)
+                self.assertEqual(cycle['structuredContent']['code'], 'dependency_cycle')
+                self.assertEqual(self.call(client, headers, 'get_subtask', {
+                    'subtask_id': subtasks[0]['id'],
+                })['predecessor_ids'], [])
+
+                missing = self.call(client, headers, 'file.list', {'task_id': pid}, error=True)
+                self.assertEqual(missing['structuredContent']['code'], 'storage_not_configured')
+                self.assertEqual(missing['structuredContent']['field'], 'file_storage_type')
+                self.assertIn('WebDAV', missing['structuredContent']['message'])
+
+                self.call(client, headers, 'update_project', {'project_id': pid, 'status': 'abgebrochen'})
+                self.call(client, headers, 'update_subtask', {'subtask_id': subtasks[0]['id'], 'status_percent': 50})
+                self.assertEqual(self.call(client, headers, 'get_project', {'project_id': pid})['status'], 'abgebrochen')
+                resumed = self.call(client, headers, 'update_project', {'project_id': pid, 'status': 'offen'})
+                self.assertEqual(resumed['status'], 'in_arbeit')
+
+    def test_project_links_and_progress_lock_on_both_endpoints(self):
+        for app, port in ((legacy_app, 8504), (dedicated_app, 8506)):
+            with self.subTest(port=port), TestClient(app, base_url=f'http://tareas.test:{port}') as client:
+                headers = self.initialize(client)
+                parent = self.call(client, headers, 'create_project', {'name': f'Parent {port}'})
+                subtask = self.call(client, headers, 'create_subtask', {'project_id': parent['id'], 'name': 'Parent subtask'})
+                child = self.call(client, headers, 'create_project', {
+                    'name': 'Child', 'parent_subtask_id': subtask['id'],
+                })
+                self.assertEqual(child['parent_subtask_id'], subtask['id'])
+                self.call(client, headers, 'create_subtask', {
+                    'project_id': child['id'], 'name': 'Done', 'status_percent': 100,
+                })
+                self.call(client, headers, 'create_subtask', {'project_id': child['id'], 'name': 'Open'})
+                read = self.call(client, headers, 'get_subtask', {'subtask_id': subtask['id']})
+                self.assertEqual(read['status_percent'], 50)
+                self.assertEqual(read['child_project_id'], child['id'])
+                rejected = self.call(client, headers, 'update_subtask', {
+                    'subtask_id': subtask['id'], 'status_percent': 100,
+                }, error=True)
+                self.assertEqual(rejected['structuredContent']['code'], 'linked_project_progress_readonly')
+                self.assertEqual(rejected['structuredContent']['field'], 'status_percent')
+                self.call(client, headers, 'update_project', {'project_id': child['id'], 'parent_subtask_id': 0})
+                read = self.call(client, headers, 'update_subtask', {'subtask_id': subtask['id'], 'status_percent': 25})
+                self.assertEqual(read['status_percent'], 25)
+                self.assertFalse(read['progress_automatic'])
+
     def test_auth_revocation_kill_switch_and_read_only_rights_on_both(self):
         for app in (legacy_app, dedicated_app):
             auth.set_mcp_enabled(True)

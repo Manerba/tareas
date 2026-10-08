@@ -240,6 +240,23 @@ class FileStorageTests(unittest.TestCase):
             self.assertTrue(self.ok("GET", self.url + "/files").json()["can_write"])
             self.upload(name + ".txt")
 
+    def test_setup_guidance_matches_browser_rights_and_preserves_rest_detail(self):
+        for name in ("owner", "admin", "editor", "reader", "assignee"):
+            self.user = self.users[name]
+            with self.subTest(user=name):
+                response = self.client.get(self.url + "/files")
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json(), {"detail": "Keine Dateiablage zugeordnet"})
+                response = self.client.put(self.url, json={"file_storage_type": "local"})
+                if name in ("owner", "admin", "editor"):
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assign("none")
+                else:
+                    self.assertEqual(response.status_code, 403)
+                    self.assertFalse(file_storage.local_path(self.task_id).exists())
+        self.user = self.users["outsider"]
+        self.assertEqual(self.client.get(self.url + "/files").status_code, 403)
+
     def test_traversal_and_empty_mutation_paths_are_rejected(self):
         self.assign()
         paths = ("../test.db", "/etc/passwd", "folder/../../test.db", "folder/../Plan.txt",

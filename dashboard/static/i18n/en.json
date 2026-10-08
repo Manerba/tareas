@@ -473,5 +473,15 @@
   "files.webdavTimeout": "The Nextcloud/WebDAV request timed out. Please try again.",
   "files.webdavConnectionError": "Nextcloud/WebDAV is unreachable. Check the network and DNS, then try again.",
   "mcp.dedicatedEndpoint": "Dedicated MCP endpoint",
-  "mcp.sharedEndpoints": "Both endpoints use the same tokens, permissions and tools. Existing connections through port 8504 continue to work."
+  "mcp.sharedEndpoints": "Both endpoints use the same tokens, permissions and tools. Existing connections through port 8504 continue to work.",
+  "tasks.col.pid": "PID",
+  "projectLink.parent": "Parent subtask (PID)",
+  "projectLink.child": "Child project",
+  "projectLink.automatic": "Automatic progress: share of completed subtasks in the child project.",
+  "projectLink.link": "Link project",
+  "projectLink.manage": "Project link",
+  "projectLink.create": "Create new child project",
+  "projectLink.detachHint": "Unlinking preserves the last progress value and makes it editable again. Both projects are kept.",
+  "projectLink.detach": "Unlink project",
+  "projectLink.unavailable": "The linked project is unavailable or you do not have read access."
 }

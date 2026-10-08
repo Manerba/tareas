@@ -1643,3 +1643,26 @@
         flex-direction: column;
     }
 }
+.project-link-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin: 8px 0 12px;
+}
+.project-link-button {
+    border: 0;
+    padding: 2px 4px;
+    background: transparent;
+    color: var(--accent-primary);
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+}
+.project-link-hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+#childProjectNameField[hidden] {
+    display: none;
+}

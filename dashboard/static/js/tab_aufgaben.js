@@ -69,6 +69,7 @@ async function initAufgabenTab() {
         aufgabenTable.renderers['badge'] = renderAufgabenBadge;
         aufgabenTable.renderers['priority'] = renderPriority;
         aufgabenTable.renderers['taskId'] = renderTaskId;
+        aufgabenTable.renderers['parentId'] = renderParentId;
         aufgabenTable.renderers['deleteAction'] = renderDeleteAction;
 
         // Prioritaet-Spalte Renderer zuweisen
@@ -571,6 +572,9 @@ async function onTaskRowExpanded(rowId, detailElement) {
     activateInlineEditing(rowId);
 
     let html = `<div class="detail-edit" data-task-id="${row.id}">`;
+    if (row.parent_subtask_id) {
+        html += `<div class="project-link-bar">${t('projectLink.parent')}: ${renderParentId(row.parent_subtask_id, null, row)}</div>`;
+    }
 
     // Beschreibung und zugeordnete Dateiablage nebeneinander anzeigen.
     const storageType = row.file_storage_type || (row.nextcloud_path ? 'webdav' : 'none');
@@ -728,7 +732,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
 
     // SubTasks laden wenn Projekt
     if (row.task_type === 'projekt') {
-        loadSubTasks(row.id);
+        await loadSubTasks(row.id);
     }
 }
 
@@ -944,13 +948,15 @@ async function onSubtaskViewExpanded(row, detailElement) {
         </div>
         <div class="detail-edit-field">
             <label>${t('subtask.col.status')}</label>
-            <input type="number" id="stViewStatus_${stId}" value="${escapeAttr(row._status_percent ?? 0)}" min="0" max="100" step="1" required style="width:70px">
+            <input type="number" id="stViewStatus_${stId}" value="${escapeAttr(row._status_percent ?? 0)}" min="0" max="100" step="1" required style="width:70px" ${!canEdit || row.progress_automatic ? 'disabled' : ''}>
         </div>
         ${canManage ? `<div class="detail-edit-field">
             <label>${t('subtask.col.assignedTo')}</label>
             <select id="stViewAssigned_${stId}">${buildUserOptions(row.assigned_to)}</select>
         </div>` : ''}
     </div>`;
+
+    html += renderChildProjectLink(projectId, {...row, id: stId}, canEdit);
 
     const description = canEdit ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
         <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
@@ -1031,9 +1037,9 @@ async function saveSubtaskView(row, silent = false) {
 
     try {
         // 1. Prozentwert speichern und auch in der Haupttabelle aktualisieren.
-        if (statusInput) {
+        if (canEdit && statusInput) {
             const statusPercent = statusInput.valueAsNumber;
-            const body = { status_percent: statusPercent };
+            const body = statusInput.disabled ? {} : { status_percent: statusPercent };
             if (canEdit) {
                 body.name = document.getElementById(`stViewName_${stId}`).value;
                 body.deadline = document.getElementById(`stViewDeadline_${stId}`).value;
@@ -1046,7 +1052,7 @@ async function saveSubtaskView(row, silent = false) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             });
-            if (!resp.ok) throw new Error(t('common.saveError'));
+            await checkDependencyResponse(resp, 'common.saveError');
             if (canEdit) {
                 row.name = body.name;
                 row.priority = body.priority;
@@ -1067,6 +1073,7 @@ async function saveSubtaskView(row, silent = false) {
                     }
                 });
             }
+            await refreshTaskProgress();
         }
 
         // 2. Notizen speichern (nur wenn project_id bekannt)
@@ -1088,7 +1095,7 @@ async function saveSubtaskView(row, silent = false) {
         }
     } catch (error) {
         console.error('Speichern fehlgeschlagen:', error);
-        showNotification(t('common.saveError'), 'error');
+        showNotification(error.message || t('common.saveError'), 'error');
     }
 }
 
@@ -1193,7 +1200,7 @@ function renderSubTasks(taskId, subtasks) {
         const stDeadlineROClass = stDeadlineRO ? 'field-readonly' : '';
         const stPrioRO = !canEdit ? 'disabled' : '';
         const stPrioROClass = stPrioRO ? 'field-readonly' : '';
-        const stStatusRO = !canEdit ? 'disabled' : '';
+        const stStatusRO = !canEdit || st.progress_automatic ? 'disabled' : '';
         const dlISO = convertToISO(st.deadline);
 
         // Vorgaenger-Optionen und Chips (positionsunabhaengig, aber ohne Zyklen/Redundanz)
@@ -1265,7 +1272,7 @@ function renderSubTasks(taskId, subtasks) {
             ${!stStatusRO ? `<td>
                 <span class="st-cell-text">${renderSubtaskProgress(statusPct)}</span>
                 <span class="st-cell-edit"><input type="number" id="stEditStatus_${st.id}" value="${escapeAttr(statusPct)}" min="0" max="100" step="1" required onclick="event.stopPropagation()"></span>
-            </td>` : `<td>${renderSubtaskProgress(statusPct)}</td>`}`;
+            </td>` : `<td title="${st.progress_automatic ? escapeAttr(t('projectLink.automatic')) : ''}">${renderSubtaskProgress(statusPct)}</td>`}`;
 
         // Delete-Button (Ersteller, Legacy oder Admin)
         html += `<td>`;
@@ -1284,6 +1291,7 @@ function renderSubTasks(taskId, subtasks) {
 
         const description = canEdit ? `<div id="stWysiwyg_${st.id}"></div>`
             : `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
+        html += renderChildProjectLink(taskId, st, canEdit);
         html += renderSubtaskDetailColumns(st.id, description, `stNoteEntriesContent_${st.id}`);
 
         html += `<div class="notes-section subtask-notes-list">
@@ -1628,6 +1636,7 @@ async function saveSubTask(taskId, subtaskId, silent = false) {
             body: JSON.stringify(body),
         });
         await checkDependencyResponse(resp, 'common.saveError');
+        await refreshTaskProgress();
 
         if (!silent) {
             showNotification(t('subtask.saved'), 'success');
@@ -1739,6 +1748,7 @@ async function addSubTask(taskId) {
         if (!resp.ok) throw new Error(t('common.error'));
 
         await loadSubTasks(taskId);
+        await refreshTaskProgress();
     } catch (error) {
         console.error('SubTask anlegen fehlgeschlagen:', error);
         showNotification(t('common.createError'), 'error');
@@ -1770,6 +1780,7 @@ async function deleteSubTask(taskId, subtaskId) {
         if (!resp.ok) throw new Error(t('common.error'));
 
         await loadSubTasks(taskId);
+        await refreshTaskProgress();
     } catch (error) {
         console.error('SubTask loeschen fehlgeschlagen:', error);
         showNotification(t('common.deleteError'), 'error');

@@ -2,10 +2,9 @@
 
 import hashlib
 
-from fastapi import HTTPException
-
 from dashboard.audit_log import log_change
 from dashboard.db_utils import db_transaction
+from dashboard.errors import ApplicationError
 
 
 # Ausschliesslich feste Statements; weder Tabellen noch Spalten kommen vom Aufrufer.
@@ -45,29 +44,32 @@ def update_note_as_admin(
 ) -> dict:
     """Aendert Inhalt, bewahrt Autor/Zeitpunkt und protokolliert den Admin als Akteur."""
     if not user.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Nur Admins duerfen fremde Notizen und Handoffs bearbeiten")
+        raise ApplicationError(403, "Nur Admins duerfen fremde Notizen und Handoffs bearbeiten", code="permission_denied")
     if (note_user_id is None) == (entry_id is None):
-        raise HTTPException(status_code=422, detail="Notiz-Autor oder Handoff-ID erforderlich")
+        raise ApplicationError(422, "Notiz-Autor oder Handoff-ID erforderlich", code="invalid_note_target",
+                               fields=["note_user_id", "handoff_id"])
     is_handoff = entry_id is not None
     if is_handoff and not content.strip():
-        raise HTTPException(status_code=422, detail="Handoff darf nicht leer sein")
+        raise ApplicationError(422, "Handoff darf nicht leer sein", code="empty_content", field="content")
 
     with db_transaction() as db:
         db.execute("BEGIN IMMEDIATE")
         if not db.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone():
-            raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
+            raise ApplicationError(404, "Aufgabe nicht gefunden", code="task_not_found", field="task_id")
         if subtask_id is not None and not db.execute(
             "SELECT id FROM sub_tasks WHERE id = ? AND project_id = ?", (subtask_id, task_id),
         ).fetchone():
-            raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
+            raise ApplicationError(404, "Teilaufgabe nicht gefunden", code="subtask_not_found", field="subtask_id")
 
         entity_id = subtask_id if subtask_id is not None else task_id
         select, update, entity_type = _STATEMENTS[(subtask_id is not None, is_handoff)]
         existing = db.execute(select, (entity_id, entry_id if is_handoff else note_user_id)).fetchone()
         if not existing:
-            raise HTTPException(status_code=404, detail="Notiz oder Handoff nicht gefunden")
+            raise ApplicationError(404, "Notiz oder Handoff nicht gefunden",
+                                   code="handoff_not_found" if is_handoff else "note_not_found",
+                                   field="handoff_id" if is_handoff else "note_user_id")
         if is_handoff and revision is not None and revision != handoff_revision(existing["content"] or "", existing["content_format"]):
-            raise HTTPException(status_code=409, detail="handoff.conflict")
+            raise ApplicationError(409, "handoff.conflict", code="revision_conflict", field="revision")
         db.execute(update, (content, existing["id"]))
 
     changes = {

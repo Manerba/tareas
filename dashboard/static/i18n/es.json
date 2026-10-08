@@ -473,5 +473,15 @@
   "files.webdavTimeout": "La solicitud a Nextcloud/WebDAV ha agotado el tiempo de espera. Inténtalo de nuevo.",
   "files.webdavConnectionError": "No se puede acceder a Nextcloud/WebDAV. Comprueba la red y el DNS e inténtalo de nuevo.",
   "mcp.dedicatedEndpoint": "Endpoint MCP independiente",
-  "mcp.sharedEndpoints": "Ambos endpoints usan los mismos tokens, permisos y herramientas. Las conexiones existentes por el puerto 8504 siguen funcionando."
+  "mcp.sharedEndpoints": "Ambos endpoints usan los mismos tokens, permisos y herramientas. Las conexiones existentes por el puerto 8504 siguen funcionando.",
+  "tasks.col.pid": "PID",
+  "projectLink.parent": "Subtarea superior (PID)",
+  "projectLink.child": "Proyecto hijo",
+  "projectLink.automatic": "Progreso automático: proporción de subtareas completadas en el proyecto hijo.",
+  "projectLink.link": "Vincular proyecto",
+  "projectLink.manage": "Vínculo del proyecto",
+  "projectLink.create": "Crear un proyecto hijo",
+  "projectLink.detachHint": "Al desvincular se conserva el último progreso y se puede volver a editar. Ambos proyectos se mantienen.",
+  "projectLink.detach": "Desvincular proyecto",
+  "projectLink.unavailable": "El proyecto vinculado no está disponible o no tiene permiso de lectura."
 }

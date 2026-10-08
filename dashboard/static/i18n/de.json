@@ -473,5 +473,15 @@
   "files.webdavTimeout": "Zeitüberschreitung bei Nextcloud/WebDAV. Bitte erneut versuchen.",
   "files.webdavConnectionError": "Nextcloud/WebDAV ist nicht erreichbar. Bitte Netzwerk und DNS prüfen und erneut versuchen.",
   "mcp.dedicatedEndpoint": "Separater MCP-Endpunkt",
-  "mcp.sharedEndpoints": "Beide Endpunkte verwenden dieselben Tokens, Rechte und Werkzeuge. Bestehende Verbindungen über Port 8504 funktionieren weiterhin."
+  "mcp.sharedEndpoints": "Beide Endpunkte verwenden dieselben Tokens, Rechte und Werkzeuge. Bestehende Verbindungen über Port 8504 funktionieren weiterhin.",
+  "tasks.col.pid": "PID",
+  "projectLink.parent": "Übergeordnete Teilaufgabe (PID)",
+  "projectLink.child": "Kind-Projekt",
+  "projectLink.automatic": "Fortschritt automatisch: Anteil erledigter Teilaufgaben im Kind-Projekt.",
+  "projectLink.link": "Projekt verknüpfen",
+  "projectLink.manage": "Projektverknüpfung",
+  "projectLink.create": "Neues Kind-Projekt erstellen",
+  "projectLink.detachHint": "Beim Trennen bleibt der letzte Fortschritt erhalten und kann wieder manuell geändert werden. Die Projekte bleiben bestehen.",
+  "projectLink.detach": "Verknüpfung trennen",
+  "projectLink.unavailable": "Das verknüpfte Projekt ist nicht verfügbar oder Sie haben keine Leseberechtigung."
 }

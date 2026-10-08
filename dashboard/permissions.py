@@ -1,6 +1,6 @@
 """Gemeinsame Aufgabenrechte fuer REST, MCP, Dateien und UI-Metadaten."""
 
-from fastapi import HTTPException
+from dashboard.errors import ApplicationError
 
 
 def task_permissions(db, task, user: dict) -> dict:
@@ -30,10 +30,10 @@ def task_permissions(db, task, user: dict) -> dict:
 def require_task_access(db, task_id: int, user: dict, action: str | None = "read"):
     task = db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
     if not task:
-        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
+        raise ApplicationError(404, "Aufgabe nicht gefunden", code="task_not_found", field="task_id")
     rights = task_permissions(db, task, user)
     if action and not rights[f"can_{action}"]:
-        raise HTTPException(status_code=403, detail="Keine Berechtigung fuer diese Aufgabe")
+        raise ApplicationError(403, "Keine Berechtigung fuer diese Aufgabe", code="permission_denied", field="task_id")
     return task, rights
 
 
@@ -52,11 +52,11 @@ def subtask_permissions(task, rights: dict, subtask, user: dict) -> dict:
 def require_subtask_access(db, subtask_id: int, user: dict, action: str | None = "read", *, task_id: int | None = None):
     subtask = db.execute("SELECT * FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
     if not subtask or (task_id is not None and subtask["project_id"] != task_id):
-        raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
+        raise ApplicationError(404, "Teilaufgabe nicht gefunden", code="subtask_not_found", field="subtask_id")
     task, rights = require_task_access(db, subtask["project_id"], user, None)
     rights = subtask_permissions(task, rights, subtask, user)
     if action and not rights[f"can_{action}"]:
-        raise HTTPException(status_code=403, detail="Keine Berechtigung fuer diese Teilaufgabe")
+        raise ApplicationError(403, "Keine Berechtigung fuer diese Teilaufgabe", code="permission_denied", field="subtask_id")
     return subtask, rights
 
 

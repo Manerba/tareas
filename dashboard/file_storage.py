@@ -13,10 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
-from fastapi import HTTPException
-
 from dashboard import database, webdav
 from dashboard.db_utils import db_query
+from dashboard.errors import ApplicationError
 from dashboard.permissions import require_task_access
 
 
@@ -30,7 +29,7 @@ def safe_rel_path(value: str, *, allow_empty: bool = True) -> str:
         if (decoded.startswith("/") or "\\" in decoded
                 or any(ord(char) < 32 or ord(char) == 127 for char in decoded)
                 or ".." in decoded.split("/")):
-            raise HTTPException(status_code=400, detail="Ungueltiger Pfad")
+            raise ApplicationError(400, "Ungueltiger Pfad", code="invalid_path", field="path")
         next_value = unquote(decoded)
         if next_value == decoded:
             break
@@ -39,18 +38,18 @@ def safe_rel_path(value: str, *, allow_empty: bool = True) -> str:
     if result == ".":
         result = ""
     if not result and not allow_empty:
-        raise HTTPException(status_code=400, detail="Ein Datei- oder Ordnerpfad ist erforderlich")
+        raise ApplicationError(400, "Ein Datei- oder Ordnerpfad ist erforderlich", code="path_required", field="path")
     return result
 
 
 def safe_filename(value: str) -> str:
     if not value or value in (".", "..") or "/" in value:
-        raise HTTPException(status_code=400, detail="Ungueltiger Dateiname")
+        raise ApplicationError(400, "Ungueltiger Dateiname", code="invalid_filename", field="filename")
     decoded = value
     while True:
         safe_rel_path(decoded, allow_empty=False)
         if "/" in decoded:
-            raise HTTPException(status_code=400, detail="Ungueltiger Dateiname")
+            raise ApplicationError(400, "Ungueltiger Dateiname", code="invalid_filename", field="filename")
         next_value = unquote(decoded)
         if next_value == decoded:
             return value
@@ -75,7 +74,8 @@ def local_path(task_id: int, path: str = "") -> Path:
     for part in target.relative_to(base).parts:
         current = current / part
         if current.is_symlink():
-            raise HTTPException(status_code=400, detail="Symbolische Links sind in der Dateiablage nicht erlaubt")
+            raise ApplicationError(400, "Symbolische Links sind in der Dateiablage nicht erlaubt",
+                                   code="invalid_path", field="path")
     return target
 
 
@@ -100,7 +100,8 @@ def get_task_storage(task_id: int, user: dict, *, write: bool = False):
         can_write = rights["can_edit"]
         kind = storage_type(task)
         if kind == "none":
-            raise HTTPException(status_code=400, detail="Keine Dateiablage zugeordnet")
+            raise ApplicationError(400, "Keine Dateiablage zugeordnet",
+                                   code="storage_not_configured", field="file_storage_type")
         base_path = safe_rel_path(task["nextcloud_path"], allow_empty=False) if kind == "webdav" else ""
         return TaskStorage(task_id, kind, base_path, can_write)
 
@@ -172,7 +173,8 @@ class TaskStorage:
     @staticmethod
     def _check_read_size(size: int, max_bytes: int | None):
         if max_bytes is not None and size > max_bytes:
-            raise HTTPException(status_code=413, detail=f"Datei zu gross fuer diesen Abruf (max. {max_bytes} Bytes)")
+            raise ApplicationError(413, f"Datei zu gross fuer diesen Abruf (max. {max_bytes} Bytes)",
+                                   code="file_too_large", field="path")
 
     @contextmanager
     def _write_lock(self, path: str):
@@ -239,14 +241,25 @@ class TaskStorage:
             target.unlink()
 
     def move_item(self, source: str, destination: str):
-        source_path = self._path(source)
-        dest_path = self._path(destination)
+        try:
+            source_path = self._path(source)
+        except ApplicationError as exc:
+            exc.field = "source"
+            raise
+        try:
+            dest_path = self._path(destination)
+        except ApplicationError as exc:
+            exc.field = "destination"
+            raise
         if self.kind == "webdav":
             return webdav.move_item(source_path, dest_path)
         if not source_path.exists():
-            raise FileNotFoundError(source)
+            raise ApplicationError(404, "Datei oder Verzeichnis nicht gefunden",
+                                   code="file_not_found", field="source")
         if dest_path.exists():
-            raise FileExistsError(destination)
+            raise ApplicationError(409, "Datei oder Verzeichnis existiert bereits",
+                                   code="file_exists", field="destination")
         if source_path in dest_path.parents:
-            raise HTTPException(status_code=400, detail="Ordner kann nicht in sich selbst verschoben werden")
+            raise ApplicationError(400, "Ordner kann nicht in sich selbst verschoben werden",
+                                   code="invalid_destination", field="destination")
         source_path.rename(dest_path)

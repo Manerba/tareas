@@ -473,5 +473,15 @@
   "files.webdavTimeout": "Cererea către Nextcloud/WebDAV a expirat. Încearcă din nou.",
   "files.webdavConnectionError": "Nextcloud/WebDAV nu poate fi accesat. Verifică rețeaua și DNS-ul, apoi încearcă din nou.",
   "mcp.dedicatedEndpoint": "Endpoint MCP separat",
-  "mcp.sharedEndpoints": "Ambele endpointuri folosesc aceleași tokenuri, permisiuni și instrumente. Conexiunile existente prin portul 8504 continuă să funcționeze."
+  "mcp.sharedEndpoints": "Ambele endpointuri folosesc aceleași tokenuri, permisiuni și instrumente. Conexiunile existente prin portul 8504 continuă să funcționeze.",
+  "tasks.col.pid": "PID",
+  "projectLink.parent": "Subsarcină părinte (PID)",
+  "projectLink.child": "Proiect copil",
+  "projectLink.automatic": "Progres automat: proporția subsarcinilor finalizate în proiectul copil.",
+  "projectLink.link": "Asociază un proiect",
+  "projectLink.manage": "Asocierea proiectului",
+  "projectLink.create": "Creează un proiect copil",
+  "projectLink.detachHint": "Dezasocierea păstrează ultimul progres și permite din nou editarea acestuia. Ambele proiecte sunt păstrate.",
+  "projectLink.detach": "Dezasociază proiectul",
+  "projectLink.unavailable": "Proiectul asociat nu este disponibil sau nu aveți drept de citire."
 }

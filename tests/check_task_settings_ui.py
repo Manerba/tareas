@@ -57,7 +57,7 @@ def main():
         page.goto('http://tareas.test/')
         page.evaluate('data => window.t = key => data[key] || key', json.loads((ROOT / 'dashboard/static/i18n/en.json').read_text()))
         for name in ('expandable_table.js', 'app_core.js', 'vendor/marked.umd.js', 'vendor/turndown.js',
-                     'markdown_editor.js', 'tab_aufgaben.js', 'task_settings.js'):
+                     'markdown_editor.js', 'tab_aufgaben.js', 'project_links.js', 'task_settings.js'):
             page.add_script_tag(content=(ROOT / 'dashboard/static/js' / name).read_text())
         for name in ('style.css', 'expandable_table.css', 'aufgaben.css', 'markdown_editor.css', 'task_settings.css'):
             page.add_style_tag(content=(ROOT / 'dashboard/static/css' / name).read_text())

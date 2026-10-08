@@ -2,7 +2,7 @@
 
 from collections import deque
 
-from fastapi import HTTPException
+from dashboard.errors import ApplicationError
 
 
 def load_dependency_graph(db, project_id: int) -> dict[int, set[int]]:
@@ -74,21 +74,25 @@ def set_subtask_predecessors(db, subtask_id: int, predecessor_ids: list[int]):
     _begin_dependency_write(db)
     task = db.execute("SELECT project_id FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
     if not task:
-        raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
+        raise ApplicationError(404, "Teilaufgabe nicht gefunden", code="subtask_not_found", field="subtask_id")
     graph = load_dependency_graph(db, task["project_id"])
     predecessors = set(predecessor_ids)
     if subtask_id in predecessors:
-        raise HTTPException(status_code=400, detail="Eine Teilaufgabe darf nicht von sich selbst abhaengen")
+        raise ApplicationError(400, "Eine Teilaufgabe darf nicht von sich selbst abhaengen",
+                               code="dependency_self_reference", field="predecessor_ids")
     if any(predecessor not in graph for predecessor in predecessors):
-        raise HTTPException(status_code=400, detail="Alle Vorgaenger muessen zum selben Projekt gehoeren")
+        raise ApplicationError(400, "Alle Vorgaenger muessen zum selben Projekt gehoeren",
+                               code="dependency_wrong_project", field="predecessor_ids")
     if 0 in predecessors and len(predecessors) > 1:
-        raise HTTPException(status_code=400, detail="Der Projektknoten ist nur ohne weitere Vorgaenger erlaubt")
+        raise ApplicationError(400, "Der Projektknoten ist nur ohne weitere Vorgaenger erlaubt",
+                               code="dependency_project_exclusive", field="predecessor_ids")
 
     proposed = {**graph, subtask_id: predecessors}
     ancestors = dependency_ancestors(proposed)
     for predecessor in predecessors - graph[subtask_id]:
         if subtask_id in ancestors[predecessor]:
-            raise HTTPException(status_code=400, detail="Zirkulaere Abhaengigkeit nicht erlaubt")
+            raise ApplicationError(400, "Zirkulaere Abhaengigkeit nicht erlaubt",
+                                   code="dependency_cycle", field="predecessor_ids")
 
     # Auch pruefen, ob die Aenderung eine bisher notwendige Kante an einer
     # anderen Teilaufgabe redundant macht. Vorhandene Altfehler duerfen weiterhin
@@ -98,10 +102,11 @@ def set_subtask_predecessors(db, subtask_id: int, predecessor_ids: list[int]):
         node, predecessor = sorted(introduced)[0]
         path = dependency_path(proposed, node, predecessor)
         via = ", ".join(f"#{item}" for item in path[1:-1])
-        raise HTTPException(
+        raise ApplicationError(
             status_code=400,
             detail=(f"Transitiv redundante Abhaengigkeit: #{node} waere bereits ueber {via} "
                     f"von #{predecessor} abhaengig. Entferne zuerst die ueberfluessige direkte Verbindung."),
+            code="dependency_redundant", field="predecessor_ids",
         )
 
     db.execute("DELETE FROM sub_task_dependencies WHERE sub_task_id = ?", (subtask_id,))
@@ -116,7 +121,7 @@ def add_subtask_dependency(db, subtask_id: int, predecessor_id: int, *, allow_ex
     _begin_dependency_write(db)
     task = db.execute("SELECT depends_on_project FROM sub_tasks WHERE id = ?", (subtask_id,)).fetchone()
     if not task:
-        raise HTTPException(status_code=404, detail="Teilaufgabe nicht gefunden")
+        raise ApplicationError(404, "Teilaufgabe nicht gefunden", code="subtask_not_found", field="subtask_id")
     predecessors = [row[0] for row in db.execute(
         "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ?", (subtask_id,)
     )]
@@ -125,5 +130,6 @@ def add_subtask_dependency(db, subtask_id: int, predecessor_id: int, *, allow_ex
     if predecessor_id in predecessors:
         if allow_existing:
             return
-        raise HTTPException(status_code=400, detail="Abhaengigkeit existiert bereits")
+        raise ApplicationError(400, "Abhaengigkeit existiert bereits",
+                               code="dependency_exists", field="predecessor_ids")
     set_subtask_predecessors(db, subtask_id, [*predecessors, predecessor_id])

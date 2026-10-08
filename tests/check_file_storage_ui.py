@@ -62,7 +62,7 @@ def main():
             return text;
         }""", translations)
         for name in ("expandable_table.js", "wysiwyg_editor.js", "app_core.js", "vendor/marked.umd.js",
-                     "vendor/turndown.js", "markdown_editor.js", "file_browser.js", "tab_aufgaben.js"):
+                     "vendor/turndown.js", "markdown_editor.js", "file_browser.js", "tab_aufgaben.js", "project_links.js"):
             page.add_script_tag(content=(ROOT / "dashboard/static/js" / name).read_text())
         for name in ("style.css", "expandable_table.css", "aufgaben.css", "file_browser.css", "markdown_editor.css"):
             page.add_style_tag(content=(ROOT / "dashboard/static/css" / name).read_text())

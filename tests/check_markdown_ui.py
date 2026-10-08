@@ -44,6 +44,8 @@ def main():
                     model.update(data, description_format='markdown')
                 if 'content' in data:
                     note.update(data, content_format='markdown')
+        elif path == '/api/tasks':
+            data = {'items': [task]}
         elif path == '/api/tasks/1/subtasks':
             data = {'items': [subtask]}
         elif path.endswith('/notes'):
@@ -67,7 +69,7 @@ def main():
         translations = json.loads((ROOT / 'dashboard/static/i18n/en.json').read_text())
         page.evaluate('(translations) => window.t = key => translations[key] || key', translations)
         for name in ['expandable_table.js', 'wysiwyg_editor.js', 'app_core.js',
-                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'text_file_editor.js', 'tab_aufgaben.js', 'task_settings.js']:
+                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'text_file_editor.js', 'tab_aufgaben.js', 'project_links.js', 'task_settings.js']:
             page.add_script_tag(content=(ROOT / 'dashboard/static/js' / name).read_text())
         for name in ['style.css', 'expandable_table.css', 'aufgaben.css', 'file_browser.css', 'markdown_editor.css', 'text_file_editor.css']:
             page.add_style_tag(content=(ROOT / 'dashboard/static/css' / name).read_text())

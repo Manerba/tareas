@@ -122,6 +122,15 @@ def _initialize_db(conn: sqlite3.Connection):
 
     # Migration: created_by fuer tasks
     task_cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    if "parent_subtask_id" not in task_cols:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN parent_subtask_id INTEGER "
+            "REFERENCES sub_tasks(id) ON DELETE SET NULL"
+        )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_parent_subtask "
+        "ON tasks(parent_subtask_id) WHERE parent_subtask_id IS NOT NULL"
+    )
     if "created_by" not in task_cols:
         conn.execute("ALTER TABLE tasks ADD COLUMN created_by INTEGER REFERENCES users(id)")
 
