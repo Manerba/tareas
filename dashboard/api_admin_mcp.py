@@ -32,13 +32,13 @@ router = APIRouter(prefix="/api/admin/mcp", tags=["mcp-admin"])
 # und um Import-Reihenfolge-Probleme zu vermeiden.
 MCP_TOOLS = [
     "get_agent_guide",
-    "list_projects", "list_projects_page", "get_project", "create_project", "update_project", "delete_project",
+    "list_projects", "list_projects_page", "get_project", "get_project_status", "create_project", "update_project", "delete_project", "patch_description",
     "list_subtasks", "get_subtask", "create_subtask", "update_subtask", "delete_subtask",
     "move_subtask", "set_subtask_position",
     "add_dependency", "remove_dependency",
     "note.list", "note.write", "note.update", "note.delete",
-    "handoff.list", "handoff.add", "handoff.update", "handoff.delete",
-    "file.list", "file.read", "file.write", "file.mkdir", "file.move", "file.delete",
+    "handoff.list", "handoff.get", "handoff.add", "handoff.update", "handoff.delete",
+    "file.list", "file.read", "file.write", "file.append", "file.mkdir", "file.move", "file.delete",
     "list_users", "list_areas", "search", "assign_self", "whoami",
 ]
 
@@ -177,7 +177,7 @@ async def mcp_get_audit(
         ).fetchone()["c"]
         rows = db.execute(
             f"""SELECT a.id, a.timestamp, a.actor_user_id, a.actor_type,
-                       a.entity_type, a.entity_id, a.action, a.changes_json,
+                       a.entity_type, a.entity_id, a.action, a.changes_json, a.reason,
                        u.username AS actor_username,
                        (COALESCE(u.vorname,'') || ' ' || COALESCE(u.nachname,'')) AS actor_display
                 FROM audit_log a
@@ -198,6 +198,7 @@ async def mcp_get_audit(
             "actor_display": (r["actor_display"] or "").strip() or r["actor_username"],
             "entity_type": r["entity_type"],
             "entity_id": r["entity_id"],
+            "reason": r["reason"],
             "action": r["action"],
             "changes_json": r["changes_json"],
         }

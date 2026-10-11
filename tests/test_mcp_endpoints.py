@@ -199,6 +199,152 @@ class MCPEndpointTests(unittest.TestCase):
                 resumed = self.call(client, headers, 'update_project', {'project_id': pid, 'status': 'offen'})
                 self.assertEqual(resumed['status'], 'in_arbeit')
 
+    def test_agent_efficiency_workflow_on_both_endpoints(self):
+        """A real authenticated workflow composes the new tools on both ASGI apps."""
+        for app, port in ((legacy_app, 8504), (dedicated_app, 8506)):
+            with self.subTest(port=port), patch(
+                'dashboard.logging_config.RotatingFileHandler', return_value=logging.NullHandler(),
+            ), TestClient(app, base_url=f'http://tareas.test:{port}') as client:
+                owner = self.initialize(client)
+                reader = self.initialize(client, 'reader')
+                initial = self.call(client, owner, 'get_project', {
+                    'project_id': self.project, 'include_description': False,
+                })
+                self.assertNotIn('description', initial)
+                source = f'## Transport {port}\n' + 'Ausführliche Beschreibung. ' * 80
+                reason = f'Integration auf Port {port}: Beschreibung präzisieren ✓'
+                updated = self.call(client, owner, 'update_project', {
+                    'project_id': self.project, 'description': source,
+                    'description_revision': initial['description_revision'], 'compact': True, 'reason': reason,
+                })
+                self.assertEqual(updated['id'], self.project)
+                self.assertIn('description', updated['changed_fields'])
+                self.assertEqual(updated['description_length'], len(source))
+                self.assertNotIn(source, json.dumps(updated, ensure_ascii=False))
+                with closing(database.get_db()) as db:
+                    audit = db.execute('SELECT * FROM audit_log ORDER BY id DESC LIMIT 1').fetchone()
+                self.assertEqual((audit['actor_user_id'], audit['entity_id'], audit['reason']),
+                                 (self.users['owner'], self.project, reason))
+                self.assertEqual(audit['actor_type'], 'mcp')
+                self.assertNotIn('reason', json.loads(audit['changes_json']))
+
+                subtask = self.call(client, owner, 'create_subtask', {
+                    'project_id': self.project, 'name': f'Prüfung Port {port}', 'description': source,
+                })
+                sid = subtask['id']
+                progress = self.call(client, owner, 'update_subtask', {
+                    'subtask_id': sid, 'status_percent': 100, 'compact': True,
+                    'reason': f'Prüfung auf Port {port} erfolgreich',
+                })
+                self.assertEqual(progress['changed_fields'], ['status_percent'])
+                self.assertEqual(progress['values']['status_percent'], 100)
+                self.assertNotIn('description', json.dumps(progress))
+                compact = self.call(client, owner, 'get_project', {
+                    'project_id': self.project, 'include_description': False,
+                })
+                self.assertNotIn('description', compact)
+                self.assertTrue(all('description' not in item for item in compact['subtasks']))
+                listing = self.call(client, owner, 'list_subtasks', {
+                    'project_id': self.project, 'include_description': False,
+                })
+                listing = listing['result'] if isinstance(listing, dict) else listing
+                self.assertTrue(all('description' not in item for item in listing))
+                selected = next(item for item in listing if item['id'] == sid)
+                self.assertEqual((selected['position_number'], selected['name']),
+                                 (subtask['position_number'], f'Prüfung Port {port}'))
+
+                revision = compact['description_revision']
+                appended = self.call(client, owner, 'patch_description', {
+                    'task_id': self.project, 'revision': revision, 'operation': 'append', 'text': '\nErgänzung ✓',
+                })
+                self.assertNotEqual(appended['description_revision'], revision)
+                self.assertNotIn('description', appended)
+                conflict = self.call(client, owner, 'patch_description', {
+                    'task_id': self.project, 'revision': revision, 'operation': 'append', 'text': 'stale',
+                }, error=True)
+                self.assertEqual(conflict['structuredContent']['code'], 'revision_conflict')
+                self.assertEqual(conflict['structuredContent']['field'], 'revision')
+                current = self.call(client, owner, 'get_project', {'project_id': self.project})
+                self.assertEqual(current['description'], source + '\nErgänzung ✓')
+
+                self.call(client, owner, 'handoff.add', {
+                    'task_id': self.project, 'subtask_id': sid, 'content': 'Früherer Zwischenstand',
+                })
+                handoff_text = f'\n\nProxy workflow{port}\nFreigabe geprüft.\nDomain example.test'
+                added = self.call(client, owner, 'handoff.add', {
+                    'task_id': self.project, 'subtask_id': sid, 'content': handoff_text,
+                })
+                overview = self.call(client, owner, 'get_project_status', {'project_id': self.project})
+                item = next(item for item in overview['subtasks'] if item['id'] == sid)
+                self.assertEqual(item['readiness'], 'completed')
+                self.assertGreaterEqual(overview['counts']['completed'], 1)
+                self.assertEqual(item['latest_handoff']['handoff_id'], added['handoff_id'])
+                self.assertEqual(item['latest_handoff']['preview'], f'Proxy workflow{port}')
+                self.assertNotIn('description', item)
+                self.assertNotIn('content', item['latest_handoff'])
+                handoff = self.call(client, owner, 'handoff.get', {
+                    'task_id': self.project, 'handoff_id': item['latest_handoff']['handoff_id'],
+                })
+                self.assertTrue(handoff['can_write'])
+                corrected = handoff_text.replace('geprüft', 'bestätigt')
+                saved = self.call(client, owner, 'handoff.update', {
+                    'task_id': self.project, 'handoff_id': handoff['handoff_id'],
+                    'content': corrected, 'revision': handoff['revision'],
+                })
+                self.assertNotEqual(saved['revision'], handoff['revision'])
+                reread = self.call(client, owner, 'handoff.get', {
+                    'task_id': self.project, 'handoff_id': handoff['handoff_id'],
+                })
+                self.assertEqual(reread['content'], corrected)
+                for field in ('handoff_id', 'user_id', 'created_at'):
+                    self.assertEqual(reread[field], handoff[field])
+                hits = self.call(client, owner, 'search', {
+                    'query': f'Proxy Freigabe Domain bestätigt workflow{port}', 'project_id': self.project,
+                    'types': ['handoff'], 'since': '2000-01-01T00:00:00Z', 'limit': 1,
+                })
+                hits = hits['result'] if isinstance(hits, dict) else hits
+                self.assertEqual(len(hits), 1)
+                self.assertEqual(hits[0]['handoff_id'], added['handoff_id'])
+                self.assertEqual(hits[0]['type'], 'sub_task_handoff')
+                self.assertIn('<mark>', hits[0]['snippet_html'])
+
+                path = f'workflow-{port}.md'
+                self.call(client, owner, 'file.write', {
+                    'task_id': self.project, 'path': path, 'content': 'Start\n',
+                })
+                result = self.call(client, owner, 'file.append', {
+                    'task_id': self.project, 'path': path, 'content': 'Prüfung ✓\n',
+                })
+                self.assertTrue(result['appended'])
+                self.assertEqual(result['appended_bytes'], len('Prüfung ✓\n'.encode()))
+                self.assertNotIn('content', result)
+                self.assertEqual(client.get(self.url + '/download', headers=owner,
+                                            params={'path': path}).text, 'Start\nPrüfung ✓\n')
+
+                reader_view = self.call(client, reader, 'get_project_status', {'project_id': self.project})
+                self.assertEqual(reader_view, overview)
+                self.assertFalse(self.call(client, reader, 'handoff.get', {
+                    'task_id': self.project, 'handoff_id': handoff['handoff_id'],
+                })['can_write'])
+                with closing(database.get_db()) as db:
+                    audit_count = db.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
+                for tool, arguments in (
+                    ('update_project', {'project_id': self.project, 'name': 'Forbidden', 'compact': True}),
+                    ('update_subtask', {'subtask_id': sid, 'status_percent': 0, 'compact': True}),
+                    ('patch_description', {'task_id': self.project, 'revision': appended['description_revision'],
+                                           'operation': 'append', 'text': 'Forbidden'}),
+                    ('handoff.update', {'task_id': self.project, 'handoff_id': handoff['handoff_id'],
+                                        'content': 'Forbidden', 'revision': saved['revision']}),
+                    ('file.append', {'task_id': self.project, 'path': path, 'content': 'Forbidden'}),
+                ):
+                    denied = self.call(client, reader, tool, arguments, error=True)
+                    self.assertEqual(denied['structuredContent']['code'], 'permission_denied', tool)
+                with closing(database.get_db()) as db:
+                    self.assertEqual(db.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0], audit_count)
+                self.assertEqual(self.call(client, reader, 'file.read', {
+                    'task_id': self.project, 'path': path,
+                })['content'], 'Start\nPrüfung ✓\n')
+
     def test_project_links_and_progress_lock_on_both_endpoints(self):
         for app, port in ((legacy_app, 8504), (dedicated_app, 8506)):
             with self.subTest(port=port), TestClient(app, base_url=f'http://tareas.test:{port}') as client:

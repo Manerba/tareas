@@ -483,5 +483,8 @@
   "projectLink.create": "Neues Kind-Projekt erstellen",
   "projectLink.detachHint": "Beim Trennen bleibt der letzte Fortschritt erhalten und kann wieder manuell geändert werden. Die Projekte bleiben bestehen.",
   "projectLink.detach": "Verknüpfung trennen",
-  "projectLink.unavailable": "Das verknüpfte Projekt ist nicht verfügbar oder Sie haben keine Leseberechtigung."
+  "projectLink.unavailable": "Das verknüpfte Projekt ist nicht verfügbar oder Sie haben keine Leseberechtigung.",
+  "description.conflict": "Die Beschreibung wurde seit dem Laden geändert. Dein Entwurf bleibt erhalten. Kopiere ihn und lade die aktuelle Beschreibung neu.",
+  "handoff.editWindowExpired": "Das Zeitfenster von fünf Minuten zum Korrigieren dieses Handoffs ist abgelaufen. Dein Entwurf bleibt erhalten.",
+  "mcp.auditReason": "Änderungsbegründung"
 }

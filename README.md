@@ -126,8 +126,9 @@ their shared height. Project and task handoffs use the same widgets in a grid
 that grows with its content, without a resizable frame.
 Click a handoff to open its dialog, or double-click to open a separate browser
 window directly. The dialog's **Ausklappen** button also opens a window and retains
-unsaved edits. Administrators can edit existing handoffs; saving preserves the
-original author and timestamp. Description panels retain their size when
+unsaved edits. Authors with contribution rights can correct their own handoffs for five minutes
+after creation; administrators can edit without that time limit. Revision checks
+protect concurrent saves, and saving preserves the original author and timestamp. Description panels retain their size when
 switching between reading and editing.
 
 Dependencies must belong to the same project and cannot form cycles or redundant
@@ -216,7 +217,7 @@ MCP transport sessions belong to the endpoint where they were established.
 - Tokens are stored as SHA-256 hashes; revoked tokens stop working immediately.
 - Every token is mapped to its own `mcp` user in the database.
 - Assigning a project to a user grants access to notes and handoffs on all its subtasks, including writing their own notes and handoffs. Individual subtask assignments are not required for this access.
-- Write operations are recorded in the audit log and can be reviewed in the Admin Panel. Admin-only `note.update` and `handoff.update` correct existing content while preserving its author and creation time.
+- Write operations are recorded in the audit log and can be reviewed in the Admin Panel. `note.update` remains admin-only. `handoff.update` also lets authors with contribution rights correct their own entries within 300 seconds using the revision from `handoff.get/list`; author and creation time are preserved.
 - Available tools cover projects, subtasks, dependencies, editable notes (`note.*`), handoffs/progress history (`handoff.*`), project files (`file.*`), users, areas, search, self-assignment, and `whoami`.
 
 Use `list_projects_page` for compact project lists. It returns `items`, `total`,
@@ -296,6 +297,55 @@ Running Tareas instances also expose token-free bootstrap endpoints directly:
 
 - `GET /agent-guide.md` - Markdown guide for agents and humans
 - `GET /.well-known/tareas-agent.json` - machine-readable URLs, MCP metadata, and `AGENTS.md` snippet
+
+### Efficient agent workflows
+
+Use `get_project(..., include_description=false)` and
+`list_subtasks(..., include_description=false)` for outlines, and
+`update_project/update_subtask(..., compact=true)` for small write confirmations.
+Legacy full-response defaults remain compatible. Description updates return no
+full text in compact mode. Optional `reason` (at most 1000 Unicode characters,
+blank means none) is stored separately in the audit log and displayed in Admin.
+
+`get_project_status(project_id)` returns a consistent snapshot of visible work,
+counts, dependency readiness and each subtask's latest handoff preview (at most
+200 characters). Load a handoff using `handoff.get(task_id, handoff_id)`.
+Completed work is never ready; cancellation prevents starting open work; linked
+child projects are delegated work; project node `0` is a start anchor. Hidden
+predecessors produce `restricted`, without exposing their IDs or progress.
+IDs are stable, positions are display order, and names are subject titles such
+as “Check port 443”, without a position prefix. Existing names are not rewritten.
+
+Description reads include `description_revision`. Send it with full-text
+updates or use `patch_description(task_id, revision, operation, text,
+old_text=None, subtask_id=None)`: exact append or unique exact replacement,
+without automatic newlines. Partial changes require a revision and preserve
+Markdown/legacy format. REST has matching `PATCH /api/tasks/{id}/description`
+and `/api/subtasks/{id}/description` endpoints. Concurrent changes return 409 /
+`revision_conflict`; browser drafts retain the original revision even after a
+row reload. Legacy full-text writes without revision remain unconditional.
+
+`file.append(task_id, path, content)` appends exact UTF-8 to an existing file,
+preserving its BOM and existing bytes, with a 1 MiB total limit. No automatic
+newline, UTF-16, binary input or creation. Local and WebDAV appends share the
+process lock with other Tareas saves. External WebDAV writers do not use that
+lock. After an uncertain network failure, read before retrying to avoid duplicates.
+
+`search(query, limit=20, project_id=None, types=None, since=None)` now uses FTS5:
+AND across words, quoted phrases, and `word*` prefixes (not arbitrary substrings).
+It ranks all content types together and returns bounded context around matches.
+`types=["handoff"]` selects project and subtask handoffs. `since` is inclusive
+ISO8601 with a timezone; notes use update time, other content creation time.
+Rights and filters apply before the limit. `snippet` stays plain text;
+`snippet_html` adds escaped highlighting. This replaces legacy substring LIKE
+semantics. The [Agent Guide](docs/tareas-agent-guide.md) documents syntax,
+compatibility, limits, errors and index maintenance in detail.
+
+SQLite must provide FTS5/unicode61. Startup installs/backfills the search index
+atomically; triggers cover updates and cascading deletions. Repeated startup is
+safe, and missing FTS5 produces a clear startup error. Back up `data/tareas.db`
+before upgrades. Administrators can rebuild the index with
+`dashboard.search_service.rebuild_search_index(db)` inside `db_transaction()`.
 
 ### Default Credentials
 

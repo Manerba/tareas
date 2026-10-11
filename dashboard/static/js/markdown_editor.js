@@ -34,6 +34,9 @@ function renderMarkdown(value, format = 'markdown') {
 class MarkdownEditor {
     // Keep unfinished edits when expandable rows are rebuilt or tabs change.
     static drafts = new Map();
+    static draftRevisions = new Map();
+    // A rebuilt row takes over the response and the lock of its pending save.
+    static pendingSaves = new Map();
 
     constructor(containerId, value = '', options = {}) {
         this.containerId = containerId;
@@ -41,8 +44,15 @@ class MarkdownEditor {
         if (!this.container) return;
         this.options = options;
         this.source = markdownSource(value, options.format);
-        this.editing = !options.readOnly && MarkdownEditor.drafts.has(containerId);
-        this.saving = false;
+        const pending = MarkdownEditor.pendingSaves.get(containerId);
+        this.revision = MarkdownEditor.drafts.has(containerId)
+            ? (MarkdownEditor.draftRevisions.get(containerId) ?? options.revision) : options.revision;
+        if (pending) {
+            pending.editor = this;
+            this.revision = pending.revision;
+        }
+        this.editing = !options.readOnly && (Boolean(pending) || MarkdownEditor.drafts.has(containerId));
+        this.saving = Boolean(pending);
         this.render();
     }
 
@@ -68,9 +78,11 @@ class MarkdownEditor {
         this.preview = this.container.querySelector('[data-md-preview]');
         this.input = this.container.querySelector('.markdown-source');
         this.error = this.container.querySelector('.markdown-error');
-        this.input.value = MarkdownEditor.drafts.get(this.containerId) ?? this.source;
+        this.input.value = MarkdownEditor.pendingSaves.get(this.containerId)?.source
+            ?? MarkdownEditor.drafts.get(this.containerId) ?? this.source;
         this.input.addEventListener('input', () => {
             MarkdownEditor.drafts.set(this.containerId, this.input.value);
+            MarkdownEditor.draftRevisions.set(this.containerId, this.revision);
         });
         this.container.querySelector('[data-md-action="edit"]')?.addEventListener('click', () => {
             this.editing = true;
@@ -79,6 +91,8 @@ class MarkdownEditor {
         });
         this.container.querySelector('[data-md-action="cancel"]')?.addEventListener('click', () => {
             MarkdownEditor.drafts.delete(this.containerId);
+            MarkdownEditor.draftRevisions.delete(this.containerId);
+            this.revision = this.options.revision;
             this.input.value = this.source;
             this.editing = false;
             this.error.hidden = true;
@@ -89,6 +103,8 @@ class MarkdownEditor {
     }
 
     updateView() {
+        // A removed editor must not change controls belonging to a new row.
+        if (this.input.parentNode !== this.container) return;
         if (this.options.plainText) {
             const text = document.createElement('pre');
             text.className = 'text-file-plain';
@@ -108,26 +124,41 @@ class MarkdownEditor {
     }
 
     async save() {
-        if (this.saving || this.options.readOnly) return;
+        if (this.saving || this.options.readOnly || MarkdownEditor.pendingSaves.has(this.containerId)) return;
         const source = this.input.value;
+        const pending = { editor: this, source, revision: this.revision };
+        MarkdownEditor.pendingSaves.set(this.containerId, pending);
         this.saving = true;
         this.error.hidden = true;
         this.updateView();
         try {
-            await this.options.onSave(source);
-            this.source = source;
+            const result = await this.options.onSave(source, pending.revision);
+            // Update the current row's model too, so later rebuilds keep the revision.
+            pending.editor.options.onSaved?.(source, result);
+            const editor = pending.editor;
+            if (result?.revision) editor.revision = editor.options.revision = result.revision;
+            editor.source = source;
+            editor.input.value = source;
             if (MarkdownEditor.drafts.get(this.containerId) === source) {
                 MarkdownEditor.drafts.delete(this.containerId);
+                MarkdownEditor.draftRevisions.delete(this.containerId);
             }
-            this.editing = false;
+            editor.editing = false;
         } catch (error) {
+            const editor = pending.editor;
             MarkdownEditor.drafts.set(this.containerId, source);
-            this.error.textContent = this.options.saveErrorMessage?.(error) || t('common.saveError');
-            this.error.hidden = false;
+            MarkdownEditor.draftRevisions.set(this.containerId, pending.revision);
+            editor.error.textContent = editor.options.saveErrorMessage?.(error) || t('common.saveError');
+            editor.error.hidden = false;
         } finally {
+            MarkdownEditor.pendingSaves.delete(this.containerId);
             this.saving = false;
-            this.updateView();
-            if (!this.editing) this.container.querySelector('[data-md-action="edit"]')?.focus();
+            const editor = pending.editor;
+            editor.saving = false;
+            editor.updateView();
+            if (!editor.editing && editor.input.isConnected) {
+                editor.container.querySelector('[data-md-action="edit"]')?.focus();
+            }
         }
     }
 }

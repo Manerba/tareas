@@ -135,7 +135,7 @@ def build_agent_metadata(request: Request | None = None, *, mcp_base_url: str | 
             "Use descriptions for scope and acceptance criteria; use handoff.add for progress, handoffs, and decisions.",
             "Write descriptions, notes, and handoffs as Markdown source, not rendered HTML.",
             "note.write is an upsert for the current user's one editable note and overwrites that note on repeated calls.",
-            "Admins can correct existing content with note.update and handoff.update; author and creation time are preserved.",
+            "Admins can correct content; authors can correct their own handoffs for 300 seconds with current contribution rights and the revision from handoff.get/list. Author and creation time stay unchanged.",
             "note.delete removes only the current user's editable note.",
             "Project assignees can read notes and handoffs on all subtasks and write their own, without individual subtask assignments. For subtasks, task_id is the project ID and subtask_id is the subtask ID.",
             "handoff.add creates a separate history item; handoff.delete removes a handoff by handoff_id.",
@@ -143,7 +143,12 @@ def build_agent_metadata(request: Request | None = None, *, mcp_base_url: str | 
             "file.list/read/write/mkdir/move/delete access the configured local or WebDAV project storage with current permissions. Paths are relative to that project's storage root; task_id is the project ID.",
             "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the REST file API or web UI. File contents are not recorded in the audit log.",
             "The same MCP Bearer token authenticates REST file list/download/upload/mkdir/move/delete at /api/tasks/{task_id}/files. Writes also require X-Requested-With: XMLHttpRequest. Uploads use multipart field file, maximum 500 MiB. Current task permissions, token revocation and the global MCP switch apply. Other REST endpoints require a browser session.",
-            "Treat predecessor_ids as dependency edges; position_number is display order only.",
+            "Use get_project/list_subtasks(include_description=false), update_project/update_subtask(compact=true), and get_project_status for efficient work. Legacy full-response defaults remain compatible.",
+            "Description writes should send description_revision; patch_description requires revision and supports exact append or unique old_text replacement. Conflicts require rereading and merging.",
+            "reason on updates is separate optional audit metadata, maximum 1000 characters; blank means none.",
+            "file.append appends exact UTF-8 to an existing file, optional BOM preserved, no added newline, max 1 MiB total. Shared write lock; do not blindly retry after ambiguous network failures.",
+            "search supports AND words, quoted phrases and word* prefixes; filters project_id/types/since, relevance across types, safe snippets. Prefixes do not find interior substrings.",
+            "id is stable, position_number is mutable display order, name is the subject title without position prefixes. Never strip meaningful numbers from existing names automatically.",
             "Dependencies must stay within one project, without cycles or redundant direct edges. If C depends on B and B on A, C must not also depend directly on A.",
         ],
     }
@@ -165,7 +170,17 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 
 Arbeitsregeln:
 
-- Vor Schreiboperationen den aktuellen Projektstand per MCP lesen.
+- Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
+- Ueblich: `get_project/list_subtasks(include_description=false)` und
+  `update_project/update_subtask(compact=true)`, optionale Audit-Begruendung `reason`.
+- Beschreibungsrevision mitsenden; `patch_description` fuer exaktes Anhaengen
+  oder eindeutiges Ersetzen. Bei Konflikt neu lesen und abgleichen.
+- `id` ist stabil, `position_number` die veraenderliche Reihenfolge, `name`
+  der fachliche Titel ohne Positionspraefix. Sinnvolle Zahlen nicht entfernen.
+- `search` verwendet UND-Woerter, zitierte Phrasen und Wortpraefixe mit `*`;
+  `project_id`, `types`, `since` filtern, `handoff.get` laedt gezielt nach.
+- `file.append` ergaenzt vorhandene UTF-8-Dateien exakt bis 1 MiB gesamt,
+  ohne impliziten Zeilenumbruch; nach unklarem Fehler erst Inhalt pruefen.
 - `description` enthaelt Scope, Implementierungsbriefing, Akzeptanzkriterien
   und Definition of Done.
 - Beschreibungen, Notizen und Handoffs als Markdown-Quelltext schreiben,
@@ -177,7 +192,9 @@ Arbeitsregeln:
   `subtask:456`).
 - Admins koennen bestehende Inhalte mit `note.update` (Autor-`user_id`) und
   `handoff.update` (typisierte `handoff_id`) korrigieren. Autor und
-  Erstellungszeit bleiben erhalten; der Admin wird im Audit protokolliert.
+  Erstellungszeit bleiben erhalten; der Bearbeiter wird im Audit protokolliert.
+  Autoren duerfen eigene Handoffs mit Beitragsrechten fuer 300 Sekunden mit
+  Revision aus `handoff.get/list` korrigieren; Admins bleiben zeitlich unbeschraenkt.
 - `note.write` aktualisiert nur die eine aktuelle Notiz des aufrufenden Users;
   wiederholte Aufrufe ueberschreiben diese Notiz.
 - `note.list` liest editierbare User-Notizen; `note.delete` loescht nur die
@@ -296,16 +313,20 @@ mcp__tareas__whoami
 mcp__tareas__list_projects
 mcp__tareas__list_projects_page
 mcp__tareas__get_project
+mcp__tareas__get_project_status
+mcp__tareas__patch_description
 mcp__tareas__note.write
 mcp__tareas__note.update
 mcp__tareas__note.delete
 mcp__tareas__handoff.add
 mcp__tareas__handoff.list
+mcp__tareas__handoff.get
 mcp__tareas__handoff.update
 mcp__tareas__handoff.delete
 mcp__tareas__file.list
 mcp__tareas__file.read
 mcp__tareas__file.write
+mcp__tareas__file.append
 mcp__tareas__file.mkdir
 mcp__tareas__file.move
 mcp__tareas__file.delete
@@ -316,7 +337,7 @@ Pruefablauf:
 1. `whoami` aufrufen.
 2. Erwarteten `display_name` und `auth_source: "mcp"` pruefen.
 3. `list_projects_page` fuer eine kompakte, paginierte Uebersicht aufrufen.
-4. Zielprojekt mit `get_project(project_id=...)` lesen.
+4. Arbeitsstand mit `get_project_status(project_id=...)` lesen, Beschreibungen gezielt nachladen.
 5. Bei konfigurierter Dateiablage (`file_storage_type` ist `local` oder `webdav`)
    mit `file.list(task_id=...)` die Dateien und effektiven Schreibrechte pruefen.
 
@@ -384,6 +405,153 @@ Bearbeitungsrechte am Projekt erforderlich, etwa als Ersteller, Admin oder durch
 eine Bearbeitungsfreigabe. Eine blosse Zuweisung reicht nicht aus. Dateien lesen
 braucht Leserechte, Dateiaenderungen brauchen Bearbeitungsrechte. Die MCP-Werkzeuge
 legen keine Ablage automatisch an.
+
+## Effizient arbeiten und gezielt nachladen
+
+Ueblich sind `get_project(project_id=75, include_description=false)` und
+`list_subtasks(project_id=75, include_description=false)`. Volltexte bei Bedarf
+mit `get_project` (Standard `include_description=true`) oder `get_subtask`
+nachladen. Die bisherigen Vollantworten bleiben aus Kompatibilitaetsgruenden
+Standard; `list_projects_page` bleibt standardmaessig kompakt.
+`update_project(..., compact=true)` und `update_subtask(..., compact=true)` liefern
+ID, `changed_fields` und kurze wirksame `values`. Beschreibungen werden auch nach
+Aenderung nicht gespiegelt, nur Laenge/Format/Revision bestaetigt. Standard
+`compact=false` behaelt das alte Antwortformat. Ein No-op hat keine geaenderten
+Felder. `reason` ist optional, maximal 1000 Unicode-Zeichen vor dem Trimmen;
+leere Begruendungen werden null. Es wird getrennt vom Felddiff im Audit mit
+Akteur und Aenderungsereignis gespeichert und in der Admin-Ansicht angezeigt.
+Diese Konvention gilt auch fuer kuenftige Schreibwerkzeuge.
+
+`get_project_status(project_id=75)` liest Projektmetadaten, Zaehler und alle
+sichtbaren Teilaufgaben in einem konsistenten Snapshot. Jede Zeile enthaelt
+ID, Position, Titel, Bereich, Prozentwert, `readiness`, `blocker_ids` und
+`latest_handoff` (null, wenn keiner existiert). Die Vorschau ist die erste
+nichtleere Zeile, maximal 200 Zeichen; Neuheit folgt Erstellungszeit und ID,
+beide absteigend. `handoff.get(task_id=75, handoff_id="subtask:456")` laedt Inhalt
+und Revision exakt nach; es braucht keine Liste aller Handoffs.
+
+Startbereitschaft ist rein abgeleitet, ohne Schreibzugriff:
+
+- `completed`: 100 Prozent; wird nie als naechste Arbeit angeboten.
+- `cancelled`: offene Arbeit in abgebrochenem Projekt.
+- `delegated`: offene Teilaufgabe wird von einem Kindprojekt gesteuert; dort arbeiten.
+- `restricted`: mindestens ein Vorgaenger ist nicht sichtbar; keine fremden IDs
+  oder Statusinformationen werden offengelegt.
+- `blocked`: sichtbare direkte Vorgaenger unter 100 Prozent, IDs in `blocker_ids`.
+- `ready`: uebrige offene Teilaufgabe ohne unerledigte Vorgaenger.
+
+Projektknoten `0` ist ein Startanker und wartet nicht auf den abgeleiteten
+Projektstatus. Bei reinem Teilaufgaben-Zugriff enthalten Projektmetadaten nur
+ID/`limited`, Zaehler beziehen sich nur auf sichtbare Zeilen. Graph-/Fortschritts-
+aenderungen werden beim naechsten Abruf wirksam, bestehende Zyklusregeln bleiben.
+
+`id` ist die stabile technische Referenz, `position_number` die veraenderliche
+Anzeigereihenfolge, `name` der fachliche Titel. Beispiel: Position 3, ID 456,
+Name „Port 443 pruefen“. Namen keine Positionsnummer voranstellen. Verschieben
+veraendert weder ID, Titel noch Abhaengigkeiten. Bestehende nummerierte Namen
+sind allenfalls manuell zu bereinigen; fachliche Zahlen niemals automatisch entfernen.
+
+## Beschreibungen und Handoffs sicher korrigieren
+
+Beschreibungen liefern `description_revision` (Hash aus Text und Format).
+Bei Volltextupdates ueber REST/MCP diese gelesene Revision mitsenden. Sie wird
+nur geprueft, wenn `description` geaendert wird; Statusupdates bleiben unabhaengig.
+Ohne Revision funktionieren alte Volltextclients weiterhin bedingungslos:
+Sie haben keinen Konfliktschutz. Neue Clients sollen immer die Revision senden.
+Der Browser sendet sie und behaelt bei HTTP 409 den Entwurf samt alter Revision.
+Die Revision schützt den Inhaltsstand; eine zwischenzeitliche Aenderung und
+Rueckkehr zu identischem Text/Format gilt als derselbe Stand.
+
+Partielle Aenderungen brauchen zwingend die gelesene Revision:
+
+```text
+patch_description(task_id=75, revision="<description_revision>",
+                  operation="append", text="Weitere Anforderung")
+patch_description(task_id=75, subtask_id=456, revision="<description_revision>",
+                  operation="replace", old_text="Port 80", text="Port 443")
+```
+
+`append` haengt exakt an, ohne zusaetzlichen Zeilenumbruch; den gewuenschten
+Umbruch im Text mitsenden. `replace` verlangt genau eine exakte, nichtleere
+Fundstelle, auch ueberlappende Treffer zaehlen. Fehlende/mehrdeutige Ziele:
+`description_target_not_found` / `description_target_ambiguous`, kein Schreiben.
+Text/Markdown-Sonderzeichen werden nicht normalisiert, gespeichertes Format
+bleibt erhalten (auch `legacy`). Volltextupdates setzen weiterhin Markdown.
+Veraltete Revision: `revision_conflict`, REST HTTP 409; neu lesen und Aenderungen
+abgleichen, nicht blind mit einer frischen Revision wiederholen.
+REST bietet `PATCH /api/tasks/{{id}}/description` und
+`PATCH /api/subtasks/{{id}}/description` mit `revision`, `operation`, `text`,
+optional `old_text`. Dort gelten Session, CSRF und dieselben Rechte/Sperren.
+
+Autoren mit aktuellen Beitragsrechten duerfen eigene Handoffs in den ersten
+300 Sekunden nach Erstellung korrigieren (`0 <= Alter < 300`, Serverzeit UTC).
+`handoff.get/list` liefern `revision` und `can_write`. `handoff.update` braucht
+fuer normale Benutzer diese Revision; bei Ablauf gilt
+`handoff_edit_window_expired`, bei Konkurrenz `revision_conflict`.
+Admins koennen weiterhin ohne Zeitgrenze korrigieren; fuer alte Adminclients
+ist `revision` optional, sollte fuer Konfliktschutz mitgesendet werden.
+Autor, ID, Erstellungszeit und Chronologie bleiben erhalten, der wirkliche
+Bearbeiter wird protokolliert. Fremde Inhalte/Rechteentzug bleiben geschuetzt.
+
+## Dateien exakt ergaenzen
+
+`file.append(task_id=75, path="Protokoll.txt", content="Ergebnis")` verlangt eine
+vorhandene UTF-8-Textdatei (optionaler UTF-8-BOM bleibt erhalten). Kein UTF-16,
+Base64 oder NUL, keine automatische Neuanlage und keine automatische neue Zeile.
+Vorhandene Bytes/Zeilenenden bleiben erhalten, neue Zeilenenden stammen exakt
+vom Aufrufer. Leerer Text laesst den Inhalt unveraendert. Die Gesamtdatei darf
+nach Ergaenzung maximal 1 MiB enthalten; fehlende/zu grosse/ungueltige Dateien
+bleiben unveraendert. Lokale Ablage und WebDAV verwenden die gemeinsame
+Prozesssperre ueber Lesen, Pruefen und Schreiben, ebenso wie Upload/Office/Texteditor.
+Direkte externe WebDAV-Schreiber kennen diese Tareas-Sperre nicht.
+Audit und Ergebnis enthalten nur Metadaten, keine Dateiinhalte.
+Nach unklarem Netzwerkfehler zuerst `file.read` pruefen: erneutes Anhaengen ist
+nicht idempotent und kann dieselbe Ergaenzung doppelt einfuegen.
+
+## Suche: Begriffe, Phrasen, Filter und Fundstellen
+
+```text
+search(query="Proxy Freigabe Domain", project_id=75, types=["handoff"],
+       since="2026-10-11T00:00:00+02:00", limit=10)
+search(query='"Proxy Freigabe"')
+search(query="fenster*")
+```
+
+Unzitierte Woerter muessen alle im selben Eintrag vorkommen (UND); eine Phrase
+verlangt die Wortfolge. Satzzeichen wie Bindestrich/Komma trennen Begriffe.
+`AND`, `OR`, `NOT` sind normale Suchwoerter, keine FTS-Steuerbefehle.
+Ungueltige Syntax, ungeschlossene Anfuehrungszeichen oder alleinige Satzzeichen
+liefern `invalid_search_query`, keine scheinbar leere Ergebnisliste. Leere
+Eingabe liefert `[]`; maximal 1000 Zeichen und 32 Begriffe/Phrasen.
+Unicode61 ignoriert Gross-/Kleinschreibung und Diakritika; `fenster*` findet
+„Fenstern“, aber nicht „Zeitfenster“. Keine deutsche Stammwortsuche oder
+beliebige Teilwortsuche; Trigram ist eine spaetere Option, hier nicht aktiviert.
+Das bisherige zusammenhaengende LIKE-Muster wird durch diese Semantik ersetzt;
+Clients mit Wunsch nach Wortfolge setzen Anfuehrungszeichen.
+
+Optionale Filter sind kombinierbar: `project_id`, `types`, `since`. Typen:
+`task`, `sub_task`, `task_note`, `sub_task_note`, `task_handoff`,
+`sub_task_handoff`; `handoff` umfasst beide Handoff-Arten, `types=[]` keine.
+`since` ist inklusive, ISO8601 mit expliziter Zeitzone. Aufgaben/Teilaufgaben/
+Handoffs verwenden `created_at`, editierbare Notizen `updated_at`; SQLite-Zeiten
+sind UTC und `date` wird mit `Z` geliefert. Suche ist kein Aenderungsfeed.
+
+Alle Typen werden gemeinsam nach BM25-Relevanz sortiert, Gleichstand nach
+Datum absteigend und stabiler Quell-ID. Aktuelle Rechte und Filter greifen vor
+dem Limit (wie bisher auf 1–200 begrenzt). Treffer liefern eindeutige IDs,
+Datum/Person soweit vorhanden und ungefaehr zwei Zeilen Fundstellenkontext.
+`snippet` bleibt Klartext (maximal 322 Zeichen), `snippet_html` ergaenzt sicher
+maskierten Text mit erzeugten `<mark>`-Tags. HTML aus Inhalten wird nicht aktiv.
+Titel/Benutzernamen sind auf 160 Zeichen begrenzt. Handoffs mit `handoff.get`,
+Aufgaben/Teilaufgaben mit Detailwerkzeugen, User-Notizen mit `note.list` nachladen.
+
+Der Index wird beim Upgrade atomar initial befuellt und per Trigger bei REST-/
+MCP-Schreibzugriffen und Kaskaden gepflegt. Wiederholte Initialisierung ist sicher;
+fehlende Trigger loesen Reparatur/Backfill aus. SQLite FTS5 ist Voraussetzung,
+bei fehlendem Modul bricht die Suchmigration mit klarer Diagnose ab und wird
+zurueckgerollt. Wartungs-Rebuild: `rebuild_search_index(db)` aus
+`dashboard.search_service` innerhalb von `db_transaction()`; Daten bleiben in
+Originaltabellen. Vor produktiven Migrationen die Datenbank sichern.
 
 ## Dateiablage per REST
 

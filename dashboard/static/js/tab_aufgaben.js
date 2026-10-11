@@ -523,18 +523,28 @@ function createMarkdownField(containerId, content, options) {
     const field = options.field || 'description';
     return new MarkdownEditor(containerId, content, {
         format: options.model?.[`${field}_format`] || 'markdown',
+        revision: field === 'description' ? options.model?.description_revision : undefined,
         label: options.label,
         readOnly: options.readOnly,
-        onSave: async source => {
+        saveErrorMessage: error => error.message,
+        onSave: async (source, revision) => {
+            const body = { [field]: source };
+            if (field === 'description') body.description_revision = revision;
             const response = await fetch(options.url, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [field]: source }),
+                body: JSON.stringify(body),
             });
+            if (response.status === 409) throw new Error(t('description.conflict'));
             if (!response.ok) throw new Error(t('common.saveError'));
+            const result = await response.json();
+            return { revision: result.description_revision };
+        },
+        onSaved: (source, result) => {
             if (options.model) {
                 options.model[field] = source;
                 options.model[`${field}_format`] = 'markdown';
+                if (field === 'description') options.model.description_revision = result.revision;
             }
             options.onSaved?.(source);
         },

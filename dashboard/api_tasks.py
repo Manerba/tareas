@@ -19,7 +19,8 @@ from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
 from dashboard.mail_service import notify_event
-from dashboard.note_service import update_note_as_admin, handoff_revision
+from dashboard.note_service import update_note_as_admin, handoff_revision, handoff_can_write
+from dashboard.description_service import description_revision, check_description_revision, patch_description
 from dashboard.permissions import require_task_access, require_subtask_access, task_permissions, subtask_permissions, task_visibility_sql
 from dashboard.file_storage import ensure_local_directory, remove_local_directory, safe_rel_path, storage_type
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
@@ -53,6 +54,7 @@ class TaskUpdate(BaseModel):
     task_type: Optional[str] = None
     status: Optional[ProjectStatus] = None
     description: Optional[str] = None
+    description_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     assigned_to: Optional[int] = None
     nextcloud_path: Optional[str] = None
     file_storage_type: Optional[Literal["local", "webdav", "none"]] = None
@@ -78,7 +80,15 @@ class SubTaskUpdate(BaseModel):
     position_number: Optional[int] = None
     predecessor_ids: Optional[list[int]] = None
     description: Optional[str] = None
+    description_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     assigned_to: Optional[int] = None
+
+
+class DescriptionPatch(BaseModel):
+    operation: Literal["append", "replace"]
+    text: str
+    old_text: str | None = None
+    revision: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class SubTaskMove(BaseModel):
@@ -174,14 +184,14 @@ def _require_subtask_read_access(db, task_id: int, subtask_id: int, user: dict):
     return require_subtask_access(db, subtask_id, user, task_id=task_id)[0]
 
 
-def _handoff_response(entry, task_id: int, subtask_id: int | None, user: dict):
+def _handoff_response(db, entry, task_id: int, subtask_id: int | None, user: dict):
     if not entry:
         raise HTTPException(status_code=404, detail="handoff.notFound")
     return {"id": entry["id"], "task_id": task_id, "subtask_id": subtask_id,
             "user_id": entry["user_id"], "user_name": (entry["user_name"] or "").strip(),
             "created_at": _format_datetime(entry["created_at"]),
             "content": entry["content"] or "", "format": entry["content_format"],
-            "can_write": bool(user.get("is_admin")),
+            "can_write": handoff_can_write(db, task_id, user, entry, subtask_id),
             "revision": handoff_revision(entry["content"] or "", entry["content_format"])}
 
 
@@ -279,6 +289,7 @@ async def get_tasks(user=Depends(get_current_user)):
                 "status": row["effective_status"],
                 "description": row["description"] or "",
                 "description_format": row["description_format"],
+                "description_revision": description_revision(row["description"], row["description_format"]),
                 "created_by": row["created_by"],
                 "assigned_to": row["assigned_to"],
                 "created_by_name": (row["created_by_name"] or "").strip(),
@@ -334,6 +345,7 @@ async def get_tasks(user=Depends(get_current_user)):
                 "status": st_status,
                 "description": st["description"] or "",
                 "description_format": st["description_format"],
+                "description_revision": description_revision(st["description"], st["description_format"]),
                 "created_by": st["created_by"],
                 "assigned_to": st["assigned_to"],
                 "created_by_name": (st["created_by_name"] or "").strip(),
@@ -379,6 +391,8 @@ def _update_task_record(task_id: int, task: TaskUpdate, user: dict):
         db.execute("BEGIN IMMEDIATE")
         existing, rights = require_task_access(db, task_id, user, "edit_status")
         can_full_edit = rights["can_edit"]
+        if task.description is not None and can_full_edit:
+            check_description_revision(existing, task.description_revision)
         if "parent_subtask_id" in task.model_fields_set:
             set_parent_subtask(db, task_id, task.parent_subtask_id, user)
         if task.assigned_to is not None and not rights["can_manage"]:
@@ -505,7 +519,10 @@ async def update_task(task_id: int, task: TaskUpdate, user=Depends(get_current_u
     if changes_diff:
         action = "status_change" if list(changes_diff.keys()) == ["status"] else "update"
         log_change(user, "task", task_id, action, changes_diff)
-    return {"message": "Aufgabe aktualisiert"}
+    result = {"message": "Aufgabe aktualisiert"}
+    if "description_len" in changes_diff:
+        result["description_revision"] = description_revision(task.description, "markdown")
+    return result
 
 
 @router.delete("/api/tasks/{task_id}")
@@ -591,6 +608,7 @@ async def get_subtasks(task_id: int, user=Depends(get_current_user)):
                 "predecessors_display": ", ".join(str(p) for p in pred_positions if p),
                 "description": row["description"] or "",
                 "description_format": row["description_format"],
+                "description_revision": description_revision(row["description"], row["description_format"]),
                 "created_by": row["created_by"],
                 "assigned_to": row["assigned_to"],
                 "created_by_name": (row["created_by_name"] or "").strip(),
@@ -683,6 +701,7 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
             updates.append("position_number = ?")
             values.append(subtask.position_number)
         if subtask.description is not None:
+            check_description_revision(existing, subtask.description_revision)
             updates.append("description_format = 'markdown'")
             updates.append("description = ?")
             values.append(subtask.description)
@@ -720,7 +739,23 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
         sub_changes["predecessor_ids"] = subtask.predecessor_ids
     if sub_changes:
         log_change(user, "sub_task", subtask_id, "update", sub_changes)
-    return {"message": "Teilaufgabe aktualisiert"}
+    result = {"message": "Teilaufgabe aktualisiert"}
+    if subtask.description is not None:
+        result["description_revision"] = description_revision(subtask.description, "markdown")
+    return result
+
+
+@router.patch("/api/tasks/{task_id}/description")
+async def patch_task_description(task_id: int, patch: DescriptionPatch, user=Depends(get_current_user)):
+    return patch_description(task_id, user, **patch.model_dump())
+
+
+@router.patch("/api/subtasks/{subtask_id}/description")
+async def patch_subtask_description(subtask_id: int, patch: DescriptionPatch, user=Depends(get_current_user)):
+    with db_query() as db:
+        existing, _ = require_subtask_access(db, subtask_id, user, "edit")
+        task_id = existing["project_id"]
+    return patch_description(task_id, user, subtask_id=subtask_id, **patch.model_dump())
 
 
 @router.delete("/api/subtasks/{subtask_id}")
@@ -987,7 +1022,7 @@ async def get_task_handoff(task_id: int, entry_id: int, user=Depends(get_current
                FROM task_note_entries tne JOIN users u ON tne.user_id = u.id
                WHERE tne.task_id = ? AND tne.id = ?""", (task_id, entry_id),
         ).fetchone()
-        return _handoff_response(entry, task_id, None, user)
+        return _handoff_response(db, entry, task_id, None, user)
 
 
 @router.put("/api/tasks/{task_id}/subtasks/{subtask_id}/notes/{note_user_id}")
@@ -1010,7 +1045,7 @@ async def get_subtask_handoff(task_id: int, subtask_id: int, entry_id: int, user
                FROM sub_task_note_entries sne JOIN users u ON sne.user_id = u.id
                WHERE sne.sub_task_id = ? AND sne.id = ?""", (subtask_id, entry_id),
         ).fetchone()
-        return _handoff_response(entry, task_id, subtask_id, user)
+        return _handoff_response(db, entry, task_id, subtask_id, user)
 
 
 @router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/notes")

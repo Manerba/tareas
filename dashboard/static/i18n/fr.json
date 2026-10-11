@@ -483,5 +483,8 @@
   "projectLink.create": "Créer un projet enfant",
   "projectLink.detachHint": "La dissociation conserve la dernière progression et permet de la modifier à nouveau. Les deux projets sont conservés.",
   "projectLink.detach": "Dissocier le projet",
-  "projectLink.unavailable": "Le projet lié est indisponible ou vous ne disposez pas du droit de lecture."
+  "projectLink.unavailable": "Le projet lié est indisponible ou vous ne disposez pas du droit de lecture.",
+  "description.conflict": "La description a changé depuis son chargement. Votre brouillon est conservé. Copiez-le et rechargez la description actuelle.",
+  "handoff.editWindowExpired": "Le délai de cinq minutes pour corriger cette transmission a expiré. Votre brouillon est conservé.",
+  "mcp.auditReason": "Motif de la modification"
 }

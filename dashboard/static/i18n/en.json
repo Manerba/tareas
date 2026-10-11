@@ -483,5 +483,8 @@
   "projectLink.create": "Create new child project",
   "projectLink.detachHint": "Unlinking preserves the last progress value and makes it editable again. Both projects are kept.",
   "projectLink.detach": "Unlink project",
-  "projectLink.unavailable": "The linked project is unavailable or you do not have read access."
+  "projectLink.unavailable": "The linked project is unavailable or you do not have read access.",
+  "description.conflict": "The description has changed since loading. Your draft is retained. Copy it and reload the current description.",
+  "handoff.editWindowExpired": "The five-minute window for correcting this handoff has expired. Your draft is retained.",
+  "mcp.auditReason": "Change reason"
 }

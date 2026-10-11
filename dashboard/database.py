@@ -387,7 +387,8 @@ def _initialize_db(conn: sqlite3.Connection):
             entity_type TEXT NOT NULL,
             entity_id INTEGER,
             action TEXT NOT NULL,
-            changes_json TEXT
+            changes_json TEXT,
+            reason TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
@@ -405,6 +406,8 @@ def _initialize_db(conn: sqlite3.Connection):
     # DDL und Markierung gemeinsam committen, auch nach einem abgebrochenen Upgrade.
     with conn:
         conn.execute("BEGIN IMMEDIATE")
+        if "reason" not in {r[1] for r in conn.execute("PRAGMA table_info(audit_log)")}:
+            conn.execute("ALTER TABLE audit_log ADD COLUMN reason TEXT")
         for info_sql, column, alter_sql, mark_sql in (
             ("PRAGMA table_info(tasks)", "description_format",
              "ALTER TABLE tasks ADD COLUMN description_format TEXT NOT NULL DEFAULT 'markdown'",
@@ -428,6 +431,13 @@ def _initialize_db(conn: sqlite3.Connection):
             if column not in {r[1] for r in conn.execute(info_sql)}:
                 conn.execute(alter_sql)
                 conn.execute(mark_sql)
+
+    # One cross-type FTS5 corpus, initial backfill and source-table triggers.
+    # No executescript here: schema, triggers and backfill must commit together.
+    from dashboard.search_service import initialize_search_index
+    with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        initialize_search_index(conn)
 
     # Default-Mail-Templates einfuegen (nur wenn Tabelle leer)
     tmpl_count = conn.execute("SELECT COUNT(*) FROM mail_templates").fetchone()[0]

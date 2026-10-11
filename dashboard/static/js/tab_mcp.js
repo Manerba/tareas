@@ -177,7 +177,7 @@ function renderMcpAuditSection() {
 
     let rows = '';
     if (mcpAudit.items.length === 0) {
-        rows = `<tr><td colspan="5" style="text-align:center;opacity:0.6;padding:20px">Keine Eintraege</td></tr>`;
+        rows = `<tr><td colspan="6" style="text-align:center;opacity:0.6;padding:20px">Keine Eintraege</td></tr>`;
     } else {
         for (const a of mcpAudit.items) {
             const actorBadge = a.actor_type === 'mcp'
@@ -202,6 +202,7 @@ function renderMcpAuditSection() {
                     <td>${escapeHtml(a.entity_type)}${a.entity_id ? ' #' + a.entity_id : ''}</td>
                     <td>${escapeHtml(a.action)}</td>
                     <td style="font-family:monospace;font-size:11px;opacity:0.85">${escapeHtml(changesPreview)}</td>
+                    <td style="white-space:pre-wrap;overflow-wrap:anywhere;max-width:360px">${escapeHtml(a.reason || '')}</td>
                 </tr>`;
         }
     }
@@ -236,6 +237,7 @@ function renderMcpAuditSection() {
                         <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color)">Entity</th>
                         <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color)">Action</th>
                         <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color)">Aenderungen</th>
+                        <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color)">${t('mcp.auditReason')}</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>

@@ -205,6 +205,35 @@ class TaskStorage:
             self._upload_file(path, content, content_type)
             return content
 
+    def append_text(self, path: str, text: str, *, max_bytes: int) -> tuple[int, int]:
+        """UTF-8 exakt an eine existierende Datei anhaengen; BOM bleibt erhalten.
+
+        Kein impliziter Zeilenumbruch und keine Anlage fehlender Dateien.
+        Lesen, Encoding-/Groessenpruefung und Schreiben teilen die Sperre
+        mit Upload, Office und dem nativen Texteditor.
+        """
+        try:
+            addition = text.encode("utf-8")
+        except UnicodeError as exc:
+            raise ApplicationError(400, "Ergaenzung ist kein gueltiger UTF-8-Text",
+                                   code="invalid_content", field="content") from exc
+        self._check_read_size(len(addition), max_bytes)
+
+        def transform(original):
+            try:
+                original.decode("utf-8-sig")
+            except UnicodeError as exc:
+                raise ApplicationError(400, "file.append unterstuetzt nur UTF-8-Dateien (optional mit BOM)",
+                                       code="invalid_encoding", field="path") from exc
+            if b"\x00" in original or b"\x00" in addition:
+                raise ApplicationError(400, "file.append erwartet Text ohne NUL-Zeichen",
+                                       code="invalid_content", field="content")
+            self._check_read_size(len(original) + len(addition), max_bytes)
+            return original + addition
+
+        result = self.update_file(path, transform, max_bytes=max_bytes)
+        return len(result), len(addition)
+
     def _upload_file(self, path: str, content: bytes, content_type: str):
         """Schreiben innerhalb von upload_file/update_file, die bereits sperren."""
         target = self._path(path)

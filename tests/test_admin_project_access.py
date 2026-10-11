@@ -176,7 +176,8 @@ class AdminProjectAccessTests(unittest.TestCase):
             self.user = self.users[name]
             for table, rid, url in self.records:
                 before = self.row(table, rid)
-                self.assertEqual(self.client.put(url, json={"content": "Forbidden"}).status_code, 403)
+                expected = 422 if name == "assignee" and "entries" in table else 403
+                self.assertEqual(self.client.put(url, json={"content": "Forbidden"}).status_code, expected)
                 self.assertEqual(self.row(table, rid), before)
         for name in ("reader", "outsider"):
             self.user = self.users[name]
@@ -207,7 +208,7 @@ class AdminProjectAccessTests(unittest.TestCase):
                     self.assertEqual(data['user_id'], before['user_id'])
                     self.assertEqual(data['task_id'], self.project)
                     self.assertEqual(data['subtask_id'], self.subtask if is_subtask else None)
-                    self.assertEqual(data['can_write'], bool(user['is_admin']))
+                    self.assertEqual(data['can_write'], bool(user['is_admin'] or user['id'] == before['user_id']))
                     self.assertEqual(len(data['revision']), 64)
                 with closing(database.get_db()) as db, db:
                     db.execute('DELETE FROM project_members WHERE project_id=? AND user_id=?', (self.project, self.users['reader']['id']))
@@ -247,7 +248,7 @@ class AdminProjectAccessTests(unittest.TestCase):
                 self.assertEqual(after['created_at'], original['created_at'])
                 self.assertEqual(self.client.put(url, json={'content': 'Invalid', 'revision': 'bad'}).status_code, 422)
                 self.user = self.users['assignee']
-                self.assertEqual(self.client.put(url, json={'content': 'Not admin', 'revision': result['revision']}).status_code, 403)
+                self.assertEqual(self.client.put(url, json={'content': 'Own correction', 'revision': result['revision']}).status_code, 200)
 
     def test_mcp_admin_can_correct_notes_and_typed_handoffs_with_scope_checks(self):
         token = mcp_server.current_mcp_user.set(self.admin)

@@ -11,8 +11,26 @@ import logging
 from typing import Any
 
 from dashboard.database import get_db
+from dashboard.errors import ApplicationError
 
 logger = logging.getLogger(__name__)
+
+REASON_MAX_LENGTH = 1000
+
+
+def normalize_reason(reason: str | None) -> str | None:
+    """Separate Audit-Metadaten; vor jeder fachlichen Aenderung validieren."""
+    if reason is None:
+        return None
+    if not isinstance(reason, str) or len(reason) > REASON_MAX_LENGTH:
+        raise ApplicationError(400, "reason darf hoechstens 1000 Zeichen enthalten",
+                               code="invalid_reason", field="reason")
+    try:
+        reason.encode("utf-8")
+    except UnicodeError as exc:
+        raise ApplicationError(400, "reason muss gueltiger Unicode-Text sein",
+                               code="invalid_reason", field="reason") from exc
+    return reason.strip() or None
 
 
 def log_change(
@@ -21,6 +39,8 @@ def log_change(
     entity_id: int | None,
     action: str,
     changes: dict[str, Any] | None = None,
+    *,
+    reason: str | None = None,
 ) -> None:
     """Schreibt einen Eintrag ins Audit-Log.
 
@@ -30,6 +50,7 @@ def log_change(
         entity_id: ID der betroffenen Entitaet (None bei z.B. globalen Config-Aenderungen)
         action: 'create' | 'update' | 'delete' | 'status_change' | 'revoke' | ...
         changes: Optional dict mit Feld -> neuer Wert (oder {'old': ..., 'new': ...})
+        reason: Optionale Begruendung (max. 1000 Zeichen), getrennt vom Feld-Diff.
 
     Schluckt Fehler bewusst (Audit darf nie den eigentlichen Request zum Scheitern bringen).
     """
@@ -44,9 +65,9 @@ def log_change(
         try:
             db.execute(
                 """INSERT INTO audit_log
-                   (actor_user_id, actor_type, entity_type, entity_id, action, changes_json)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (actor_user_id, actor_type, entity_type, entity_id, action, changes_json),
+                   (actor_user_id, actor_type, entity_type, entity_id, action, changes_json, reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (actor_user_id, actor_type, entity_type, entity_id, action, changes_json, normalize_reason(reason)),
             )
             db.commit()
         finally:

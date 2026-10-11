@@ -168,11 +168,13 @@ class MCPProjectPaginationTests(unittest.TestCase):
         for compact_item, full_item in zip(compact["items"], detailed["items"]):
             self.assertNotIn("description", compact_item)
             self.assertNotIn("description_format", compact_item)
+            self.assertNotIn("description_revision", compact_item)
             self.assertEqual(full_item["description"], description)
             self.assertEqual(full_item["description_format"], "markdown")
+            self.assertEqual(len(full_item["description_revision"]), 64)
             self.assertEqual(compact_item, {
                 key: value for key, value in full_item.items()
-                if key not in ("description", "description_format")
+                if key not in ("description", "description_format", "description_revision")
             })
         detail = api.get_project(ids[0])
         self.assertEqual(detail["description"], description)

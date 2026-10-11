@@ -197,6 +197,7 @@ class TextFileEditor {
         this.closed = true;
         this.controller.abort();
         MarkdownEditor.drafts.delete(this.editorId);
+        MarkdownEditor.draftRevisions.delete(this.editorId);
         window.removeEventListener('beforeunload', this.beforeUnload);
         this.shell.removeEventListener('keydown', this.onKeyDown);
         this.overlay?.remove();

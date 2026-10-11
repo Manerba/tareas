@@ -26,14 +26,20 @@ from fastapi import HTTPException
 from pydantic import Field
 
 from dashboard.agent_guide import build_agent_guide_markdown, build_agent_metadata
-from dashboard.audit_log import log_change, diff_fields
+from dashboard.audit_log import log_change, diff_fields, normalize_reason
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.task_types import normalize_task_type
 from dashboard.task_status import TASK_STATUS_CTE, task_with_status
 from dashboard.task_validation import (
     ProjectStatus, StatusPercent, validate_project_status, validate_status_percent,
 )
-from dashboard.note_service import update_note_as_admin
+from dashboard.note_service import update_note_as_admin, handoff_revision, handoff_can_write
+from dashboard.description_service import (
+    description_revision as make_description_revision, check_description_revision,
+    patch_description as apply_description_patch,
+)
+from dashboard.project_views import without_descriptions, compact_update_result, get_project_status as project_status_view
+from dashboard.search_service import search_content
 from dashboard.permissions import require_task_access, require_subtask_access, task_visibility_sql
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
 from dashboard.project_links import (
@@ -95,6 +101,7 @@ def _task_to_dict(row, *, include_description: bool = True) -> dict:
     if include_description:
         result["description"] = row["description"] or ""
         result["description_format"] = row["description_format"]
+        result["description_revision"] = make_description_revision(row["description"], row["description_format"])
     return result
 
 
@@ -105,6 +112,7 @@ def _subtask_to_dict(row) -> dict:
         "name": row["name"],
         "description": row["description"] or "",
         "description_format": row["description_format"],
+        "description_revision": make_description_revision(row["description"], row["description_format"]),
         "area_id": row["area_id"],
         "deadline": row["deadline"],
         "priority": row["priority"],
@@ -272,14 +280,17 @@ def list_projects_page(
 
 
 @mcp.tool
-def get_project(project_id: int) -> dict:
+def get_project(project_id: int, include_description: bool = True) -> dict:
     """Holt ein Projekt inkl. aller Subtasks und ihrer Abhaengigkeiten in einem Call.
 
     Der Status folgt erledigten Teilaufgaben: keine = offen, einige =
     in_arbeit, alle = erledigt. Leere Projekte sind offen, abgebrochen hat
     Vorrang. Normale Aufgaben behalten ihren manuell gesetzten Status.
+    Fuer die uebliche kompakte Arbeit include_description=false setzen: entfernt
+    Projekt- und Teilaufgaben-Volltexte. Standard true erhaelt bisherige Clients.
     """
     with db_query() as db:
+        db.execute("BEGIN")
         task = task_with_status(db, project_id)
         if not task:
             raise MCPToolError("task_not_found", f"Projekt {project_id} nicht gefunden", field="project_id")
@@ -303,7 +314,39 @@ def get_project(project_id: int) -> dict:
             st = _subtask_to_dict(s)
             st["predecessor_ids"] = dep_map.get(s["id"], [])
             result["subtasks"].append(st)
-        return result
+        return result if include_description else without_descriptions(result)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+def get_project_status(project_id: int) -> dict:
+    """Arbeitsstand in einem Aufruf: sichtbare Teilaufgaben, letzter Handoff und Blocker.
+
+    Keine Beschreibungen; Handoff-Vorschau erste nichtleere Zeile (max. 200 Zeichen).
+    handoff.get laedt einen Treffer gezielt nach. id bleibt die technische Referenz,
+    position_number ist nur Anzeigereihenfolge, name enthaelt den fachlichen Titel.
+    readiness: completed (100%), ready, blocked, delegated (Kindprojekt), cancelled,
+    restricted (unsichtbare Vorgaenger). Projektknoten 0 ist ein Startanker.
+    Zaehler beziehen sich ausschliesslich auf sichtbare Teilaufgaben.
+    """
+    with db_query() as db:
+        return _access(project_status_view, db, project_id, _user())
+
+
+@mcp.tool
+def patch_description(
+    task_id: int, revision: str, operation: Literal["append", "replace"], text: str,
+    old_text: str | None = None, subtask_id: int | None = None,
+) -> dict:
+    """Beschreibung mit gelesener description_revision atomar teilweise aendern.
+
+    task_id ist die Projekt-/Aufgaben-ID; subtask_id waehlt deren Teilaufgabe.
+    append haengt text exakt ohne Zeilenumbruch an; replace ersetzt old_text nur
+    bei exakt einer Fundstelle (auch ueberlappende zaehlen). Format bleibt erhalten.
+    Veraltete Revision: revision_conflict, kein Schreiben; neu lesen und abgleichen.
+    Ergebnis enthaelt nur IDs, Textlaenge, Format und neue Revision, keine Volltexte.
+    """
+    return _access(apply_description_patch, task_id, _user(), revision=revision,
+                   operation=operation, text=text, old_text=old_text, subtask_id=subtask_id)
 
 
 @mcp.tool
@@ -358,6 +401,9 @@ def update_project(
     status: ProjectStatus | None = None,
     assigned_to: int | None = None,
     parent_subtask_id: Annotated[int, Field(strict=True, ge=0)] | None = None,
+    reason: str | None = None,
+    compact: bool = False,
+    description_revision: str | None = None,
 ) -> dict:
     """Aktualisiert ein Projekt. Nur uebergebene Felder werden geaendert.
 
@@ -369,8 +415,13 @@ def update_project(
     parent_subtask_id verknuepft mit einer Eltern-Teilaufgabe (PID), 0 trennt.
     Beim Trennen bleibt deren letzter Fortschritt erhalten und wird editierbar.
     Verknuepfung/Trennung brauchen Schreibrechte auf Projekt und Eltern-Subtask.
+    reason ist eine optionale Audit-Begruendung (max. 1000 Zeichen, leer = keine).
+    compact=true bestaetigt nur geaenderte Felder und wirksame kurze Werte.
+    Bei description die gelesene description_revision mitsenden; ohne Revision
+    bleibt das bisherige bedingungslose Volltext-Ersetzen kompatibel.
     """
     user = _user()
+    reason = _access(normalize_reason, reason)
     if status is not None:
         status = _access(validate_project_status, status)
     with db_transaction() as db:
@@ -391,7 +442,9 @@ def update_project(
         if name is not None:
             updates.append("name = ?"); values.append(name); new_vals["name"] = name
         if description is not None:
+            _access(check_description_revision, before, description_revision)
             updates.append("description_format = 'markdown'")
+            new_vals["description_format"] = "markdown"
             updates.append("description = ?"); values.append(description); new_vals["description"] = description
         if deadline is not None:
             updates.append("deadline = ?"); values.append(deadline); new_vals["deadline"] = deadline
@@ -411,8 +464,9 @@ def update_project(
             db.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
         after = task_with_status(db, project_id)
     changes = diff_fields(dict(before), {**dict(before), **new_vals}, list(new_vals.keys()))
-    log_change(user, "task", project_id, "update", changes)
-    return _task_to_dict(after)
+    log_change(user, "task", project_id, "update", changes, reason=reason)
+    result = _task_to_dict(after)
+    return compact_update_result(result, changes) if compact else result
 
 
 @mcp.tool
@@ -434,9 +488,14 @@ def delete_project(project_id: int) -> dict:
 # ============================================================
 
 @mcp.tool
-def list_subtasks(project_id: int) -> list[dict]:
-    """Listet alle Teilaufgaben eines Projekts inkl. predecessor_ids."""
+def list_subtasks(project_id: int, include_description: bool = True) -> list[dict]:
+    """Sichtbare Teilaufgaben inkl. predecessor_ids; include_description=false spart Volltexte.
+
+    id ist stabil, position_number veraenderliche Reihenfolge, name fachlicher Titel
+    ohne vorangestellte Positionsnummer. Details liefert get_subtask.
+    """
     with db_query() as db:
+        db.execute("BEGIN")
         user = _user()
         _, rights = _access(require_task_access, db, project_id, user, None)
         if not rights["can_read"] and not db.execute(
@@ -464,7 +523,7 @@ def list_subtasks(project_id: int) -> list[dict]:
             st = _subtask_to_dict(s)
             st["predecessor_ids"] = dep_map.get(s["id"], [])
             result.append(st)
-        return result
+        return result if include_description else without_descriptions(result)
 
 
 @mcp.tool
@@ -498,7 +557,9 @@ def create_subtask(
     depends_on_project: bool = False,
 ) -> dict:
     """Legt eine Teilaufgabe an. Vorgaenger muessen zum Projekt gehoeren.
-    Keine Zyklen oder transitiv redundanten Abhaengigkeiten."""
+    Keine Zyklen oder transitiv redundanten Abhaengigkeiten.
+    name ist der fachliche Titel ohne Positionspraefix. id bleibt stabil,
+    position_number ist allein fuer die veraenderliche Anzeigereihenfolge da."""
     user = _user()
     status_percent = _access(validate_status_percent, status_percent)
     if not name.strip():
@@ -552,13 +613,20 @@ def update_subtask(
     status_percent: StatusPercent | None = None,
     assigned_to: int | None = None,
     predecessor_ids: list[int] | None = None,
+    reason: str | None = None,
+    compact: bool = False,
+    description_revision: str | None = None,
 ) -> dict:
     """Aktualisiert eine Teilaufgabe. Nur uebergebene Felder werden geaendert.
     predecessor_ids ersetzt KOMPLETT die bestehenden Vorgaenger.
     Keine Zyklen oder transitiv redundanten Abhaengigkeiten, auch nicht an anderen Teilaufgaben.
     Bei progress_automatic=true ist status_percent gesperrt (Fehlercode
-    linked_project_progress_readonly). Stattdessen das Kind-Projekt bearbeiten."""
+    linked_project_progress_readonly). Stattdessen das Kind-Projekt bearbeiten.
+    reason ist eine optionale Audit-Begruendung (max. 1000 Zeichen, leer = keine).
+    compact=true bestaetigt kurze Werte ohne Beschreibungen. description_revision
+    schuetzt Beschreibungsupdates; ohne Revision bleibt legacy Ersetzen moeglich."""
     user = _user()
+    reason = _access(normalize_reason, reason)
     if status_percent is not None:
         status_percent = _access(validate_status_percent, status_percent)
     with db_transaction() as db:
@@ -573,12 +641,18 @@ def update_subtask(
             raise MCPToolError("permission_denied", "Nur Ersteller und Admins duerfen Zuweisungen aendern", field="assigned_to")
         if predecessor_ids is not None:
             _access(require_task_access, db, before["project_id"], user, "structure")
+        old_predecessors = [r[0] for r in db.execute(
+            "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ? ORDER BY depends_on_id",
+            (subtask_id,),
+        )] if predecessor_ids is not None else None
         updates, values = [], []
         new_vals: dict = {}
         if name is not None:
             updates.append("name = ?"); values.append(name); new_vals["name"] = name
         if description is not None:
+            _access(check_description_revision, before, description_revision)
             updates.append("description_format = 'markdown'")
+            new_vals["description_format"] = "markdown"
             updates.append("description = ?"); values.append(description); new_vals["description"] = description
         if area_id is not None:
             updates.append("area_id = ?"); values.append(area_id); new_vals["area_id"] = area_id
@@ -606,11 +680,16 @@ def update_subtask(
             "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ?",
             (subtask_id,),
         ).fetchall()
-    changes = {k: {"old": before[k] if k in before.keys() else None, "new": v} for k, v in new_vals.items()}
-    log_change(user, "sub_task", subtask_id, "update", changes)
+    old_values = dict(before)
+    if predecessor_ids is not None:
+        old_values["predecessor_ids"] = old_predecessors
+        new_vals["predecessor_ids"] = sorted(p["depends_on_id"] for p in preds)
+        new_vals["depends_on_project"] = bool(after["depends_on_project"])
+    changes = diff_fields(old_values, {**old_values, **new_vals}, list(new_vals))
+    log_change(user, "sub_task", subtask_id, "update", changes, reason=reason)
     result = _subtask_to_dict(after)
     result["predecessor_ids"] = [p["depends_on_id"] for p in preds]
-    return result
+    return compact_update_result(result, changes) if compact else result
 
 
 @mcp.tool
@@ -634,7 +713,7 @@ def delete_subtask(subtask_id: int) -> dict:
 @mcp.tool
 def move_subtask(subtask_id: int, direction: str) -> dict:
     """Verschiebt eine Teilaufgabe um eine Position. direction muss 'up' oder 'down' sein.
-    Abhaengigkeiten bleiben dabei unveraendert."""
+    Abhaengigkeiten, stabile id und fachlicher name bleiben unveraendert."""
     user = _user()
     direction = (direction or "").strip().lower()
     if direction not in {"up", "down"}:
@@ -794,9 +873,9 @@ def remove_dependency(subtask_id: int, depends_on_id: int) -> dict:
 # Notes und Handoffs
 # ============================================================
 
-def _access(operation, *args, **kwargs):
+def _access(callback, *args, **kwargs):
     try:
-        return operation(*args, **kwargs)
+        return callback(*args, **kwargs)
     except HTTPException as exc:
         raise tool_error_from_http(exc) from exc
 
@@ -1042,6 +1121,8 @@ def handoff_list(task_id: int, subtask_id: int | None = None, limit: int = 100) 
                 "content": r["content"] or "",
                 "content_format": r["content_format"],
                 "created_at": r["created_at"],
+                "revision": handoff_revision(r["content"] or "", r["content_format"]),
+                "can_write": handoff_can_write(db, task_id, user, r, subtask_id),
             }
             for r in rows
         ]
@@ -1098,16 +1179,57 @@ def handoff_add(task_id: int, content: str, subtask_id: int | None = None) -> di
     }
 
 
+@mcp.tool(name="handoff.get", annotations={"readOnlyHint": True})
+def handoff_get(task_id: int, handoff_id: str, subtask_id: int | None = None) -> dict:
+    """Einen Handoff gezielt mit Inhalt, Revision und aktuellen Korrekturrechten lesen.
+
+    handoff_id stammt aus get_project_status, search oder handoff.list.
+    """
+    scope, local_id = _parse_handoff_id(handoff_id)
+    user = _user()
+    with db_query() as db:
+        db.execute("BEGIN")
+        if scope == "task":
+            if subtask_id is not None:
+                raise MCPToolError("invalid_handoff_target", "task-Handoff hat keine subtask_id", field="subtask_id")
+            _require_task_read_access(db, task_id, user)
+            row = db.execute(
+                """SELECT e.*, u.username AS user_name FROM task_note_entries e
+                   JOIN users u ON u.id=e.user_id WHERE e.id=? AND e.task_id=?""", (local_id, task_id),
+            ).fetchone()
+        else:
+            row = db.execute(
+                """SELECT e.*, u.username AS user_name FROM sub_task_note_entries e
+                   JOIN sub_tasks st ON st.id=e.sub_task_id JOIN users u ON u.id=e.user_id
+                   WHERE e.id=? AND st.project_id=?""", (local_id, task_id),
+            ).fetchone()
+            if row:
+                if subtask_id is not None and subtask_id != row["sub_task_id"]:
+                    raise MCPToolError("handoff_not_found", "Handoff nicht gefunden", field="handoff_id")
+                subtask_id = row["sub_task_id"]
+                _require_subtask_read_access(db, task_id, subtask_id, user)
+        if not row:
+            raise MCPToolError("handoff_not_found", "Handoff nicht gefunden", field="handoff_id")
+        return {"handoff_id": handoff_id, "local_id": local_id, "task_id": task_id,
+                "subtask_id": subtask_id, "user_id": row["user_id"], "user_name": row["user_name"],
+                "created_at": row["created_at"], "content": row["content"] or "",
+                "content_format": row["content_format"],
+                "revision": handoff_revision(row["content"] or "", row["content_format"]),
+                "can_write": handoff_can_write(db, task_id, user, row, subtask_id)}
+
+
 @mcp.tool(name="handoff.update")
-def handoff_update(task_id: int, handoff_id: str, content: str, subtask_id: int | None = None) -> dict:
-    """Admin: Handoff-Inhalt korrigieren; Autor und Erstellungszeit bleiben erhalten.
+def handoff_update(task_id: int, handoff_id: str, content: str, subtask_id: int | None = None,
+                   revision: str | None = None) -> dict:
+    """Handoff korrigieren; Autor, ID und Erstellungszeit bleiben erhalten.
 
     handoff_id stammt aus handoff.list ('task:123' oder 'subtask:456').
     Eine angegebene subtask_id muss zum Handoff und zum Projekt gehoeren.
+    Autoren mit Beitragsrechten duerfen innerhalb von 300 Sekunden korrigieren
+    und muessen revision aus handoff.get/list mitsenden. Admins sind zeitlich
+    unbeschraenkt; auch sie sollten die optionale Revision fuer Konfliktschutz nutzen.
     """
     user = _user()
-    if not user.get("is_admin"):
-        raise MCPToolError("permission_denied", "Nur Admins duerfen Handoffs bearbeiten")
     scope, local_id = _parse_handoff_id(handoff_id)
     if scope == "task" and subtask_id is not None:
         raise MCPToolError("invalid_handoff_target", "task-Handoff darf nicht mit subtask_id bearbeitet werden", fields=["handoff_id", "subtask_id"])
@@ -1122,7 +1244,7 @@ def handoff_update(task_id: int, handoff_id: str, content: str, subtask_id: int 
                 raise MCPToolError("handoff_not_found", "Handoff nicht gefunden", field="handoff_id")
             subtask_id = row["sub_task_id"]
     try:
-        return update_note_as_admin(task_id, content, user, subtask_id=subtask_id, entry_id=local_id)
+        return update_note_as_admin(task_id, content, user, subtask_id=subtask_id, entry_id=local_id, revision=revision)
     except HTTPException as exc:
         raise tool_error_from_http(exc) from exc
 
@@ -1339,6 +1461,27 @@ def file_write(task_id: int, path: str, content: str, encoding: Literal["utf-8",
     return {"task_id": task_id, "path": path, "storage_type": storage.kind, "size": len(raw), "written": True}
 
 
+@mcp.tool(name="file.append", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False})
+def file_append(task_id: int, path: str, content: str) -> dict:
+    """UTF-8-Text exakt an eine vorhandene Datei anhaengen (Bearbeitungsrechte).
+
+    Lokal/WebDAV, optionaler vorhandener UTF-8-BOM bleibt erhalten. Kein
+    automatischer Zeilenumbruch, kein UTF-16/Base64, keine Neuanlage.
+    Gesamtdatei nach Ergaenzung maximal 1 MiB. Leerer Text aendert keinen Inhalt.
+    Parallele Tareas-Schreibwege teilen dieselbe Prozesssperre. Nach unklarem
+    Netzwerkfehler vor Wiederholung mit file.read pruefen: nicht idempotent.
+    """
+    user, storage, path = _file_context(task_id, path, write=True)
+    if len(content) > MCP_FILE_MAX_BYTES:
+        raise MCPToolError("file_too_large", "Gesamtdatei darf maximal 1 MiB enthalten", field="content")
+    size, appended_bytes = _file_operation(storage.append_text, path, content, max_bytes=MCP_FILE_MAX_BYTES)
+    log_change(user, "task", task_id, "file_append", {
+        "path": path, "size": size, "appended_bytes": appended_bytes, "storage_type": storage.kind,
+    })
+    return {"task_id": task_id, "path": path, "size": size, "appended_bytes": appended_bytes,
+            "storage_type": storage.kind, "appended": True}
+
+
 @mcp.tool(name="file.mkdir", annotations={"readOnlyHint": False, "destructiveHint": False})
 def file_mkdir(task_id: int, path: str) -> dict:
     """Ordner anlegen (Bearbeitungsrechte). Relativer Pfad, Elternordner muessen existieren."""
@@ -1416,121 +1559,23 @@ def list_areas() -> list[dict]:
         return [{"id": r["id"], "name": r["name"]} for r in rows]
 
 
-@mcp.tool
-def search(query: str, limit: int = 20) -> list[dict]:
-    """Volltextsuche ueber Name, Description, Notes und Handoffs.
+@mcp.tool(annotations={"readOnlyHint": True})
+def search(query: str, limit: int = 20, project_id: int | None = None,
+           types: list[str] | None = None, since: str | None = None) -> list[dict]:
+    """Relevanzsortierte Suche mit Fundstellen ueber Aufgaben, Teilaufgaben, Notizen und Handoffs.
 
-    Liefert Treffer mit type ('task'|'sub_task'|'task_note'|'sub_task_note'|
-    'task_handoff'|'sub_task_handoff') und kurzem Snippet.
+    Unzitierte Woerter sind UND-verknuepft, "Phrasen" suchen die Wortfolge,
+    fenster* findet Wortanfaenge (Fenstern), keine Teilwoerter (Zeitfenster).
+    Filter kombinieren: project_id, types (task, sub_task, task_note, sub_task_note,
+    task_handoff, sub_task_handoff oder handoff fuer beide), since mit ISO8601-Zone.
+    Datum: created_at, fuer editierbare Notizen updated_at; Ausgabe in UTC.
+    snippet ist Klartext, snippet_html enthaelt nur escaped Text und <mark>.
+    Rechte werden vor dem Limit (1..200) geprueft. handoff.get laedt Handoffs nach.
+    Leere Suche liefert [], ungueltige Syntax invalid_search_query statt leerer Treffer.
     """
-    if not query.strip():
-        return []
-    q = f"%{query.strip()}%"
-    limit = max(1, min(limit, 200))
-    results: list[dict] = []
-    user = _user()
     with db_query() as db:
-        task_vis_sql, task_vis_params = _task_visibility_sql("t", user)
-        for r in db.execute(
-            """SELECT id, name, description, created_by, assigned_to
-               FROM tasks t
-               WHERE (name LIKE ? OR description LIKE ?)
-                 AND """ + task_vis_sql + """
-               LIMIT ?""",
-            (q, q, *task_vis_params, limit),
-        ).fetchall():
-            results.append({
-                "type": "task", "id": r["id"], "name": r["name"],
-                "snippet": (r["description"] or "")[:200],
-            })
-        subtask_vis_sql, subtask_vis_params = _subtask_visibility_sql("t", "st", user)
-        for r in db.execute(
-            """SELECT st.id, st.project_id, st.name, st.description,
-                      st.assigned_to AS subtask_assigned_to,
-                      t.created_by AS task_created_by
-               FROM sub_tasks st
-               JOIN tasks t ON t.id = st.project_id
-               WHERE (st.name LIKE ? OR st.description LIKE ?)
-                 AND """ + subtask_vis_sql + """
-               LIMIT ?""",
-            (q, q, *subtask_vis_params, limit),
-        ).fetchall():
-            results.append({
-                "type": "sub_task", "id": r["id"], "project_id": r["project_id"],
-                "name": r["name"], "snippet": (r["description"] or "")[:200],
-            })
-        for r in db.execute(
-            """SELECT tn.task_id, tn.user_id, tn.content, u.username
-               FROM task_notes tn
-               JOIN users u ON tn.user_id = u.id
-               JOIN tasks t ON t.id = tn.task_id
-               WHERE tn.content LIKE ?
-                 AND """ + task_vis_sql + """
-               LIMIT ?""",
-            (q, *task_vis_params, limit),
-        ).fetchall():
-            results.append({
-                "type": "task_note", "task_id": r["task_id"], "user": r["username"],
-                "snippet": (r["content"] or "")[:200],
-            })
-        for r in db.execute(
-            """SELECT sn.sub_task_id, st.project_id, sn.user_id, sn.content, u.username
-               FROM sub_task_notes sn
-               JOIN users u ON sn.user_id = u.id
-               JOIN sub_tasks st ON st.id = sn.sub_task_id
-               JOIN tasks t ON t.id = st.project_id
-               WHERE sn.content LIKE ?
-                 AND """ + subtask_vis_sql + """
-               LIMIT ?""",
-            (q, *subtask_vis_params, limit),
-        ).fetchall():
-            results.append({
-                "type": "sub_task_note",
-                "task_id": r["project_id"],
-                "project_id": r["project_id"],
-                "subtask_id": r["sub_task_id"],
-                "user": r["username"],
-                "snippet": (r["content"] or "")[:200],
-            })
-        for r in db.execute(
-            """SELECT tne.id, tne.task_id, tne.user_id, tne.content, u.username
-               FROM task_note_entries tne
-               JOIN users u ON tne.user_id = u.id
-               JOIN tasks t ON t.id = tne.task_id
-               WHERE tne.content LIKE ?
-                 AND """ + task_vis_sql + """
-               LIMIT ?""",
-            (q, *task_vis_params, limit),
-        ).fetchall():
-            results.append({
-                "type": "task_handoff",
-                "handoff_id": _make_handoff_id("task", r["id"]),
-                "local_id": r["id"],
-                "task_id": r["task_id"], "user": r["username"],
-                "snippet": (r["content"] or "")[:200],
-            })
-        for r in db.execute(
-            """SELECT sne.id, sne.sub_task_id, st.project_id, sne.user_id, sne.content, u.username
-               FROM sub_task_note_entries sne
-               JOIN users u ON sne.user_id = u.id
-               JOIN sub_tasks st ON st.id = sne.sub_task_id
-               JOIN tasks t ON t.id = st.project_id
-               WHERE sne.content LIKE ?
-                 AND """ + subtask_vis_sql + """
-               LIMIT ?""",
-            (q, *subtask_vis_params, limit),
-        ).fetchall():
-            results.append({
-                "type": "sub_task_handoff",
-                "handoff_id": _make_handoff_id("subtask", r["id"]),
-                "local_id": r["id"],
-                "task_id": r["project_id"],
-                "project_id": r["project_id"],
-                "subtask_id": r["sub_task_id"],
-                "user": r["username"],
-                "snippet": (r["content"] or "")[:200],
-            })
-    return results[:limit]
+        return _access(search_content, db, _user(), query, limit,
+                       project_id=project_id, types=types, since=since)
 
 
 @mcp.tool

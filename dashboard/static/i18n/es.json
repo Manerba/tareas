@@ -483,5 +483,8 @@
   "projectLink.create": "Crear un proyecto hijo",
   "projectLink.detachHint": "Al desvincular se conserva el último progreso y se puede volver a editar. Ambos proyectos se mantienen.",
   "projectLink.detach": "Desvincular proyecto",
-  "projectLink.unavailable": "El proyecto vinculado no está disponible o no tiene permiso de lectura."
+  "projectLink.unavailable": "El proyecto vinculado no está disponible o no tiene permiso de lectura.",
+  "description.conflict": "La descripción ha cambiado desde que se cargó. Tu borrador se conserva. Cópialo y vuelve a cargar la descripción actual.",
+  "handoff.editWindowExpired": "El plazo de cinco minutos para corregir esta entrega ha terminado. Tu borrador se conserva.",
+  "mcp.auditReason": "Motivo del cambio"
 }

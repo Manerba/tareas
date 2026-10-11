@@ -118,6 +118,8 @@ def _request_fields(payload: dict, name: str, arguments: dict) -> dict:
         aliases["predecessor_ids"] = "depends_on_id"
     if name == "note.update":
         aliases["note_user_id"] = "user_id"
+    if name == "patch_description":
+        aliases["description_revision"] = "revision"
     if name == "file.move" and payload.get("field") == "path":
         if payload["code"] == "file_exists":
             aliases["path"] = "destination"

@@ -483,5 +483,8 @@
   "projectLink.create": "Creează un proiect copil",
   "projectLink.detachHint": "Dezasocierea păstrează ultimul progres și permite din nou editarea acestuia. Ambele proiecte sunt păstrate.",
   "projectLink.detach": "Dezasociază proiectul",
-  "projectLink.unavailable": "Proiectul asociat nu este disponibil sau nu aveți drept de citire."
+  "projectLink.unavailable": "Proiectul asociat nu este disponibil sau nu aveți drept de citire.",
+  "description.conflict": "Descrierea s-a schimbat de la încărcare. Ciorna este păstrată. Copiați-o și reîncărcați descrierea actuală.",
+  "handoff.editWindowExpired": "Intervalul de cinci minute pentru corectarea acestei predări a expirat. Ciorna este păstrată.",
+  "mcp.auditReason": "Motivul modificării"
 }
