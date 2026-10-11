@@ -313,6 +313,8 @@ blank means none) is stored separately in the audit log and displayed in Admin.
 `get_project_status(project_id)` returns a consistent snapshot of visible work,
 counts, dependency readiness and each subtask's latest handoff preview (at most
 200 characters). Load a handoff using `handoff.get(task_id, handoff_id)`.
+With project read access, `project.description_revision` provides the revision
+for `update_project` or `patch_description` without loading description texts.
 Completed work is never ready; cancellation prevents starting open work; linked
 child projects are delegated work; project node `0` is a start anchor. Hidden
 predecessors produce `restricted`, without exposing their IDs or progress.

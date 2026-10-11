@@ -200,7 +200,9 @@ leere Begruendungen werden null. Es wird getrennt vom Felddiff im Audit mit
 Akteur und Aenderungsereignis gespeichert und in der Admin-Ansicht angezeigt.
 
 `get_project_status(project_id=75)` liest Projektmetadaten, Zaehler und alle
-sichtbaren Teilaufgaben in einem konsistenten Snapshot. Jede Zeile enthaelt
+sichtbaren Teilaufgaben in einem konsistenten Snapshot. Bei Projekt-Leserecht
+liefert `project.description_revision` die Revision fuer `update_project` oder
+`patch_description`, ohne Beschreibungstexte nachzuladen. Jede Teilaufgabenzeile enthaelt
 ID, Position, Titel, Bereich, Prozentwert, `readiness`, `blocker_ids` und
 `latest_handoff` (null, wenn keiner existiert). Die Vorschau ist die erste
 nichtleere Zeile, maximal 200 Zeichen; Neuheit folgt Erstellungszeit und ID,
@@ -385,6 +387,7 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 Arbeitsregeln:
 
 - Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
+  Projekt-Beschreibungsrevision: `project.description_revision`.
 - Ueblich: `get_project/list_subtasks(include_description=false)`.
 - `update_project/update_subtask` bestaetigen nur mit `{"ok": true}`, ohne
   `compact`-Parameter. Optionale Audit-Begruendung: `reason`.

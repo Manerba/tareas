@@ -322,6 +322,8 @@ def get_project_status(project_id: int) -> dict:
     """Arbeitsstand in einem Aufruf: sichtbare Teilaufgaben, letzter Handoff und Blocker.
 
     Keine Beschreibungen; Handoff-Vorschau erste nichtleere Zeile (max. 200 Zeichen).
+    Bei Projekt-Leserecht enthaelt project.description_revision die Revision fuer
+    update_project/patch_description, ohne einen zusaetzlichen Detailabruf.
     handoff.get laedt einen Treffer gezielt nach. id bleibt die technische Referenz,
     position_number ist nur Anzeigereihenfolge, name enthaelt den fachlichen Titel.
     readiness: completed (100%), ready, blocked, delegated (Kindprojekt), cancelled,

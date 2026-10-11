@@ -208,9 +208,9 @@ class MCPEndpointTests(unittest.TestCase):
             ), TestClient(app, base_url=f'http://tareas.test:{port}') as client:
                 owner = self.initialize(client)
                 reader = self.initialize(client, 'reader')
-                initial = self.call(client, owner, 'get_project', {
-                    'project_id': self.project, 'include_description': False,
-                })
+                initial = self.call(client, owner, 'get_project_status', {
+                    'project_id': self.project,
+                })['project']
                 self.assertNotIn('description', initial)
                 source = f'## Transport {port}\n' + 'Ausführliche Beschreibung. ' * 80
                 reason = f'Integration auf Port {port}: Beschreibung präzisieren ✓'
@@ -251,7 +251,10 @@ class MCPEndpointTests(unittest.TestCase):
                 self.assertEqual((selected['position_number'], selected['name']),
                                  (subtask['position_number'], f'Prüfung Port {port}'))
 
-                revision = compact['description_revision']
+                project_status = self.call(client, owner, 'get_project_status', {'project_id': self.project})['project']
+                self.assertNotIn('description', project_status)
+                revision = project_status['description_revision']
+                self.assertEqual(revision, compact['description_revision'])
                 appended = self.call(client, owner, 'patch_description', {
                     'task_id': self.project, 'revision': revision, 'operation': 'append', 'text': '\nErgänzung ✓',
                 })

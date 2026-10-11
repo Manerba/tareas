@@ -6,6 +6,7 @@ Namen bleiben fachliche Titel, auch wenn sie sinnvolle Zahlen enthalten.
 
 from collections import Counter
 
+from dashboard.description_service import description_revision
 from dashboard.errors import ApplicationError
 from dashboard.permissions import task_permissions
 from dashboard.task_status import task_with_status
@@ -135,6 +136,7 @@ def get_project_status(db, project_id: int, user: dict) -> dict:
                 "id", "name", "task_type", "priority", "deadline", "parent_subtask_id", "parent_project_id", "progress_percent",
             )}
             project["status"] = task["effective_status"]
+            project["description_revision"] = description_revision(task["description"], task["description_format"])
         else:
             project = {"id": project_id, "limited": True}
         return {"project": project, "counts": summary, "subtasks": subtasks}

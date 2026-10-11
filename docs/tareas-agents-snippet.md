@@ -23,6 +23,7 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 Arbeitsregeln:
 
 - Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
+  Projekt-Beschreibungsrevision: `project.description_revision`.
 - Ueblich: `get_project/list_subtasks(include_description=false)`.
 - `update_project/update_subtask` bestaetigen nur mit `{"ok": true}`, ohne
   `compact`-Parameter. Optionale Audit-Begruendung: `reason`.

@@ -89,7 +89,9 @@ class ProjectViewTests(unittest.TestCase):
         })
         self.assertEqual(result["subtasks"][1]["id"], second)
         self.assertIsNone(result["subtasks"][1]["latest_handoff"])
-        self.assertNotIn("description", json.dumps(result))
+        self.assertNotIn("description", result["project"])
+        self.assertTrue(all("description" not in item for item in result["subtasks"]))
+        self.assertNotIn("Private project specification", json.dumps(result))
         self.assertNotIn("Private following line", json.dumps(result))
         self.assertEqual(handoff_preview(" \n\r\n"), "")
 
@@ -185,16 +187,37 @@ class ProjectViewTests(unittest.TestCase):
             self.assertEqual(missing.exception.code, "task_not_found")
             self.assertFalse(db.in_transaction)
 
-    def test_consistent_snapshot_across_concurrent_progress_and_handoff_writes(self):
+    def test_project_description_revision_matches_detail_reads_and_format_changes(self):
+        for content in (None, "", "## Pruefung\nÄnderung 日本語 ✓\n" * 300):
+            revisions = []
+            for content_format in ("markdown", "html"):
+                with self.subTest(content_format=content_format, empty=not content):
+                    with closing(database.get_db()) as db, db:
+                        db.execute("UPDATE tasks SET description=?, description_format=? WHERE id=?",
+                                   (content, content_format, self.project))
+                    project = self.overview()["project"]
+                    revision = project["description_revision"]
+                    revisions.append(revision)
+                    self.assertEqual(revision, api.get_project(self.project, include_description=False)["description_revision"])
+                    self.assertRegex(revision, r"^[a-f0-9]{64}$")
+                    self.assertNotIn("description", project)
+                    for user in ("admin", "reader", "editor", "assignee", "creator"):
+                        self.assertEqual(self.overview(user)["project"]["description_revision"], revision)
+            self.assertNotEqual(*revisions)
+        api.update_project(self.project, priority=81)
+        self.assertEqual(self.overview()["project"]["description_revision"], revisions[-1])
+
+    def test_consistent_snapshot_across_concurrent_description_progress_and_handoff_writes(self):
         sid = self.subtask()
         old_handoff = self.handoff(sid, "Before")
+        old_revision = api.get_project(self.project, include_description=False)["description_revision"]
         wrote = []
         with closing(database.get_db()) as db:
             def observe(sql):
                 if "SELECT st.id, st.project_id" in sql and not wrote:
                     wrote.append(True)
                     with closing(database.get_db()) as other, other:
-                        other.execute("UPDATE tasks SET name='After title' WHERE id=?", (self.project,))
+                        other.execute("UPDATE tasks SET name='After title', description='After description' WHERE id=?", (self.project,))
                         other.execute("UPDATE sub_tasks SET status_percent=100 WHERE id=?", (sid,))
                         other.execute("INSERT INTO sub_task_note_entries (sub_task_id,user_id,content,created_at) VALUES (?,?,?,?)",
                                       (sid, self.users["owner"]["id"], "After", "2026-10-12 10:00:00"))
@@ -202,10 +225,14 @@ class ProjectViewTests(unittest.TestCase):
             first = get_project_status(db, self.project, self.users["owner"])
         self.assertTrue(wrote)
         self.assertEqual(first["project"]["name"], "Private project title")
+        self.assertEqual(first["project"]["description_revision"], old_revision)
         self.assertEqual(first["subtasks"][0]["status_percent"], 0)
         self.assertEqual(first["subtasks"][0]["latest_handoff"]["handoff_id"], f"subtask:{old_handoff}")
         second = self.overview()
         self.assertEqual(second["project"]["name"], "After title")
+        self.assertNotEqual(second["project"]["description_revision"], old_revision)
+        self.assertEqual(second["project"]["description_revision"],
+                         api.get_project(self.project, include_description=False)["description_revision"])
         self.assertEqual(second["project"]["status"], "erledigt")
         self.assertEqual(second["subtasks"][0]["latest_handoff"]["preview"], "After")
 

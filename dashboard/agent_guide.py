@@ -144,7 +144,7 @@ def build_agent_metadata(request: Request | None = None, *, mcp_base_url: str | 
             "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the REST file API or web UI. File contents are not recorded in the audit log.",
             "The same MCP Bearer token authenticates REST file list/download/upload/mkdir/move/delete at /api/tasks/{task_id}/files. Writes also require X-Requested-With: XMLHttpRequest. Uploads use multipart field file, maximum 500 MiB. Current task permissions, token revocation and the global MCP switch apply. Other REST endpoints require a browser session.",
             "Use get_project/list_subtasks(include_description=false) and get_project_status for efficient reads. update_project/update_subtask return only an ok=true acknowledgement; they have no compact parameter. Read the current state only when needed.",
-            "Description writes should send description_revision; patch_description requires revision and supports exact append or unique old_text replacement. Conflicts require rereading and merging.",
+            "Description writes should send description_revision; get_project_status includes project.description_revision with project read access, without description texts. patch_description requires revision and supports exact append or unique old_text replacement. Conflicts require rereading and merging.",
             "reason on updates is separate optional audit metadata, maximum 1000 characters; blank means none.",
             "file.append appends exact UTF-8 to an existing file, optional BOM preserved, no added newline, max 1 MiB total. Shared write lock; do not blindly retry after ambiguous network failures.",
             "search supports AND words, quoted phrases and word* prefixes; filters project_id/types/since, relevance across types, safe snippets. Prefixes do not find interior substrings.",
@@ -171,6 +171,7 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 Arbeitsregeln:
 
 - Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
+  Projekt-Beschreibungsrevision: `project.description_revision`.
 - Ueblich: `get_project/list_subtasks(include_description=false)`.
 - `update_project/update_subtask` bestaetigen nur mit `{{"ok": true}}`, ohne
   `compact`-Parameter. Optionale Audit-Begruendung: `reason`.
@@ -424,7 +425,9 @@ leere Begruendungen werden null. Es wird getrennt vom Felddiff im Audit mit
 Akteur und Aenderungsereignis gespeichert und in der Admin-Ansicht angezeigt.
 
 `get_project_status(project_id=75)` liest Projektmetadaten, Zaehler und alle
-sichtbaren Teilaufgaben in einem konsistenten Snapshot. Jede Zeile enthaelt
+sichtbaren Teilaufgaben in einem konsistenten Snapshot. Bei Projekt-Leserecht
+liefert `project.description_revision` die Revision fuer `update_project` oder
+`patch_description`, ohne Beschreibungstexte nachzuladen. Jede Teilaufgabenzeile enthaelt
 ID, Position, Titel, Bereich, Prozentwert, `readiness`, `blocker_ids` und
 `latest_handoff` (null, wenn keiner existiert). Die Vorschau ist die erste
 nichtleere Zeile, maximal 200 Zeichen; Neuheit folgt Erstellungszeit und ID,

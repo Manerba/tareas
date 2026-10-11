@@ -1,6 +1,8 @@
 # Changelog
 
 Zeitstempel;Version;Kategorie;Beschreibung
+11.10.2026 23:50;0.0.1+143;Docs;23 gezielte Tests in 28,839 Sekunden erfolgreich: Beschreibungsrevisionen fuer leere und Unicode-Texte sowie Formataenderungen, konsistenter Snapshot bei parallelen Aenderungen, Leserechte und direkte Nutzung fuer Updates/Patches auf beiden MCP-Zugaengen. Weiterhin vier DB-Abfragen, Statusantwort im 25-Teilaufgaben-Test um 92 Bytes ergaenzt
+11.10.2026 23:48;0.0.1+143;Feature;MCP get_project_status liefert bei Projekt-Leserecht project.description_revision fuer gezielte Beschreibungsupdates und patch_description. Revision aus demselben Snapshot ohne weitere DB-Abfrage, Beschreibungstexte oder zusaetzliche Rechte. Agent-Guide und Bootstrap-Regeln ergaenzt
 11.10.2026 23:37;0.0.1+142;Docs;218 Backend- und MCP-Tests in 290,236 Sekunden erfolgreich. Exakte OK-Antworten im MCP-Text und structuredContent auch fuer lange und leere Beschreibungen, Persistenz, Audit-Diffs, Statusableitung, Abhaengigkeiten, Rechte und Revisionskonflikte geprueft. Integration auf beiden MCP-Zugaengen sowie dynamischen und statischen Agent-Guide abgeglichen
 11.10.2026 23:33;0.0.1+142;Aenderung;MCP update_project und update_subtask bestaetigen erfolgreiche Aenderungen ausschliesslich mit {"ok": true}. compact-Parameter und aufwendige Antwortaufbereitung entfernt. Werkzeugbeschreibungen, Agent-Guide, Bootstrap-Regeln, README und Tests angepasst
 11.10.2026 23:00;0.0.1+141;Bugfix;Projekt 75 Teilaufgabe 373: Laufende Beschreibungsspeicherung beim Zeilen-Neuaufbau an den aktuellen Markdown-Editor uebergeben. Eingabesperre, bestaetigter Inhalt und Revision einschliesslich neuem Zeilenmodell bleiben konsistent. Fehler erhalten Entwurf und Basisrevision
