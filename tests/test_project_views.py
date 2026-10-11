@@ -11,11 +11,10 @@ from unittest.mock import patch
 from fastmcp import Client
 
 from dashboard import database, mcp_server as api
-from dashboard.description_service import description_revision
 from dashboard.errors import ApplicationError
 from dashboard.mcp_errors import MCPToolError
 from dashboard.project_views import (
-    compact_update_result, derive_readiness, get_project_status, handoff_preview, without_descriptions,
+    derive_readiness, get_project_status, handoff_preview, without_descriptions,
 )
 
 
@@ -66,6 +65,11 @@ class ProjectViewTests(unittest.TestCase):
     def overview(self, user="owner"):
         with closing(database.get_db()) as db:
             return get_project_status(db, self.project, self.users[user])
+
+    def last_changes(self):
+        with closing(database.get_db()) as db:
+            changes = db.execute("SELECT changes_json FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()[0]
+        return json.loads(changes) if changes else {}
 
     def test_handoff_latest_ties_preview_area_and_empty_entries(self):
         with closing(database.get_db()) as db:
@@ -229,15 +233,8 @@ class ProjectViewTests(unittest.TestCase):
         self.assertNotIn("description", stripped)
         self.assertNotIn("description", stripped["subtasks"][0])
         self.assertEqual(original["description"], "Original text")
-        text = "Änderung\nSonderzeichen 日本語"
-        compact = compact_update_result({"id": 7, "description": text, "description_format": "markdown", "status_percent": 50},
-                                        ["description", "status_percent"])
-        self.assertEqual(compact["description_length"], len(text))
-        self.assertEqual(compact["description_revision"], description_revision(text, "markdown"))
-        self.assertEqual(compact["values"], {"status_percent": 50})
-        self.assertNotIn(text, json.dumps(compact, ensure_ascii=False))
 
-    def test_mcp_compact_reads_writes_schema_and_compatibility_with_response_sizes(self):
+    def test_mcp_compact_reads_and_update_acknowledgements_with_response_sizes(self):
         description = "P" * 9000
         with closing(database.get_db()) as db, db:
             db.execute("UPDATE tasks SET description=? WHERE id=?", (description, self.project))
@@ -258,28 +255,44 @@ class ProjectViewTests(unittest.TestCase):
         self.assertNotIn("description", compact)
         self.assertTrue(all("description" not in item for item in compact["subtasks"]))
         self.assertTrue(all("description" not in item for item in api.list_subtasks(self.project, include_description=False)))
-        result = api.update_subtask(ids[0], status_percent=100, compact=True)
-        self.assertNotIn("S" * 100, json.dumps(result))
-        self.assertEqual(result["changed_fields"], ["status_percent"])
-        self.assertEqual(result["values"]["status_percent"], 100)
-        result = api.update_project(self.project, description="Fresh full text", compact=True)
-        self.assertEqual(result["description_length"], len("Fresh full text"))
-        self.assertNotIn("Fresh full text", json.dumps(result))
+        result = api.update_subtask(ids[0], status_percent=100)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(api.get_subtask(ids[0])["status_percent"], 100)
+        result = api.update_project(self.project, description="Fresh full text")
+        self.assertEqual(result, {"ok": True})
         self.assertEqual(api.get_project(self.project)["description"], "Fresh full text")
-        self.assertEqual(api.update_subtask(ids[0], priority=51)["description"], "S" * 4096)
+        self.assertEqual(api.update_subtask(ids[0], priority=51), {"ok": True})
+        self.assertEqual(api.get_subtask(ids[0])["description"], "S" * 4096)
 
         async def wire():
             async with Client(api.mcp) as client:
                 tools = {tool.name: tool for tool in await client.list_tools()}
                 self.assertTrue(tools["get_project"].inputSchema["properties"]["include_description"]["default"])
                 self.assertTrue(tools["list_subtasks"].inputSchema["properties"]["include_description"]["default"])
-                self.assertFalse(tools["update_project"].inputSchema["properties"]["compact"]["default"])
-                self.assertFalse(tools["update_subtask"].inputSchema["properties"]["compact"]["default"])
+                self.assertNotIn("compact", tools["update_project"].inputSchema["properties"])
+                self.assertNotIn("compact", tools["update_subtask"].inputSchema["properties"])
                 response = await client.call_tool("get_project_status", {"project_id": self.project})
                 self.assertFalse(response.is_error)
                 self.assertEqual(response.structured_content["counts"]["total"], 25)
-                response = await client.call_tool("update_subtask", {"subtask_id": ids[1], "status_percent": 50, "compact": True})
-                self.assertEqual(response.structured_content["values"]["status_percent"], 50)
+                for tool, identifier, value, read in (
+                    ("update_subtask", {"subtask_id": ids[1]}, {"status_percent": 40}, lambda: api.get_subtask(ids[1])),
+                    ("update_subtask", {"subtask_id": ids[1]}, {"description": "日本語" * 1400}, lambda: api.get_subtask(ids[1])),
+                    ("update_subtask", {"subtask_id": ids[1]}, {"description": ""}, lambda: api.get_subtask(ids[1])),
+                    ("update_project", {"project_id": self.project}, {"priority": 77}, lambda: api.get_project(self.project)),
+                    ("update_project", {"project_id": self.project}, {"description": "Ä" * 9000}, lambda: api.get_project(self.project)),
+                    ("update_project", {"project_id": self.project}, {"description": ""}, lambda: api.get_project(self.project)),
+                ):
+                    with self.subTest(tool=tool, field=next(iter(value)), empty=value.get("description") == ""):
+                        arguments = {**identifier, **value}
+                        if "description" in value:
+                            arguments["description_revision"] = read()["description_revision"]
+                        response = await client.call_tool(tool, arguments)
+                        self.assertFalse(response.is_error)
+                        self.assertEqual(response.structured_content, {"ok": True})
+                        self.assertEqual(json.loads(response.content[0].text), {"ok": True})
+                        persisted = read()
+                        for field, expected in value.items():
+                            self.assertEqual(persisted[field], expected)
         asyncio.run(wire())
 
     def test_position_changes_preserve_ids_titles_and_dependency_graph(self):
@@ -294,37 +307,42 @@ class ProjectViewTests(unittest.TestCase):
         self.assertEqual([item["position_number"] for item in result["subtasks"]], [1, 2, 3])
         self.assertEqual(api.get_subtask(third)["predecessor_ids"], [first])
 
-    def test_compact_updates_use_actual_diffs_effective_status_and_linked_progress(self):
+    def test_updates_preserve_audit_diffs_effective_status_and_linked_progress(self):
         parent_subtask = self.subtask()
         child = api.create_project("Delegierte Arbeit", parent_subtask_id=parent_subtask)["id"]
         leaf = api.create_subtask(child, "Fachliche Arbeit", description="Secret leaf specification")["id"]
         other = api.create_subtask(child, "Weitere Arbeit")["id"]
-        result = api.update_project(child, status="erledigt", compact=True)
-        self.assertEqual(result["changed_fields"], ["status"])
-        self.assertEqual(result["values"]["status"], "offen")
-        result = api.update_subtask(leaf, status_percent=100, compact=True)
-        self.assertEqual(result["changed_fields"], ["status_percent"])
-        self.assertNotIn("Secret leaf specification", json.dumps(result))
+        result = api.update_project(child, status="erledigt")
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(self.last_changes(), {"status": {"old": "offen", "new": "erledigt"}})
+        self.assertEqual(api.get_project(child)["status"], "offen")
+        result = api.update_subtask(leaf, status_percent=100)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(self.last_changes(), {"status_percent": {"old": 0, "new": 100}})
         parent = next(item for item in api.get_project(self.project, include_description=False)["subtasks"] if item["id"] == parent_subtask)
         self.assertEqual(parent["status_percent"], 50)
         self.assertTrue(parent["progress_automatic"])
         self.assertEqual(parent["child_project_id"], child)
-        result = api.update_subtask(parent_subtask, name="Nachverfolgung", compact=True)
-        self.assertEqual(result["values"]["status_percent"], 50)
-        self.assertTrue(result["values"]["progress_automatic"])
+        result = api.update_subtask(parent_subtask, name="Nachverfolgung")
+        self.assertEqual(result, {"ok": True})
+        parent = api.get_subtask(parent_subtask)
+        self.assertEqual(parent["name"], "Nachverfolgung")
+        self.assertEqual(parent["status_percent"], 50)
+        self.assertTrue(parent["progress_automatic"])
         with self.assertRaises(MCPToolError) as readonly:
-            api.update_subtask(parent_subtask, status_percent=100, compact=True)
+            api.update_subtask(parent_subtask, status_percent=100)
         self.assertEqual(readonly.exception.code, "linked_project_progress_readonly")
-        result = api.update_subtask(leaf, status_percent=100, compact=True)
-        self.assertEqual(result["changed_fields"], [])
-        result = api.update_subtask(leaf, description="Geänderter Volltext", compact=True)
-        self.assertEqual(result["changed_fields"], ["description"])
-        self.assertEqual(result["description_length"], len("Geänderter Volltext"))
-        self.assertNotIn("Geänderter Volltext", json.dumps(result, ensure_ascii=False))
-        api.update_subtask(other, status_percent=100, compact=True)
+        result = api.update_subtask(leaf, status_percent=100)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(self.last_changes(), {})
+        result = api.update_subtask(leaf, description="Geänderter Volltext")
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(self.last_changes(), {"description": {"old": "Secret leaf specification", "new": "Geänderter Volltext"}})
+        self.assertEqual(api.get_subtask(leaf)["description"], "Geänderter Volltext")
+        api.update_subtask(other, status_percent=100)
         self.assertEqual(api.get_project_status(self.project)["subtasks"][0]["readiness"], "completed")
 
-    def test_mcp_overview_visibility_and_compact_write_permissions(self):
+    def test_mcp_overview_visibility_and_write_permissions(self):
         visible = self.subtask("Assigned scope", assigned=self.users["subtask_only"]["id"])
         hidden = self.subtask("Hidden scope")
         self.handoff(visible, "Readable handoff")
@@ -335,15 +353,16 @@ class ProjectViewTests(unittest.TestCase):
         for include_description in (True, False):
             with self.assertRaises(MCPToolError):
                 api.get_project(self.project, include_description=include_description)
-        result = api.update_subtask(visible, status_percent=50, compact=True)
-        self.assertEqual(result["values"]["status_percent"], 50)
+        result = api.update_subtask(visible, status_percent=50)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(api.get_subtask(visible)["status_percent"], 50)
         with self.assertRaises(MCPToolError):
-            api.update_subtask(hidden, status_percent=50, compact=True)
+            api.update_subtask(hidden, status_percent=50)
         api.current_mcp_user.set(self.users["reader"])
         with self.assertRaises(MCPToolError):
-            api.update_project(self.project, description="Denied", compact=True)
+            api.update_project(self.project, description="Denied")
         with self.assertRaises(MCPToolError):
-            api.update_subtask(visible, description="Denied", compact=True)
+            api.update_subtask(visible, description="Denied")
         api.current_mcp_user.set(self.users["outsider"])
 
         async def wire():
@@ -354,21 +373,27 @@ class ProjectViewTests(unittest.TestCase):
                 self.assertNotIn("Assigned scope", json.dumps(result.structured_content))
         asyncio.run(wire())
 
-    def test_compact_dependency_changes_include_project_anchor_and_ignore_order_only(self):
+    def test_dependency_audit_includes_project_anchor_and_ignores_order_only(self):
         first, second, third = self.subtask("Erster Vorgänger"), self.subtask("Zweiter Vorgänger"), self.subtask("Folgearbeit")
-        anchor = api.update_subtask(third, predecessor_ids=[0], compact=True)
-        self.assertEqual(anchor["changed_fields"], ["depends_on_project"])
-        self.assertTrue(anchor["values"]["depends_on_project"])
+        anchor = api.update_subtask(third, predecessor_ids=[0])
+        self.assertEqual(anchor, {"ok": True})
+        self.assertEqual(self.last_changes(), {"depends_on_project": {"old": False, "new": True}})
+        self.assertTrue(api.get_subtask(third)["depends_on_project"])
         self.assertEqual(api.get_subtask(third)["predecessor_ids"], [])
-        repeated = api.update_subtask(third, predecessor_ids=[0], compact=True)
-        self.assertEqual(repeated["changed_fields"], [])
-        cleared = api.update_subtask(third, predecessor_ids=[], compact=True)
-        self.assertEqual(cleared["changed_fields"], ["depends_on_project"])
-        self.assertFalse(cleared["values"]["depends_on_project"])
-        linked = api.update_subtask(third, predecessor_ids=[second, first], compact=True)
-        self.assertEqual(linked["changed_fields"], ["predecessor_ids"])
-        repeated = api.update_subtask(third, predecessor_ids=[first, second], compact=True)
-        self.assertEqual(repeated["changed_fields"], [])
+        repeated = api.update_subtask(third, predecessor_ids=[0])
+        self.assertEqual(repeated, {"ok": True})
+        self.assertEqual(self.last_changes(), {})
+        cleared = api.update_subtask(third, predecessor_ids=[])
+        self.assertEqual(cleared, {"ok": True})
+        self.assertEqual(self.last_changes(), {"depends_on_project": {"old": True, "new": False}})
+        self.assertFalse(api.get_subtask(third)["depends_on_project"])
+        linked = api.update_subtask(third, predecessor_ids=[second, first])
+        self.assertEqual(linked, {"ok": True})
+        self.assertEqual(self.last_changes(), {"predecessor_ids": {"old": [], "new": [first, second]}})
+        self.assertEqual(sorted(api.get_subtask(third)["predecessor_ids"]), [first, second])
+        repeated = api.update_subtask(third, predecessor_ids=[first, second])
+        self.assertEqual(repeated, {"ok": True})
+        self.assertEqual(self.last_changes(), {})
 
 
 if __name__ == "__main__":

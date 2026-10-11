@@ -5,9 +5,7 @@ Namen bleiben fachliche Titel, auch wenn sie sinnvolle Zahlen enthalten.
 """
 
 from collections import Counter
-from collections.abc import Iterable
 
-from dashboard.description_service import description_revision
 from dashboard.errors import ApplicationError
 from dashboard.permissions import task_permissions
 from dashboard.task_status import task_with_status
@@ -24,34 +22,6 @@ def without_descriptions(payload):
     if isinstance(payload, dict):
         return {key: without_descriptions(value) for key, value in payload.items() if key != "description"}
     return payload
-
-
-def compact_update_result(result: dict, changed_fields: Iterable[str]) -> dict:
-    """Bestaetigt tatsaechliche Aenderungen, ohne alte oder neue Volltexte zu spiegeln."""
-    fields = sorted(set(changed_fields))
-    # Nur bekannte kurze Fachwerte: auch spaetere komplexe Ergebnisfelder duerfen
-    # nicht versehentlich Beschreibungen oder andere Volltexte zuruecksenden.
-    allowed = {
-        "name", "status", "priority", "deadline", "assigned_to", "area_id",
-        "status_percent", "position_number", "parent_subtask_id", "parent_project_id",
-        "predecessor_ids", "depends_on_project", "description_format",
-    }
-    values = {key: result[key] for key in fields if key in allowed and key in result}
-    for key in ("status", "progress_percent", "status_percent", "progress_automatic", "child_project_id"):
-        if key in result:
-            values[key] = result[key]
-    response = {"id": result["id"], "updated": True, "changed_fields": fields, "values": values}
-    if "project_id" in result:
-        response["project_id"] = result["project_id"]
-    if "description" in fields or "description_format" in fields:
-        content = result.get("description") or ""
-        content_format = result.get("description_format", "markdown")
-        response.update(
-            description_length=result.get("description_length", len(content)),
-            description_format=content_format,
-            description_revision=result.get("description_revision") or description_revision(content, content_format),
-        )
-    return response
 
 
 def handoff_preview(content: str | None) -> str:

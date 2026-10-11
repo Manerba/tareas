@@ -78,7 +78,8 @@ class ProjectStatusTests(unittest.TestCase):
                 project_id, _ = self.project(progress, status="erledigt")
                 self.assert_status(project_id, expected)
                 updated = mcp_server.update_project(project_id, name="Renamed")
-                self.assertEqual(updated["status"], expected)
+                self.assertEqual(updated, {"ok": True})
+                self.assert_status(project_id, expected)
 
     def test_create_returns_effective_status_for_empty_projects_and_manual_tasks(self):
         for status in ("offen", "in_arbeit", "erledigt", "abgebrochen"):
@@ -109,10 +110,10 @@ class ProjectStatusTests(unittest.TestCase):
             with self.subTest(progress=progress):
                 project_id, _ = self.project(progress)
                 cancelled = mcp_server.update_project(project_id, status="abgebrochen")
-                self.assertEqual(cancelled["status"], "abgebrochen")
+                self.assertEqual(cancelled, {"ok": True})
                 self.assert_status(project_id, "abgebrochen")
                 resumed = mcp_server.update_project(project_id, status="offen")
-                self.assertEqual(resumed["status"], expected)
+                self.assertEqual(resumed, {"ok": True})
                 self.assert_status(project_id, expected)
 
     def test_progress_can_change_while_cancelled_and_resume_uses_current_progress(self):
@@ -123,7 +124,8 @@ class ProjectStatusTests(unittest.TestCase):
         response = self.client.put(f"/api/tasks/{project_id}", json={"status": "offen"})
         self.assertEqual(response.status_code, 200, response.text)
         self.assert_status(project_id, "erledigt")
-        self.assertEqual(mcp_server.update_project(project_id, status="in_arbeit")["status"], "erledigt")
+        self.assertEqual(mcp_server.update_project(project_id, status="in_arbeit"), {"ok": True})
+        self.assert_status(project_id, "erledigt")
 
     def test_converted_task_keeps_manual_status_despite_remaining_subtasks(self):
         project_id, _ = self.project([100, 100])
@@ -131,7 +133,7 @@ class ProjectStatusTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         for status in ("offen", "in_arbeit", "erledigt", "abgebrochen"):
             with self.subTest(status=status):
-                self.assertEqual(mcp_server.update_project(project_id, status=status)["status"], status)
+                self.assertEqual(mcp_server.update_project(project_id, status=status), {"ok": True})
                 self.assert_status(project_id, status)
         response = self.client.put(f"/api/tasks/{project_id}", json={"task_type": "projekt", "status": "offen"})
         self.assertEqual(response.status_code, 200, response.text)

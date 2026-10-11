@@ -301,10 +301,13 @@ Running Tareas instances also expose token-free bootstrap endpoints directly:
 ### Efficient agent workflows
 
 Use `get_project(..., include_description=false)` and
-`list_subtasks(..., include_description=false)` for outlines, and
-`update_project/update_subtask(..., compact=true)` for small write confirmations.
-Legacy full-response defaults remain compatible. Description updates return no
-full text in compact mode. Optional `reason` (at most 1000 Unicode characters,
+`list_subtasks(..., include_description=false)` for outlines.
+`update_project` and `update_subtask` return only `{"ok": true}` on success,
+including description changes and unchanged values. There is no `compact`
+parameter. Read the current state and description revision with `get_project`
+or `get_subtask` when needed. `patch_description` still returns the new revision;
+errors retain their structured codes and messages.
+Optional `reason` (at most 1000 Unicode characters,
 blank means none) is stored separately in the audit log and displayed in Admin.
 
 `get_project_status(project_id)` returns a consistent snapshot of visible work,

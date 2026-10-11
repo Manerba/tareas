@@ -23,8 +23,9 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 Arbeitsregeln:
 
 - Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
-- Ueblich: `get_project/list_subtasks(include_description=false)` und
-  `update_project/update_subtask(compact=true)`, optionale Audit-Begruendung `reason`.
+- Ueblich: `get_project/list_subtasks(include_description=false)`.
+- `update_project/update_subtask` bestaetigen nur mit `{"ok": true}`, ohne
+  `compact`-Parameter. Optionale Audit-Begruendung: `reason`.
 - Beschreibungsrevision mitsenden; `patch_description` fuer exaktes Anhaengen
   oder eindeutiges Ersetzen. Bei Konflikt neu lesen und abgleichen.
 - `id` ist stabil, `position_number` die veraenderliche Reihenfolge, `name`

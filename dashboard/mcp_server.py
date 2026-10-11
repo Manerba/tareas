@@ -38,7 +38,7 @@ from dashboard.description_service import (
     description_revision as make_description_revision, check_description_revision,
     patch_description as apply_description_patch,
 )
-from dashboard.project_views import without_descriptions, compact_update_result, get_project_status as project_status_view
+from dashboard.project_views import without_descriptions, get_project_status as project_status_view
 from dashboard.search_service import search_content
 from dashboard.permissions import require_task_access, require_subtask_access, task_visibility_sql
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
@@ -402,7 +402,6 @@ def update_project(
     assigned_to: int | None = None,
     parent_subtask_id: Annotated[int, Field(strict=True, ge=0)] | None = None,
     reason: str | None = None,
-    compact: bool = False,
     description_revision: str | None = None,
 ) -> dict:
     """Aktualisiert ein Projekt. Nur uebergebene Felder werden geaendert.
@@ -416,7 +415,8 @@ def update_project(
     Beim Trennen bleibt deren letzter Fortschritt erhalten und wird editierbar.
     Verknuepfung/Trennung brauchen Schreibrechte auf Projekt und Eltern-Subtask.
     reason ist eine optionale Audit-Begruendung (max. 1000 Zeichen, leer = keine).
-    compact=true bestaetigt nur geaenderte Felder und wirksame kurze Werte.
+    Erfolg liefert ausschliesslich {"ok": true}; aktuellen Zustand bei Bedarf
+    mit get_project nachladen.
     Bei description die gelesene description_revision mitsenden; ohne Revision
     bleibt das bisherige bedingungslose Volltext-Ersetzen kompatibel.
     """
@@ -462,11 +462,9 @@ def update_project(
         if updates:
             values.append(project_id)
             db.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", values)
-        after = task_with_status(db, project_id)
     changes = diff_fields(dict(before), {**dict(before), **new_vals}, list(new_vals.keys()))
     log_change(user, "task", project_id, "update", changes, reason=reason)
-    result = _task_to_dict(after)
-    return compact_update_result(result, changes) if compact else result
+    return {"ok": True}
 
 
 @mcp.tool
@@ -614,7 +612,6 @@ def update_subtask(
     assigned_to: int | None = None,
     predecessor_ids: list[int] | None = None,
     reason: str | None = None,
-    compact: bool = False,
     description_revision: str | None = None,
 ) -> dict:
     """Aktualisiert eine Teilaufgabe. Nur uebergebene Felder werden geaendert.
@@ -623,8 +620,9 @@ def update_subtask(
     Bei progress_automatic=true ist status_percent gesperrt (Fehlercode
     linked_project_progress_readonly). Stattdessen das Kind-Projekt bearbeiten.
     reason ist eine optionale Audit-Begruendung (max. 1000 Zeichen, leer = keine).
-    compact=true bestaetigt kurze Werte ohne Beschreibungen. description_revision
-    schuetzt Beschreibungsupdates; ohne Revision bleibt legacy Ersetzen moeglich."""
+    Erfolg liefert ausschliesslich {"ok": true}; aktuellen Zustand bei Bedarf
+    mit get_subtask nachladen. description_revision schuetzt Beschreibungsupdates;
+    ohne Revision bleibt legacy Ersetzen moeglich."""
     user = _user()
     reason = _access(normalize_reason, reason)
     if status_percent is not None:
@@ -675,21 +673,20 @@ def update_subtask(
             new_vals["predecessor_ids"] = predecessor_ids
         if status_percent is not None:
             _access(refresh_parent_progress, db, before["project_id"])
-        after = db.execute(SUBTASK_LINK_SELECT + " WHERE st.id = ?", (subtask_id,)).fetchone()
-        preds = db.execute(
-            "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ?",
-            (subtask_id,),
-        ).fetchall()
+        if predecessor_ids is not None:
+            new_vals["predecessor_ids"] = [row[0] for row in db.execute(
+                "SELECT depends_on_id FROM sub_task_dependencies WHERE sub_task_id = ? ORDER BY depends_on_id",
+                (subtask_id,),
+            )]
+            new_vals["depends_on_project"] = bool(db.execute(
+                "SELECT depends_on_project FROM sub_tasks WHERE id = ?", (subtask_id,),
+            ).fetchone()[0])
     old_values = dict(before)
     if predecessor_ids is not None:
         old_values["predecessor_ids"] = old_predecessors
-        new_vals["predecessor_ids"] = sorted(p["depends_on_id"] for p in preds)
-        new_vals["depends_on_project"] = bool(after["depends_on_project"])
     changes = diff_fields(old_values, {**old_values, **new_vals}, list(new_vals))
     log_change(user, "sub_task", subtask_id, "update", changes, reason=reason)
-    result = _subtask_to_dict(after)
-    result["predecessor_ids"] = [p["depends_on_id"] for p in preds]
-    return compact_update_result(result, changes) if compact else result
+    return {"ok": True}
 
 
 @mcp.tool

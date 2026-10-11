@@ -188,16 +188,16 @@ legen keine Ablage automatisch an.
 Ueblich sind `get_project(project_id=75, include_description=false)` und
 `list_subtasks(project_id=75, include_description=false)`. Volltexte bei Bedarf
 mit `get_project` (Standard `include_description=true`) oder `get_subtask`
-nachladen. Die bisherigen Vollantworten bleiben aus Kompatibilitaetsgruenden
-Standard; `list_projects_page` bleibt standardmaessig kompakt.
-`update_project(..., compact=true)` und `update_subtask(..., compact=true)` liefern
-ID, `changed_fields` und kurze wirksame `values`. Beschreibungen werden auch nach
-Aenderung nicht gespiegelt, nur Laenge/Format/Revision bestaetigt. Standard
-`compact=false` behaelt das alte Antwortformat. Ein No-op hat keine geaenderten
-Felder. `reason` ist optional, maximal 1000 Unicode-Zeichen vor dem Trimmen;
+nachladen. `list_projects_page` liefert standardmaessig eine kompakte Uebersicht.
+`update_project` und `update_subtask` liefern bei Erfolg ausschliesslich
+`{"ok": true}`, auch bei unveraenderten Werten oder Beschreibungsupdates.
+Es gibt keinen `compact`-Parameter. Den aktuellen Zustand einschliesslich
+Beschreibungsrevision bei Bedarf mit `get_project` oder `get_subtask` nachladen.
+`patch_description` liefert weiterhin die neue Revision fuer weitere Textaenderungen.
+Fehler behalten ihre strukturierten Codes und Meldungen.
+`reason` ist optional, maximal 1000 Unicode-Zeichen vor dem Trimmen;
 leere Begruendungen werden null. Es wird getrennt vom Felddiff im Audit mit
 Akteur und Aenderungsereignis gespeichert und in der Admin-Ansicht angezeigt.
-Diese Konvention gilt auch fuer kuenftige Schreibwerkzeuge.
 
 `get_project_status(project_id=75)` liest Projektmetadaten, Zaehler und alle
 sichtbaren Teilaufgaben in einem konsistenten Snapshot. Jede Zeile enthaelt
@@ -385,8 +385,9 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 Arbeitsregeln:
 
 - Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
-- Ueblich: `get_project/list_subtasks(include_description=false)` und
-  `update_project/update_subtask(compact=true)`, optionale Audit-Begruendung `reason`.
+- Ueblich: `get_project/list_subtasks(include_description=false)`.
+- `update_project/update_subtask` bestaetigen nur mit `{"ok": true}`, ohne
+  `compact`-Parameter. Optionale Audit-Begruendung: `reason`.
 - Beschreibungsrevision mitsenden; `patch_description` fuer exaktes Anhaengen
   oder eindeutiges Ersetzen. Bei Konflikt neu lesen und abgleichen.
 - `id` ist stabil, `position_number` die veraenderliche Reihenfolge, `name`

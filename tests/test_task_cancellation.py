@@ -158,7 +158,7 @@ class TaskCancellationTests(unittest.TestCase):
         token = mcp_server.current_mcp_user.set(self.user)
         try:
             result = mcp_server.update_project(task_id, status="abgebrochen")
-            self.assertEqual(result["status"], "abgebrochen")
+            self.assertEqual(result, {"ok": True})
             self.assertEqual(self.task(task_id)["status"], "abgebrochen")
             self.assertEqual([row["id"] for row in mcp_server.list_projects(status="abgebrochen")], [task_id])
             self.assertEqual(mcp_server.get_project(task_id)["description"], "<p>Keep this description</p>")

@@ -143,7 +143,7 @@ def build_agent_metadata(request: Request | None = None, *, mcp_base_url: str | 
             "file.list/read/write/mkdir/move/delete access the configured local or WebDAV project storage with current permissions. Paths are relative to that project's storage root; task_id is the project ID.",
             "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the REST file API or web UI. File contents are not recorded in the audit log.",
             "The same MCP Bearer token authenticates REST file list/download/upload/mkdir/move/delete at /api/tasks/{task_id}/files. Writes also require X-Requested-With: XMLHttpRequest. Uploads use multipart field file, maximum 500 MiB. Current task permissions, token revocation and the global MCP switch apply. Other REST endpoints require a browser session.",
-            "Use get_project/list_subtasks(include_description=false), update_project/update_subtask(compact=true), and get_project_status for efficient work. Legacy full-response defaults remain compatible.",
+            "Use get_project/list_subtasks(include_description=false) and get_project_status for efficient reads. update_project/update_subtask return only an ok=true acknowledgement; they have no compact parameter. Read the current state only when needed.",
             "Description writes should send description_revision; patch_description requires revision and supports exact append or unique old_text replacement. Conflicts require rereading and merging.",
             "reason on updates is separate optional audit metadata, maximum 1000 characters; blank means none.",
             "file.append appends exact UTF-8 to an existing file, optional BOM preserved, no added newline, max 1 MiB total. Shared write lock; do not blindly retry after ambiguous network failures.",
@@ -171,8 +171,9 @@ und Entscheidungen. Codex/Claude greift per MCP darauf zu.
 Arbeitsregeln:
 
 - Vor Schreiboperationen `get_project_status` lesen; Beschreibungen gezielt nachladen.
-- Ueblich: `get_project/list_subtasks(include_description=false)` und
-  `update_project/update_subtask(compact=true)`, optionale Audit-Begruendung `reason`.
+- Ueblich: `get_project/list_subtasks(include_description=false)`.
+- `update_project/update_subtask` bestaetigen nur mit `{{"ok": true}}`, ohne
+  `compact`-Parameter. Optionale Audit-Begruendung: `reason`.
 - Beschreibungsrevision mitsenden; `patch_description` fuer exaktes Anhaengen
   oder eindeutiges Ersetzen. Bei Konflikt neu lesen und abgleichen.
 - `id` ist stabil, `position_number` die veraenderliche Reihenfolge, `name`
@@ -411,16 +412,16 @@ legen keine Ablage automatisch an.
 Ueblich sind `get_project(project_id=75, include_description=false)` und
 `list_subtasks(project_id=75, include_description=false)`. Volltexte bei Bedarf
 mit `get_project` (Standard `include_description=true`) oder `get_subtask`
-nachladen. Die bisherigen Vollantworten bleiben aus Kompatibilitaetsgruenden
-Standard; `list_projects_page` bleibt standardmaessig kompakt.
-`update_project(..., compact=true)` und `update_subtask(..., compact=true)` liefern
-ID, `changed_fields` und kurze wirksame `values`. Beschreibungen werden auch nach
-Aenderung nicht gespiegelt, nur Laenge/Format/Revision bestaetigt. Standard
-`compact=false` behaelt das alte Antwortformat. Ein No-op hat keine geaenderten
-Felder. `reason` ist optional, maximal 1000 Unicode-Zeichen vor dem Trimmen;
+nachladen. `list_projects_page` liefert standardmaessig eine kompakte Uebersicht.
+`update_project` und `update_subtask` liefern bei Erfolg ausschliesslich
+`{{"ok": true}}`, auch bei unveraenderten Werten oder Beschreibungsupdates.
+Es gibt keinen `compact`-Parameter. Den aktuellen Zustand einschliesslich
+Beschreibungsrevision bei Bedarf mit `get_project` oder `get_subtask` nachladen.
+`patch_description` liefert weiterhin die neue Revision fuer weitere Textaenderungen.
+Fehler behalten ihre strukturierten Codes und Meldungen.
+`reason` ist optional, maximal 1000 Unicode-Zeichen vor dem Trimmen;
 leere Begruendungen werden null. Es wird getrennt vom Felddiff im Audit mit
 Akteur und Aenderungsereignis gespeichert und in der Admin-Ansicht angezeigt.
-Diese Konvention gilt auch fuer kuenftige Schreibwerkzeuge.
 
 `get_project_status(project_id=75)` liest Projektmetadaten, Zaehler und alle
 sichtbaren Teilaufgaben in einem konsistenten Snapshot. Jede Zeile enthaelt

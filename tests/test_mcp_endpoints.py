@@ -197,7 +197,8 @@ class MCPEndpointTests(unittest.TestCase):
                 self.call(client, headers, 'update_subtask', {'subtask_id': subtasks[0]['id'], 'status_percent': 50})
                 self.assertEqual(self.call(client, headers, 'get_project', {'project_id': pid})['status'], 'abgebrochen')
                 resumed = self.call(client, headers, 'update_project', {'project_id': pid, 'status': 'offen'})
-                self.assertEqual(resumed['status'], 'in_arbeit')
+                self.assertEqual(resumed, {'ok': True})
+                self.assertEqual(self.call(client, headers, 'get_project', {'project_id': pid})['status'], 'in_arbeit')
 
     def test_agent_efficiency_workflow_on_both_endpoints(self):
         """A real authenticated workflow composes the new tools on both ASGI apps."""
@@ -215,12 +216,10 @@ class MCPEndpointTests(unittest.TestCase):
                 reason = f'Integration auf Port {port}: Beschreibung präzisieren ✓'
                 updated = self.call(client, owner, 'update_project', {
                     'project_id': self.project, 'description': source,
-                    'description_revision': initial['description_revision'], 'compact': True, 'reason': reason,
+                    'description_revision': initial['description_revision'], 'reason': reason,
                 })
-                self.assertEqual(updated['id'], self.project)
-                self.assertIn('description', updated['changed_fields'])
-                self.assertEqual(updated['description_length'], len(source))
-                self.assertNotIn(source, json.dumps(updated, ensure_ascii=False))
+                self.assertEqual(updated, {'ok': True})
+                self.assertEqual(self.call(client, owner, 'get_project', {'project_id': self.project})['description'], source)
                 with closing(database.get_db()) as db:
                     audit = db.execute('SELECT * FROM audit_log ORDER BY id DESC LIMIT 1').fetchone()
                 self.assertEqual((audit['actor_user_id'], audit['entity_id'], audit['reason']),
@@ -233,12 +232,10 @@ class MCPEndpointTests(unittest.TestCase):
                 })
                 sid = subtask['id']
                 progress = self.call(client, owner, 'update_subtask', {
-                    'subtask_id': sid, 'status_percent': 100, 'compact': True,
+                    'subtask_id': sid, 'status_percent': 100,
                     'reason': f'Prüfung auf Port {port} erfolgreich',
                 })
-                self.assertEqual(progress['changed_fields'], ['status_percent'])
-                self.assertEqual(progress['values']['status_percent'], 100)
-                self.assertNotIn('description', json.dumps(progress))
+                self.assertEqual(progress, {'ok': True})
                 compact = self.call(client, owner, 'get_project', {
                     'project_id': self.project, 'include_description': False,
                 })
@@ -250,6 +247,7 @@ class MCPEndpointTests(unittest.TestCase):
                 listing = listing['result'] if isinstance(listing, dict) else listing
                 self.assertTrue(all('description' not in item for item in listing))
                 selected = next(item for item in listing if item['id'] == sid)
+                self.assertEqual(selected['status_percent'], 100)
                 self.assertEqual((selected['position_number'], selected['name']),
                                  (subtask['position_number'], f'Prüfung Port {port}'))
 
@@ -329,8 +327,8 @@ class MCPEndpointTests(unittest.TestCase):
                 with closing(database.get_db()) as db:
                     audit_count = db.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
                 for tool, arguments in (
-                    ('update_project', {'project_id': self.project, 'name': 'Forbidden', 'compact': True}),
-                    ('update_subtask', {'subtask_id': sid, 'status_percent': 0, 'compact': True}),
+                    ('update_project', {'project_id': self.project, 'name': 'Forbidden'}),
+                    ('update_subtask', {'subtask_id': sid, 'status_percent': 0}),
                     ('patch_description', {'task_id': self.project, 'revision': appended['description_revision'],
                                            'operation': 'append', 'text': 'Forbidden'}),
                     ('handoff.update', {'task_id': self.project, 'handoff_id': handoff['handoff_id'],
@@ -368,7 +366,9 @@ class MCPEndpointTests(unittest.TestCase):
                 self.assertEqual(rejected['structuredContent']['code'], 'linked_project_progress_readonly')
                 self.assertEqual(rejected['structuredContent']['field'], 'status_percent')
                 self.call(client, headers, 'update_project', {'project_id': child['id'], 'parent_subtask_id': 0})
-                read = self.call(client, headers, 'update_subtask', {'subtask_id': subtask['id'], 'status_percent': 25})
+                updated = self.call(client, headers, 'update_subtask', {'subtask_id': subtask['id'], 'status_percent': 25})
+                self.assertEqual(updated, {'ok': True})
+                read = self.call(client, headers, 'get_subtask', {'subtask_id': subtask['id']})
                 self.assertEqual(read['status_percent'], 25)
                 self.assertFalse(read['progress_automatic'])
 

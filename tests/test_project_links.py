@@ -136,7 +136,8 @@ class ProjectLinkTests(unittest.TestCase):
         self.assertEqual(raised.exception.field, "status_percent")
         self.assertEqual(self.snapshot(), before)
         updated = mcp.update_subtask(self.subtask, name="Editable title")
-        self.assertEqual(updated["name"], "Editable title")
+        self.assertEqual(updated, {"ok": True})
+        self.assertEqual(mcp.get_subtask(self.subtask)["name"], "Editable title")
         self.put(f'/api/subtasks/{self.subtask}', {"priority": 42})
         self.assert_progress(50, child)
 
