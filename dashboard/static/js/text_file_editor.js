@@ -47,7 +47,7 @@ class TextFileEditor {
             <header class="text-file-header">
                 <h1 class="text-file-title" id="${titleId}"></h1>
                 ${handoff ? '' : `<a class="control-btn" data-file-download>${t('files.download')}</a>`}
-                ${overlay ? `<button type="button" class="control-btn" data-file-expand disabled>${t('textFile.expand')}</button>` : ''}
+                ${overlay ? `<button type="button" class="control-btn" data-file-expand disabled ${this.isNewHandoff() ? 'hidden' : ''}>${t('textFile.expand')}</button>` : ''}
                 <button type="button" class="control-btn" data-file-close>${t('common.close')}</button>
             </header>
             <p class="text-file-meta" hidden></p>
@@ -95,10 +95,15 @@ class TextFileEditor {
         this.closeButton.focus();
     }
 
+    isNewHandoff() {
+        return this.handoff?.entryId === null;
+    }
+
     endpoint() {
         if (this.handoff) {
             const subtask = this.handoff.subtaskId === null ? '' : `/subtasks/${encodeURIComponent(this.handoff.subtaskId)}`;
-            return `/api/tasks/${encodeURIComponent(this.taskId)}${subtask}/note-entries/${encodeURIComponent(this.handoff.entryId)}`;
+            const entry = this.isNewHandoff() ? '' : `/${encodeURIComponent(this.handoff.entryId)}`;
+            return `/api/tasks/${encodeURIComponent(this.taskId)}${subtask}/note-entries${entry}`;
         }
         return `/api/tasks/${encodeURIComponent(this.taskId)}/files/text?path=${encodeURIComponent(this.path)}`;
     }
@@ -112,18 +117,21 @@ class TextFileEditor {
         return data;
     }
 
+    setHandoffMetadata(data) {
+        const title = `#${data.id} ${data.user_name || `User ${data.user_id}`}`;
+        this.shell.querySelector('.text-file-title').textContent = title;
+        const meta = this.shell.querySelector('.text-file-meta');
+        meta.textContent = data.created_at || '';
+        meta.hidden = !data.created_at;
+        if (!this.overlay) document.title = `${title} – Tareas`;
+    }
+
     async load(snapshot = null) {
         try {
-            const data = await this.request();
+            const creating = this.isNewHandoff();
+            const data = creating ? { content: '', format: 'markdown', can_write: true } : await this.request();
             if (this.closed) return false;
-            if (this.handoff) {
-                const title = `#${data.id} ${data.user_name || `User ${data.user_id}`}`;
-                this.shell.querySelector('.text-file-title').textContent = title;
-                const meta = this.shell.querySelector('.text-file-meta');
-                meta.textContent = data.created_at || '';
-                meta.hidden = !data.created_at;
-                if (!this.overlay) document.title = `${title} – Tareas`;
-            }
+            if (this.handoff && !creating) this.setHandoffMetadata(data);
             // Die Revision des Entwurfs bleibt erhalten: fremde Aenderungen nicht ueberschreiben.
             const draft = snapshot?.editing ? snapshot : null;
             this.revision = draft ? draft.revision : data.revision;
@@ -134,17 +142,25 @@ class TextFileEditor {
                 readOnly: !data.can_write,
                 saveErrorMessage: textFileError,
                 onSave: async content => {
+                    if (this.handoff && !content.trim()) throw new Error(t('handoff.empty'));
+                    const creating = this.isNewHandoff();
                     const result = await this.request({
-                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ content, revision: this.revision }),
+                        method: creating ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(creating ? { content } : { content, revision: this.revision }),
                     });
                     this.revision = result.revision;
+                    if (creating) {
+                        this.handoff.entryId = result.id;
+                        this.setHandoffMetadata(result);
+                        if (this.expandButton) this.expandButton.hidden = false;
+                    }
                     this.onSaved?.();
                     if (this.handoff) {
                         const detail = handoffIdentity(this.taskId, this.handoff);
                         window.dispatchEvent(new CustomEvent('handoff-saved', { detail }));
                         window.opener?.postMessage({ type: 'handoff-saved', ...detail }, location.origin);
                     }
+                    return result;
                 },
             });
             // Preview-Links verlassen weder den Dialog noch einen offenen Entwurf.
@@ -154,7 +170,14 @@ class TextFileEditor {
                 event.preventDefault();
                 window.open(link.href, '_blank', 'noopener,noreferrer');
             });
-            if (draft) {
+            if (creating) {
+                this.editor.editing = true;
+                this.editor.updateView();
+                this.editor.input.focus();
+                this.shell.querySelector('[data-md-action="cancel"]').addEventListener('click', () => {
+                    if (this.isNewHandoff()) this.close();
+                });
+            } else if (draft) {
                 this.editor.input.value = draft.content;
                 this.editor.editing = true;
                 MarkdownEditor.drafts.set(this.editorId, draft.content);
@@ -206,7 +229,7 @@ class TextFileEditor {
     }
 
     expand() {
-        if (!this.editor || this.busy || this.editor.saving) return;
+        if (!this.editor || this.busy || this.editor.saving || this.isNewHandoff()) return;
         const token = Array.from(crypto.getRandomValues(new Uint32Array(4)), value => value.toString(16)).join('-');
         const snapshot = {
             source: this.editor.source, content: this.editor.input.value, editing: this.editor.editing,
@@ -274,6 +297,10 @@ function openHandoffEditor(taskId, subtaskId, entryId, separateWindow = false) {
     } else {
         openTextFileEditor(taskId, `#${entryId}`, null, handoff);
     }
+}
+
+function openNewHandoff(taskId, subtaskId = null) {
+    openTextFileEditor(taskId, t('handoff.add'), null, { subtaskId, entryId: null });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

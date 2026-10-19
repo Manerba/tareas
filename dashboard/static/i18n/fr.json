@@ -467,6 +467,8 @@
   "textFile.binary": "Ce fichier contient des données binaires. Téléchargez-le.",
   "textFile.unsupportedFormat": "Ce format n’est pas pris en charge par l’éditeur de texte. Téléchargez le fichier.",
   "textFile.readOnlyDraft": "Le droit d’écriture a été retiré. Votre brouillon reste visible pour être copié.",
+  "handoff.add": "Ajouter une transmission",
+  "handoff.empty": "Veuillez saisir un texte pour la transmission.",
   "handoff.conflict": "Le handoff a changé depuis son ouverture. Votre brouillon est conservé. Copiez-le puis rouvrez le handoff.",
   "handoff.notFound": "Handoff introuvable.",
   "handoff.popupFailed": "Impossible d’ouvrir la nouvelle fenêtre. Autorisez les fenêtres contextuelles et réessayez.",

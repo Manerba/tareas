@@ -1087,11 +1087,24 @@
     background: var(--bg-primary);
     overflow: hidden;
 }
-.subtask-handoff-panel > h5 {
+.handoff-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.handoff-section-header > h5 {
     margin: 0;
-    padding: 10px 12px;
     font-size: 13px;
     font-weight: 600;
+}
+.handoff-section-header [hidden] { display: none !important; }
+.subtask-handoff-panel > .handoff-section-header {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--border-color);
 }
 .handoff-grid {

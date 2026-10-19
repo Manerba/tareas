@@ -1,4 +1,4 @@
-"""Gemeinsame Bearbeitung bestehender Notizen und Handoffs fuer REST/MCP."""
+"""Gemeinsames Anlegen von Handoffs und Bearbeiten von Notizen fuer REST/MCP."""
 
 import hashlib
 from datetime import datetime, timezone
@@ -64,6 +64,50 @@ _STATEMENTS = {
 
 def handoff_revision(content: str, content_format: str) -> str:
     return hashlib.sha256(f"{content_format}\0{content}".encode()).hexdigest()
+
+
+def create_handoff(task_id: int, content: str, user: dict, *, subtask_id: int | None = None) -> dict:
+    """Beitragsrechte und Neuanlage gemeinsam unter der DB-Schreibsperre pruefen."""
+    if not content.strip():
+        raise ApplicationError(422, "content darf nicht leer sein", code="empty_content", field="content")
+
+    with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if subtask_id is None:
+            require_task_access(db, task_id, user, "contribute")
+            cursor = db.execute(
+                "INSERT INTO task_note_entries (task_id, user_id, content, content_format) VALUES (?, ?, ?, 'markdown')",
+                (task_id, user["id"], content),
+            )
+            entry = db.execute(
+                "SELECT created_at FROM task_note_entries WHERE id = ?", (cursor.lastrowid,),
+            ).fetchone()
+            entity_type, entity_id, scope = "task_handoff", task_id, "task"
+        else:
+            require_subtask_access(db, subtask_id, user, "contribute", task_id=task_id)
+            cursor = db.execute(
+                "INSERT INTO sub_task_note_entries (sub_task_id, user_id, content, content_format) VALUES (?, ?, ?, 'markdown')",
+                (subtask_id, user["id"], content),
+            )
+            entry = db.execute(
+                "SELECT created_at FROM sub_task_note_entries WHERE id = ?", (cursor.lastrowid,),
+            ).fetchone()
+            entity_type, entity_id, scope = "sub_task_handoff", subtask_id, "subtask"
+        local_id = cursor.lastrowid
+        author = db.execute(
+            "SELECT vorname || ' ' || nachname AS name FROM users WHERE id = ?", (user["id"],),
+        ).fetchone()
+
+    log_change(user, entity_type, entity_id, "create", {
+        "handoff_id": f"{scope}:{local_id}", "local_id": local_id,
+        "owner_user_id": user["id"], "content_len": len(content),
+    })
+    return {
+        "id": local_id, "task_id": task_id, "subtask_id": subtask_id,
+        "user_id": user["id"], "user_name": (author["name"] or "").strip(),
+        "created_at": entry["created_at"], "content": content, "format": "markdown",
+        "can_write": True, "revision": handoff_revision(content, "markdown"),
+    }
 
 
 def update_note_as_admin(

@@ -39,8 +39,10 @@ def main():
     entries[1]['user_name'] = 'Agent mit einem sehr langen Namen <b>literal</b>'
     entries[1]['content'] = '<script>window.injected = true</script>\n\n**Sicherer Text**'
     project_entries = [dict(entry, content=f'## Projekt-Handoff {entry["id"]}\n\nEigene Projektnotiz mit mehr Text als einer Zeile. ' * 4) for entry in entries]
-    state = {'admin': True, 'fail_save': False}
+    entry_lists = {None: project_entries, '2': entries, '3': []}
+    state = {'admin': True, 'can_create': True, 'fail_save': False}
     errors, violations, saves = [], [], []
+    creates, post_attempts = [], []
     client = TestClient(app)  # Kein Lifespan/keine produktiven Migrationen.
     with patch('dashboard.app._extract_user_from_request', return_value={'id': 1}):
         csp = client.get('/handoff').headers['content-security-policy']
@@ -62,15 +64,35 @@ def main():
             return
         data, status = {'items': []}, 200
         match = re.fullmatch(r'/api/tasks/1(?:/subtasks/(\d+))?/note-entries/(\d+)', path)
-        if match:
-            scoped_entries = entries if match[1] else project_entries
+        collection = re.fullmatch(r'/api/tasks/1(?:/subtasks/(2|3))?/note-entries', path)
+        if collection:
+            scoped_entries = entry_lists[collection[1]]
+            if route.request.method == 'POST':
+                assert route.request.headers['x-requested-with'] == 'XMLHttpRequest'
+                payload = route.request.post_data_json
+                post_attempts.append((path, payload))
+                if not state['can_create']:
+                    status, data = 403, {'detail': 'Read only'}
+                elif state['fail_save']:
+                    status, data = 503, {'detail': 'Save failed'}
+                else:
+                    entry = dict(id=201 + len(creates), user_id=1, user_name='UI Autor',
+                                 content=payload['content'], content_format='markdown', created_at='19.10.2026 12:00')
+                    scoped_entries.insert(0, entry)
+                    creates.append((path, payload))
+                    status, data = 201, dict(entry, format='markdown', can_write=True, revision=revision(entry))
+            else:
+                data = {'items': scoped_entries, 'can_create': state['can_create']}
+        elif match:
+            scoped_entries = entry_lists.get(match[1], [])
             entry = next((entry for entry in scoped_entries if entry['id'] == int(match[2])), None)
-            if not entry or match[1] not in (None, '2'):
+            can_write = entry and (state['admin'] or (state['can_create'] and entry['user_id'] == 1))
+            if not entry:
                 status, data = 404, {'detail': 'handoff.notFound'}
             elif route.request.method == 'PUT':
                 assert route.request.headers['x-requested-with'] == 'XMLHttpRequest'
                 payload = route.request.post_data_json
-                if not state['admin']:
+                if not can_write:
                     status, data = 403, {'detail': 'Read only'}
                 elif state['fail_save']:
                     status, data = 503, {'detail': 'Save failed'}
@@ -81,7 +103,7 @@ def main():
                     saves.append((path, payload))
                     data = {'revision': revision(entry)}
             else:
-                data = dict(entry, format=entry['content_format'], can_write=state['admin'], revision=revision(entry))
+                data = dict(entry, format=entry['content_format'], can_write=bool(can_write), revision=revision(entry))
         elif path == '/api/tasks/config':
             data = config
         elif path == '/api/tasks':
@@ -92,10 +114,6 @@ def main():
             data = {'configured': False}
         elif path == '/api/tasks/1/subtasks':
             data = {'items': subtasks}
-        elif path == '/api/tasks/1/subtasks/2/note-entries':
-            data = {'items': entries}
-        elif path == '/api/tasks/1/note-entries':
-            data = {'items': project_entries}
         elif route.request.method == 'PUT':
             payload = route.request.post_data_json
             if path == '/api/tasks/1':
@@ -344,10 +362,110 @@ def main():
         page.evaluate('loadTaskNoteEntries(1)')
         expect(project_grid.locator('.handoff-widget')).to_have_count(0)
         expect(project_grid.locator('em')).to_be_visible()
+
+        # Anlegen funktioniert auch ohne Adminrechte und im noch leeren Verlauf.
+        create_button = project_grid.locator('..').locator('[data-handoff-create]')
+        expect(create_button).to_be_visible()
+        create_button.click()
+        expect(dialog.locator('.text-file-title')).to_have_text('Handoff hinzufügen')
+        expect(dialog.locator('textarea')).to_be_focused()
+        expect(dialog.locator('[data-file-expand]')).to_be_hidden()
+        dialog.locator('textarea').fill('  \n\t ')
+        dialog.locator('[data-md-action="save"]').click()
+        expect(dialog.locator('.markdown-error')).to_have_text('Bitte gib einen Text für das Handoff ein.')
+        assert post_attempts == []
+        dialog.locator('textarea').fill('## Neuer Projekt-Handoff ü ✓')
+        state['fail_save'] = True
+        dialog.locator('[data-md-action="save"]').click()
+        expect(dialog.locator('.markdown-error')).to_have_text('Save failed')
+        expect(dialog.locator('textarea')).to_have_value('## Neuer Projekt-Handoff ü ✓')
+        expect(project_grid.locator('.handoff-widget')).to_have_count(0)
+        state['fail_save'] = False
+        page.evaluate('''() => {
+            const save = document.querySelector('.text-file-shell [data-md-action="save"]');
+            save.click(); save.click();
+        }''')
+        expect(dialog.locator('textarea')).to_be_hidden()
+        expect(dialog.locator('.text-file-title')).to_have_text('#201 UI Autor')
+        expect(dialog.locator('[data-file-expand]')).to_be_visible()
+        expect(project_grid.locator('.handoff-widget')).to_have_count(1)
+        expect(project_grid.locator('[data-handoff-id="201"]')).to_contain_text('Neuer Projekt-Handoff ü ✓')
+        assert creates == [('/api/tasks/1/note-entries', {'content': '## Neuer Projekt-Handoff ü ✓'})]
+        assert len(post_attempts) == 2
+
+        # Nach Neuanlage bearbeitet Speichern dieselbe ID mit der neuen Revision.
+        dialog.locator('[data-md-action="edit"]').click()
+        dialog.locator('textarea').fill('## Projekt-Handoff korrigiert')
+        dialog.locator('[data-md-action="save"]').click()
+        expect(project_grid.locator('[data-handoff-id="201"]')).to_contain_text('Projekt-Handoff korrigiert')
+        assert saves[-1][0] == '/api/tasks/1/note-entries/201'
+        assert len(creates) == 1
+        dialog.locator('[data-file-close]').click()
+
+        # Abbrechen und Escape legen nichts an; Schliessen schuetzt offene Entwuerfe.
+        create_button.click()
+        dialog.locator('textarea').fill('Nicht speichern')
+        dialog.locator('[data-md-action="cancel"]').click()
+        expect(dialog).to_have_count(0)
+        create_button.click()
+        page.keyboard.press('Escape')
+        expect(dialog).to_have_count(0)
+        create_button.click()
+        dialog.locator('textarea').fill('Entwurf behalten')
+        page.once('dialog', lambda prompt: prompt.dismiss())
+        dialog.locator('[data-file-close]').click()
+        expect(dialog.locator('textarea')).to_have_value('Entwurf behalten')
+
+        # Rechteentzug nach Oeffnen wird beim POST geprueft, der Entwurf bleibt erhalten.
+        state['can_create'] = False
+        dialog.locator('[data-md-action="save"]').click()
+        expect(dialog.locator('.markdown-error')).to_have_text('Read only')
+        expect(dialog.locator('textarea')).to_have_value('Entwurf behalten')
+        page.once('dialog', lambda prompt: prompt.accept())
+        dialog.locator('[data-file-close]').click()
+        page.evaluate('loadTaskNoteEntries(1)')
+        expect(create_button).to_be_hidden()
+        assert len(creates) == 1
+        state['can_create'] = True
+
+        # Teilaufgaben und ihre eigenstaendige Ansicht teilen denselben Verlauf.
+        assigned_grid = page.locator('#stViewNoteEntries_2')
+        assigned_grid.locator('..').locator('[data-handoff-create]').click()
+        dialog.locator('textarea').fill('## Neuer Teilaufgaben-Handoff')
+        dialog.locator('[data-md-action="save"]').click()
+        expect(grid.locator('[data-handoff-id="202"]')).to_contain_text('Neuer Teilaufgaben-Handoff')
+        expect(assigned_grid.locator('[data-handoff-id="202"]')).to_contain_text('Neuer Teilaufgaben-Handoff')
+        expect(project_grid.locator('.handoff-widget')).to_have_count(1)
+        assert creates[-1][0] == '/api/tasks/1/subtasks/2/note-entries'
+        dialog.locator('[data-file-close]').click()
+
+        # Leere Teilaufgabe, Smartphonebreite und normale Aufgabe bieten den Button ebenfalls.
+        page.locator('.subtask-row[data-subtask-id="3"] .subtask-expand-icon').click()
+        empty_grid = page.locator('#stNoteEntriesContent_3')
+        expect(empty_grid.locator('em')).to_be_visible()
+        page.set_viewport_size({'width': 390, 'height': 1000})
+        empty_grid.locator('..').locator('[data-handoff-create]').click()
+        dialog.locator('textarea').fill('## Erster Handoff')
+        dialog.locator('[data-md-action="save"]').click()
+        expect(empty_grid.locator('.handoff-widget')).to_have_count(1)
+        expect(dialog.locator('textarea')).to_be_hidden()
+        page.screenshot(path='/tmp/tareas-handoff-create-mobile.png')
+        dialog.locator('[data-file-close]').click()
+        page.evaluate('''async () => {
+            aufgabenTable.filteredData[0].task_type = 'aufgabe';
+            await onTaskRowExpanded(1, document.querySelector('.table-row-detail'));
+        }''')
+        expect(create_button).to_be_visible()
+        create_button.click()
+        dialog.locator('textarea').fill('## Handoff einer Aufgabe')
+        dialog.locator('[data-md-action="save"]').click()
+        expect(project_grid.locator('[data-handoff-id="204"]')).to_contain_text('Handoff einer Aufgabe')
+        assert creates[-1][0] == '/api/tasks/1/note-entries'
+        dialog.locator('[data-file-close]').click()
         assert errors == [], errors
         assert violations == [], violations
         browser.close()
-    print('Handoff browser checks passed: project grid with natural height, scoped project/subtask dialogs and windows, responsive grids, resize/state retention, stable Markdown dimensions, single/double click, popup drafts/saves, permissions, CSP and assigned-subtask view.')
+    print('Handoff browser checks passed: creation for tasks/projects/subtasks and assigned view, empty content, cancel/close, failed saves and revoked rights, duplicate submission prevention, immediate widget refresh, revision-based corrections, scoped dialogs/windows, responsive grids, resize/state retention, popup drafts/saves and CSP.')
 
 
 if __name__ == '__main__':

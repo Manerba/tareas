@@ -9,6 +9,7 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 - **Interactive Network Diagram** - Visualize project dependencies as an interactive graph (vis-network)
 - **Sharing & Permissions** - Creators and administrators share tasks and projects through Settings → Permissions. Read or edit access is separate from assignment; projects also offer permission to create subtasks. Changes are saved together or discarded with Cancel. Admins can edit all projects, tasks, notes and handoffs regardless of ownership.
 - **Markdown Descriptions & Notes** - Formatted reading view with source editing, lists, tables, and code blocks
+- **Handoffs** - Add Markdown handoffs to tasks, projects and subtasks directly in the UI or through MCP. Contributors see an Add handoff button in the history; saved entries appear immediately with their author and timestamp. Authors can correct their own handoffs for five minutes.
 - **File Storage** - Dedicated local storage per task/project or a Nextcloud/WebDAV directory, with tree view, drag & drop upload and context menus
 - **Text File Editor** - Preview and edit Markdown, text and scripts in a dialog, with a pop-out window that retains unsaved edits
 - **ONLYOFFICE Integration** - Edit Office documents (docx, xlsx, pptx) directly in the browser via WOPI

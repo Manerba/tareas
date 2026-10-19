@@ -638,7 +638,7 @@ async function onTaskRowExpanded(rowId, detailElement) {
     </div>`;
 
     html += `<div class="notes-section note-entries-list">
-        <h5>${t('detail.noteHistory')}</h5>
+        ${renderHandoffHeader()}
         <div class="subtask-notes-content handoff-grid" id="taskNoteEntries_${row.id}"><em>${t('common.loading')}</em></div>
     </div>`;
 
@@ -842,7 +842,7 @@ function renderSubtaskDetailColumns(subtaskId, description, entriesId, prefix = 
             aria-label="${escapeAttr(t('detail.resizeWidth'))}" title="${escapeAttr(t('detail.resizeWidth'))}"></div>
         <div class="project-detail-right">
             <section class="subtask-handoff-panel" aria-label="${escapeAttr(t('detail.noteHistory'))}">
-                <h5>${t('detail.noteHistory')}</h5>
+                ${renderHandoffHeader()}
                 <div class="subtask-notes-content handoff-grid subtask-handoff-grid" id="${entriesId}"><em>${t('common.loading')}</em></div>
             </section>
         </div>
@@ -1398,9 +1398,18 @@ function loadSubtaskNoteEntries(taskId, subtaskId, elementId) {
     return loadHandoffEntries(taskId, subtaskId, elementId);
 }
 
+function renderHandoffHeader() {
+    return `<div class="handoff-section-header">
+        <h5>${t('detail.noteHistory')}</h5>
+        <button type="button" class="control-btn" data-handoff-create aria-haspopup="dialog" hidden>+ ${t('handoff.add')}</button>
+    </div>`;
+}
+
 async function loadHandoffEntries(taskId, subtaskId, elementId) {
     const entriesContent = document.getElementById(elementId);
     if (!entriesContent) return;
+    const createButton = entriesContent.parentElement.querySelector('[data-handoff-create]');
+    if (createButton) createButton.hidden = true;
     try {
         const subtask = subtaskId === null ? '' : `/subtasks/${subtaskId}`;
         const resp = await fetch(`/api/tasks/${taskId}${subtask}/note-entries`);
@@ -1410,6 +1419,13 @@ async function loadHandoffEntries(taskId, subtaskId, elementId) {
         entriesContent.dataset.handoffSubtask = subtaskId ?? '';
         entriesContent.innerHTML = renderHandoffWidgets(data.items || []);
         bindHandoffWidgets(entriesContent, taskId, subtaskId);
+        if (createButton) {
+            createButton.hidden = !data.can_create;
+            createButton.onclick = event => {
+                event.stopPropagation();
+                openNewHandoff(taskId, subtaskId);
+            };
+        }
     } catch (e) {
         entriesContent.innerHTML = `<em>${t('detail.loadError')}</em>`;
     }

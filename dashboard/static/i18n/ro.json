@@ -467,6 +467,8 @@
   "textFile.binary": "Fișierul conține date binare. Descarcă-l.",
   "textFile.unsupportedFormat": "Editorul de text nu acceptă acest format. Descarcă fișierul.",
   "textFile.readOnlyDraft": "Dreptul de scriere a fost retras. Ciorna rămâne vizibilă pentru copiere.",
+  "handoff.add": "Adaugă o predare",
+  "handoff.empty": "Introdu un text pentru predare.",
   "handoff.conflict": "Handoff-ul s-a modificat de la deschidere. Ciorna este păstrată. Copiaz-o și redeschide handoff-ul.",
   "handoff.notFound": "Handoff-ul nu a fost găsit.",
   "handoff.popupFailed": "Fereastra nouă nu a putut fi deschisă. Permite ferestrele pop-up și încearcă din nou.",

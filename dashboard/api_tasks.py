@@ -19,7 +19,7 @@ from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
 from dashboard.mail_service import notify_event
-from dashboard.note_service import update_note_as_admin, handoff_revision, handoff_can_write
+from dashboard.note_service import create_handoff, update_note_as_admin, handoff_revision, handoff_can_write
 from dashboard.description_service import description_revision, check_description_revision, patch_description
 from dashboard.permissions import require_task_access, require_subtask_access, task_permissions, subtask_permissions, task_visibility_sql
 from dashboard.file_storage import ensure_local_directory, remove_local_directory, safe_rel_path, storage_type
@@ -976,7 +976,7 @@ async def get_task_note_entries(task_id: int, limit: int = 100, user=Depends(get
     """Notiz-Verlaufseintraege fuer eine Aufgabe abrufen."""
     limit = max(1, min(limit, 200))
     with db_query() as db:
-        _require_task_read_access(db, task_id, user)
+        _, rights = require_task_access(db, task_id, user)
         rows = db.execute(
             """SELECT tne.*, u.vorname || ' ' || u.nachname AS user_name
                FROM task_note_entries tne
@@ -987,6 +987,7 @@ async def get_task_note_entries(task_id: int, limit: int = 100, user=Depends(get
             (task_id, limit),
         ).fetchall()
         return {
+            "can_create": rights["can_contribute"],
             "items": [
                 {
                     "id": r["id"],
@@ -1000,6 +1001,13 @@ async def get_task_note_entries(task_id: int, limit: int = 100, user=Depends(get
                 for r in rows
             ]
         }
+
+
+@router.post("/api/tasks/{task_id}/note-entries", status_code=201)
+async def create_task_handoff(task_id: int, note: NoteUpdate, user=Depends(get_current_user)):
+    entry = create_handoff(task_id, note.content, user)
+    entry["created_at"] = _format_datetime(entry["created_at"])
+    return entry
 
 
 @router.put("/api/tasks/{task_id}/notes/{note_user_id}")
@@ -1097,7 +1105,7 @@ async def get_subtask_note_entries(task_id: int, subtask_id: int, limit: int = 1
     """Notiz-Verlaufseintraege fuer eine Teilaufgabe abrufen."""
     limit = max(1, min(limit, 200))
     with db_query() as db:
-        _require_subtask_read_access(db, task_id, subtask_id, user)
+        _, rights = require_subtask_access(db, subtask_id, user, task_id=task_id)
         rows = db.execute(
             """SELECT sne.*, u.vorname || ' ' || u.nachname AS user_name
                FROM sub_task_note_entries sne
@@ -1108,6 +1116,7 @@ async def get_subtask_note_entries(task_id: int, subtask_id: int, limit: int = 1
             (subtask_id, limit),
         ).fetchall()
         return {
+            "can_create": rights["can_contribute"],
             "items": [
                 {
                     "id": r["id"],
@@ -1122,6 +1131,13 @@ async def get_subtask_note_entries(task_id: int, subtask_id: int, limit: int = 1
                 for r in rows
             ]
         }
+
+
+@router.post("/api/tasks/{task_id}/subtasks/{subtask_id}/note-entries", status_code=201)
+async def create_subtask_handoff(task_id: int, subtask_id: int, note: NoteUpdate, user=Depends(get_current_user)):
+    entry = create_handoff(task_id, note.content, user, subtask_id=subtask_id)
+    entry["created_at"] = _format_datetime(entry["created_at"])
+    return entry
 
 
 # ============================================================

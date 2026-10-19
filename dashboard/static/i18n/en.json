@@ -467,6 +467,8 @@
   "textFile.binary": "This file contains binary data. Please download it.",
   "textFile.unsupportedFormat": "This file format is not supported by the text editor. Please download it.",
   "textFile.readOnlyDraft": "Write access has been removed. Your draft remains visible for copying.",
+  "handoff.add": "Add handoff",
+  "handoff.empty": "Please enter text for the handoff.",
   "handoff.conflict": "The handoff has changed since it was opened. Your draft is retained. Copy it and reopen the handoff.",
   "handoff.notFound": "Handoff not found.",
   "handoff.popupFailed": "The new window could not be opened. Allow pop-ups and try again.",

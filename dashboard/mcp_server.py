@@ -33,7 +33,7 @@ from dashboard.task_status import TASK_STATUS_CTE, task_with_status
 from dashboard.task_validation import (
     ProjectStatus, StatusPercent, validate_project_status, validate_status_percent,
 )
-from dashboard.note_service import update_note_as_admin, handoff_revision, handoff_can_write
+from dashboard.note_service import create_handoff, update_note_as_admin, handoff_revision, handoff_can_write
 from dashboard.description_service import (
     description_revision as make_description_revision, check_description_revision,
     patch_description as apply_description_patch,
@@ -1135,44 +1135,11 @@ def handoff_add(task_id: int, content: str, subtask_id: int | None = None) -> di
     und Audit-Zusammenfassungen verwenden. Jeder Aufruf erzeugt einen eigenen
     Verlaufseintrag und ueberschreibt keine User-Notiz.
     """
-    user = _user()
-    if not content.strip():
-        raise MCPToolError("empty_content", "content darf nicht leer sein", field="content")
-
-    with db_transaction() as db:
-        if subtask_id is not None:
-            _access(require_subtask_access, db, subtask_id, user, "contribute", task_id=task_id)
-            cursor = db.execute(
-                """INSERT INTO sub_task_note_entries (sub_task_id, user_id, content)
-                   VALUES (?, ?, ?)""",
-                (subtask_id, user["id"], content),
-            )
-            entity_id = subtask_id
-            entity_type = "sub_task_handoff"
-            scope = "subtask"
-        else:
-            _access(require_task_access, db, task_id, user, "contribute")
-            cursor = db.execute(
-                """INSERT INTO task_note_entries (task_id, user_id, content)
-                   VALUES (?, ?, ?)""",
-                (task_id, user["id"], content),
-            )
-            entity_id = task_id
-            entity_type = "task_handoff"
-            scope = "task"
-        local_id = cursor.lastrowid
-        handoff_id = _make_handoff_id(scope, local_id)
-
-    log_change(user, entity_type, entity_id, "create", {
-        "handoff_id": handoff_id,
-        "local_id": local_id,
-        "owner_user_id": user["id"],
-        "content_len": len(content),
-    })
+    entry = _access(create_handoff, task_id, content, _user(), subtask_id=subtask_id)
     return {
         "saved": True,
-        "handoff_id": handoff_id,
-        "local_id": local_id,
+        "handoff_id": _make_handoff_id("subtask" if subtask_id is not None else "task", entry["id"]),
+        "local_id": entry["id"],
         "task_id": task_id,
         "subtask_id": subtask_id,
     }
