@@ -5,11 +5,12 @@ Nextcloud-Konfiguration und Dateioperationen fuer lokale und WebDAV-Ablagen.
 
 import asyncio
 import logging
+import tempfile
 from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from python_multipart.exceptions import MultipartParseError
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -23,6 +24,7 @@ from dashboard.auth import get_admin_user, get_current_user, get_file_user
 from dashboard import webdav
 from dashboard.audit_log import log_change
 from dashboard.file_storage import get_task_storage, safe_rel_path as _safe_rel_path, safe_filename as _safe_filename
+from dashboard.file_archives import MAX_ARCHIVE_PATHS, build_archive
 from dashboard.csp_utils import get_onlyoffice_origin
 from dashboard.text_files import MAX_TEXT_BYTES, text_format, read_text_file, write_text_file
 from dashboard.logging_config import get_security_logger
@@ -37,6 +39,30 @@ security_log = get_security_logger()
 
 MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB
 UPLOAD_TOO_LARGE = "Datei zu gross (max. 500 MB)"
+
+
+class ArchiveRequest(BaseModel):
+    paths: list[str] = Field(min_length=1, max_length=MAX_ARCHIVE_PATHS)
+
+
+class _ArchiveResponse(StreamingResponse):
+    """Temporaeres ZIP auch bei Abbruch vor oder waehrend der Antwort schliessen."""
+
+    def __init__(self, archive, filename):
+        self.archive = archive
+        size = archive.tell()
+        archive.seek(0)
+        super().__init__(iter(lambda: archive.read(65536), b""), media_type="application/zip", headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+            "Content-Length": str(size), "Cache-Control": "private, no-store",
+            "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff",
+        })
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.archive.close()
 
 
 class _UploadTooLarge(MultiPartException):
@@ -306,6 +332,28 @@ async def download_task_file(
         "Content-Security-Policy": "sandbox",
         "X-Content-Type-Options": "nosniff",
     })
+
+
+@file_operations_router.post("/api/tasks/{task_id}/files/archive")
+async def download_task_archive(task_id: int, body: ArchiveRequest, user=Depends(get_file_user)):
+    storage = get_task_storage(task_id, user)
+    paths = [_safe_rel_path(path) for path in body.paths]
+    archive = tempfile.TemporaryFile()
+    worker = asyncio.create_task(_file_operation(build_archive, storage, paths, archive))
+
+    def close_after_worker(done):
+        archive.close()
+        if not done.cancelled():
+            done.exception()  # Abgebrochene Requests duerfen keine unbeobachteten Fehler hinterlassen.
+
+    try:
+        # Bei Request-Abbruch erst den Worker beenden lassen, dann seine Datei schliessen.
+        filename = await asyncio.shield(worker)
+        get_task_storage(task_id, user)  # Leserechte nach laengerer Archiv-Erstellung erneut pruefen.
+        return _ArchiveResponse(archive, filename)
+    except BaseException:
+        worker.add_done_callback(close_after_worker)
+        raise
 
 
 @file_operations_router.post("/api/tasks/{task_id}/files/upload", openapi_extra={

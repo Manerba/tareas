@@ -5,6 +5,7 @@ Kommunikation mit Nextcloud via WebDAV (httpx).
 
 import re
 from typing import Optional
+from urllib.parse import quote
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -53,14 +54,14 @@ def _get_config() -> dict | None:
 
 def _build_webdav_url(config: dict, rel_path: str = "") -> str:
     """Vollstaendige WebDAV-URL zusammenbauen."""
-    base = f"{config['server_url']}/remote.php/dav/files/{config['username']}"
+    base = f"{config['server_url']}/remote.php/dav/files/{quote(config['username'], safe='')}"
     if config["base_path"]:
-        base += f"/{config['base_path']}"
+        base += f"/{quote(config['base_path'], safe='/')}"
     if rel_path:
         # Slashes normalisieren
         rel_path = rel_path.strip("/")
         if rel_path:
-            base += f"/{rel_path}"
+            base += f"/{quote(rel_path, safe='/')}"
     return base
 
 

@@ -1,6 +1,7 @@
 """Beide HTTP-MCP-Zugaenge mit echten Sessions/Tokens und isolierter SQLite-DB."""
 
 import asyncio
+import io
 import json
 import logging
 import tempfile
@@ -8,6 +9,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 from starlette import formparsers
@@ -119,6 +121,13 @@ class MCPEndpointTests(unittest.TestCase):
                 download = client.get(self.url + '/download', params={'path': 'readme.md'}, headers=headers)
                 self.assertEqual(download.status_code, 200)
                 self.assertEqual(download.text, f'# Port {port}')
+                archive_headers = {**self.headers('reader'), 'X-Requested-With': 'XMLHttpRequest'}
+                archive = client.post(self.url + '/archive', headers=archive_headers, json={'paths': ['']})
+                self.assertEqual(archive.status_code, 200, archive.text[:100])
+                with ZipFile(io.BytesIO(archive.content)) as zipfile:
+                    self.assertEqual(zipfile.read('readme.md'), f'# Port {port}'.encode())
+                self.assertEqual(client.post(self.url + '/archive', headers=self.headers('reader'),
+                                             json={'paths': ['']}).status_code, 403)
                 response = client.post(self.url + '/upload', headers={**headers, 'X-Requested-With': 'XMLHttpRequest'},
                                        files={'file': ('readme.md', f'# REST {port}'.encode(), 'text/markdown')})
                 self.assertEqual(response.status_code, 200, response.text)

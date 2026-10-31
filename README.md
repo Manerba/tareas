@@ -146,6 +146,16 @@ select an existing directory from the configured Nextcloud share. Local storage
 works without a Nextcloud configuration. Both options support the file browser
 and ONLYOFFICE editing when ONLYOFFICE is configured.
 
+Select files and folders with checkboxes, Ctrl/Cmd-click or Shift-click in either
+the tree or grid view. **Auswahl herunterladen** downloads multiple entries as ZIP;
+a single selected file remains a normal file download. The **ZIP ↓** button
+downloads the current folder, and folder context menus also offer ZIP downloads.
+Archives preserve directory structure and empty folders, including for read-only
+members. Downloads allow up to 500 selected paths, 10,000 archive entries, 100
+folder levels and 2 GiB of uncompressed file data. Overlapping selections are
+included only once. ZIPs are built in temporary server files and cleaned up after
+completion, errors or disconnects.
+
 File uploads accept one multipart file up to 500 MiB. The limit is enforced
 while receiving the file, including uploads without `Content-Length`.
 Oversized uploads stop with HTTP 413 and their temporary files are closed;
@@ -279,6 +289,7 @@ takes precedence over a session cookie.
 |--------|----------|-------------------|
 | GET | `/api/tasks/{task_id}/files` | Optional `path` query for a subfolder |
 | GET | `/api/tasks/{task_id}/files/download` | `path` query, returns file bytes |
+| POST | `/api/tasks/{task_id}/files/archive` | JSON `{"paths": ["folder", "file.txt"]}`, ZIP download with read access. `[""]` selects all storage. Requires `X-Requested-With: XMLHttpRequest` |
 | GET | `/api/tasks/{task_id}/files/text` | `path` query, returns text, format, write access and revision, maximum 2 MiB |
 | PUT | `/api/tasks/{task_id}/files/text` | `path` query, JSON `{"content": "text", "revision": "<revision from GET>"}` |
 | POST | `/api/tasks/{task_id}/files/upload` | Multipart field `file`, optional folder `path` query, maximum 500 MiB |

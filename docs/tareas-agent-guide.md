@@ -341,6 +341,7 @@ an den folgenden Endpunkten. Eine Web-Anmeldung ist dafuer nicht erforderlich.
 |---------|------|------------------|
 | GET | `/api/tasks/{task_id}/files` | Optionaler Unterordner als Query `path` |
 | GET | `/api/tasks/{task_id}/files/download` | Datei als Query `path`, Antwort sind Dateibytes |
+| POST | `/api/tasks/{task_id}/files/archive` | JSON `{"paths": ["Ordner", "Datei.txt"]}`, ZIP mit Leserechten. `[""]` waehlt die gesamte Ablage. Auch hier `X-Requested-With: XMLHttpRequest` senden |
 | POST | `/api/tasks/{task_id}/files/upload` | Multipart-Feld `file`, optional Zielordner als Query `path`, maximal 500 MiB |
 | POST | `/api/tasks/{task_id}/files/mkdir` | JSON `{"name": "Ordner"}`, optional Elternordner als Query `path` |
 | PUT | `/api/tasks/{task_id}/files/move` | JSON `{"source": "alt.txt", "destination": "neu.txt"}` |
@@ -350,6 +351,9 @@ Bei jedem Aufruf `Authorization: Bearer <token>` senden, bei Schreibzugriffen
 zusaetzlich `X-Requested-With: XMLHttpRequest`. Alle Pfade sind relativ zur
 konfigurierten lokalen oder WebDAV-Ablage der Aufgabe bzw. des Projekts.
 Leserechte erlauben Auflisten und Download, Bearbeitungsrechte auch Aenderungen.
+ZIP-Downloads erhalten Ordnerstruktur und leere Ordner, ueberlappende Auswahlen
+werden dedupliziert. Maximal 500 ausgewaehlte Pfade, 10.000 Archiveintraege,
+100 Ordnerebenen und 2 GiB unkomprimierte Dateidaten je Archiv.
 Token-Widerruf und der globale MCP-Ausschalter greifen bei jedem Aufruf.
 Ein expliziter Authorization-Header hat Vorrang vor einer Web-Session.
 Andere REST-Endpunkte, Ablagekonfiguration und Office-Editor brauchen weiterhin

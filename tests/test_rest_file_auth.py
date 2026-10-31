@@ -94,6 +94,8 @@ class RESTFileAuthTests(unittest.TestCase):
 
     def assert_denied(self, headers, status, *, mutations_only=False):
         operations = self.operations()[2:] if mutations_only else self.operations()
+        if not mutations_only:
+            operations += (("POST", self.url + "/archive", {"json": {"paths": [""]}}),)
         for method, url, kwargs in operations:
             with self.subTest(method=method, url=url):
                 self.assert_status(self.client.request(method, url, headers=headers, **kwargs), status)
@@ -187,6 +189,10 @@ class RESTFileAuthTests(unittest.TestCase):
                     auth.set_mcp_enabled(False)
                 self.assert_status(self.client.get(self.url, headers=headers))
                 self.assert_denied(headers, 403, mutations_only=True)
+                self.assert_status(self.client.post(self.url + "/archive", headers=headers, json={"paths": [""]}), 403)
+                self.assert_status(self.client.post(self.url + "/archive",
+                                                    headers={**headers, "X-Requested-With": "XMLHttpRequest"},
+                                                    json={"paths": [""]}))
                 self.assert_status(self.client.post(self.url + "/upload",
                                                     headers={**headers, "X-Requested-With": "XMLHttpRequest"},
                                                     files={"file": ("readme.txt", b"original", "text/plain")}))

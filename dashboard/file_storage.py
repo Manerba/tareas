@@ -176,6 +176,22 @@ class TaskStorage:
             raise ApplicationError(413, f"Datei zu gross fuer diesen Abruf (max. {max_bytes} Bytes)",
                                    code="file_too_large", field="path")
 
+    def iter_file(self, path: str):
+        """Dateien fuer Archive blockweise lesen und Streams auch bei Fehlern schliessen."""
+        target = self._path(path)
+        if self.kind == "webdav":
+            response, client, _, _ = webdav.get_file_stream(target)
+            try:
+                yield from response.iter_bytes(chunk_size=65536)
+            finally:
+                response.close()
+                client.close()
+        else:
+            if not target.is_file():
+                raise FileNotFoundError(path)
+            with target.open("rb") as source:
+                yield from iter(lambda: source.read(65536), b"")
+
     @contextmanager
     def _write_lock(self, path: str):
         """Nur den Speichervorgang sperren, gemeinsam fuer alle Dienstprozesse.

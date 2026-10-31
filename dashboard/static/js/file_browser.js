@@ -12,6 +12,10 @@ class FileBrowser {
         this.items = [];
         this.expandedDirs = new Set();
         this.treeCache = {}; // Pfad -> Items (Lazy-Load Cache)
+        this.selection = new Map(); // Ablagerelativer Pfad -> Typ
+        this.selectionAnchor = null;
+        this.downloadBusy = false;
+        this.directoryLoaded = false;
         this._contextMenu = null;
         this.canWrite = false;
         this.onlyOfficeConfigured = false;
@@ -43,6 +47,8 @@ class FileBrowser {
                 <div class="fb-header">
                     <div class="fb-breadcrumb" id="fb-breadcrumb-${this.taskId}"></div>
                     <div class="fb-actions">
+                        <button class="fb-action-btn" id="fb-download-folder-${this.taskId}" disabled
+                            title="${escapeAttr(t('files.downloadFolder'))}" aria-label="${escapeAttr(t('files.downloadFolder'))}">ZIP &#8595;</button>
                         <button class="fb-view-toggle" id="fb-toggle-${this.taskId}" title="${t('files.toggleView')}">
                             ${this.viewMode === 'tree' ? this._iconGrid() : this._iconTree()}
                         </button>
@@ -57,6 +63,12 @@ class FileBrowser {
                             ${this._iconSettings()}
                         </button>` : ''}
                     </div>
+                </div>
+                <div class="fb-selection-bar">
+                    <label><input type="checkbox" id="fb-select-all-${this.taskId}" disabled> ${t('files.selectAll')}</label>
+                    <span id="fb-selection-count-${this.taskId}" role="status" aria-live="polite"></span>
+                    <button type="button" class="fb-action-btn" id="fb-download-selection-${this.taskId}" disabled>${t('files.downloadSelection')}</button>
+                    <button type="button" class="fb-action-btn" id="fb-clear-selection-${this.taskId}" hidden>${t('files.clearSelection')}</button>
                 </div>
                 <div class="fb-content fb-drop-zone" id="fb-content-${this.taskId}">
                     <div class="fb-loading"><div class="spinner"></div></div>
@@ -78,6 +90,16 @@ class FileBrowser {
 
         const mkdirBtn = document.getElementById(`fb-mkdir-${this.taskId}`);
         mkdirBtn?.addEventListener('click', () => this.onMkdirClick());
+        document.getElementById(`fb-download-folder-${this.taskId}`)?.addEventListener('click', () => this.downloadArchive([this.currentPath]));
+        document.getElementById(`fb-download-selection-${this.taskId}`)?.addEventListener('click', () => this.downloadSelection());
+        document.getElementById(`fb-clear-selection-${this.taskId}`)?.addEventListener('click', () => this.clearSelection());
+        document.getElementById(`fb-select-all-${this.taskId}`)?.addEventListener('change', event => {
+            for (const row of this.visibleRows()) {
+                if (event.target.checked) this.selection.set(row.dataset.itempath, row.dataset.type);
+                else this.selection.delete(row.dataset.itempath);
+            }
+            this.updateSelection();
+        });
 
         document.getElementById(`fb-configure-${this.taskId}`)?.addEventListener('click', () => this.onConfigure());
 
@@ -96,6 +118,7 @@ class FileBrowser {
 
         // Grid: Doppelklick
         content?.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.fb-select, .fb-tree-expand, .fb-grid-edit') || e.ctrlKey || e.metaKey || e.shiftKey) return;
             const gridItem = e.target.closest('.fb-grid-item[data-name]');
             if (gridItem) {
                 const name = gridItem.dataset.name;
@@ -132,6 +155,7 @@ class FileBrowser {
 
         // Tree: Expand-Toggle (Click)
         content?.addEventListener('click', (e) => {
+            if (e.target.closest('.fb-select')) { e.stopPropagation(); return; }
             const expandBtn = e.target.closest('.fb-tree-expand[data-toggle-path]');
             if (expandBtn) {
                 e.stopPropagation();
@@ -144,6 +168,35 @@ class FileBrowser {
                 e.stopPropagation();
                 this.openEditor(editBtn.dataset.editPath);
                 return;
+            }
+            const row = e.target.closest('.fb-grid-item, .fb-tree-row');
+            if (row && e.detail < 2) this.selectRow(row, e);
+        });
+        content?.addEventListener('change', event => {
+            if (!event.target.matches('.fb-select')) return;
+            const row = event.target.closest('[data-itempath]');
+            if (event.target.checked) this.selection.set(row.dataset.itempath, row.dataset.type);
+            else this.selection.delete(row.dataset.itempath);
+            this.selectionAnchor = row.dataset.itempath;
+            this.updateSelection();
+        });
+        content?.addEventListener('keydown', event => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+                event.preventDefault();
+                for (const row of this.visibleRows()) this.selection.set(row.dataset.itempath, row.dataset.type);
+                this.updateSelection();
+            } else if (event.key === 'Escape') {
+                this.clearSelection();
+            } else if (!event.target.matches('input')) {
+                const row = event.target.closest('[data-itempath]');
+                if (!row) return;
+                if (event.key === ' ') {
+                    event.preventDefault();
+                    this.selectRow(row, { ctrlKey: true, shiftKey: event.shiftKey });
+                } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this.onItemDblClick(row.dataset.name, row.dataset.type, row.dataset.parent);
+                }
             }
         });
 
@@ -180,6 +233,8 @@ class FileBrowser {
     async loadDirectory(path) {
         const content = document.getElementById(`fb-content-${this.taskId}`);
         if (!content) return;
+        this.directoryLoaded = false;
+        this.updateSelection();
 
         if (this.viewMode === 'grid') {
             content.innerHTML = '<div class="fb-loading"><div class="spinner"></div></div>';
@@ -199,7 +254,19 @@ class FileBrowser {
                 if (button) button.hidden = !this.canWrite;
             }
             this.items = data.items || [];
+            if (path !== this.currentPath) {
+                this.selection.clear();
+                this.selectionAnchor = null;
+            } else {
+                // Auswahl geloeschter/umbenannter Eintraege samt Nachfahren entfernen.
+                const names = new Set(this.items.map(item => item.name));
+                for (const selected of this.selection.keys()) {
+                    const relative = path ? selected.slice(path.length + 1) : selected;
+                    if (!names.has(relative.split('/')[0])) this.selection.delete(selected);
+                }
+            }
             this.currentPath = path;
+            this.directoryLoaded = true;
 
             // Cache fuer Baumansicht
             this.treeCache[path] = this.items;
@@ -213,6 +280,7 @@ class FileBrowser {
             }
         } catch (error) {
             content.innerHTML = `<div class="fb-error">${escapeHtml(error.message)}</div>`;
+            this.updateSelection();
         }
     }
 
@@ -252,6 +320,7 @@ class FileBrowser {
 
         if (this.items.length === 0) {
             content.innerHTML = `<div class="fb-empty">${t('files.empty')}</div>`;
+            this.updateSelection();
             return;
         }
 
@@ -268,9 +337,11 @@ class FileBrowser {
                 <div class="fb-grid-item ${item.type === 'directory' ? 'fb-grid-dir' : 'fb-grid-file'}"
                      data-name="${escapeAttr(item.name)}"
                      data-type="${escapeAttr(item.type)}"
+                     data-itempath="${escapeAttr(this.currentPath ? this.currentPath + '/' + item.name : item.name)}" tabindex="0"
                      data-nclink="${escapeAttr(item.nextcloud_link || '')}"
                      title="${escapeAttr(item.name)}${sizeStr ? ' (' + sizeStr + ')' : ''}">
                     ${editIcon}
+                    <input type="checkbox" class="fb-select" aria-label="${escapeAttr(t('files.selectItem', { name: item.name }))}">
                     <div class="fb-grid-icon">${icon}</div>
                     <div class="fb-grid-name">${escapeHtml(item.name)}</div>
                     ${sizeStr ? `<div class="fb-grid-size">${sizeStr}</div>` : ''}
@@ -278,6 +349,7 @@ class FileBrowser {
         });
         html += '</div>';
         content.innerHTML = html;
+        this.updateSelection();
     }
 
     // ========================================
@@ -291,6 +363,7 @@ class FileBrowser {
         const items = this.treeCache[this.currentPath] || this.items;
         if (items.length === 0) {
             content.innerHTML = `<div class="fb-empty">${t('files.empty')}</div>`;
+            this.updateSelection();
             return;
         }
 
@@ -298,6 +371,7 @@ class FileBrowser {
         html += this._renderTreeLevel(items, this.currentPath, 0);
         html += '</div>';
         content.innerHTML = html;
+        this.updateSelection();
     }
 
     _renderTreeLevel(items, parentPath, depth) {
@@ -313,13 +387,14 @@ class FileBrowser {
                 : '<span class="fb-tree-expand-spacer"></span>';
 
             html += `
-                <div class="fb-tree-row" style="padding-left:${indent}px"
+                <div class="fb-tree-row" style="padding-left:${indent}px" tabindex="0"
                      data-name="${escapeAttr(item.name)}"
                      data-type="${escapeAttr(item.type)}"
                      data-parent="${escapeAttr(parentPath)}"
                      data-itempath="${escapeAttr(itemPath)}"
                      data-nclink="${escapeAttr(item.nextcloud_link || '')}">
                     ${expandIcon}
+                    <input type="checkbox" class="fb-select" aria-label="${escapeAttr(t('files.selectItem', { name: item.name }))}">
                     <span class="fb-tree-icon">${icon}</span>
                     <span class="fb-tree-name">${escapeHtml(item.name)}</span>
                     ${sizeStr ? `<span class="fb-tree-size">${sizeStr}</span>` : ''}
@@ -382,6 +457,61 @@ class FileBrowser {
     // Interaktionen
     // ========================================
 
+    visibleRows() {
+        return [...(this.getContainer()?.querySelectorAll('.fb-tree-row, .fb-grid-item') || [])];
+    }
+
+    selectRow(row, event) {
+        const path = row.dataset.itempath;
+        const rows = this.visibleRows();
+        const anchor = rows.findIndex(item => item.dataset.itempath === this.selectionAnchor);
+        if (event.shiftKey && anchor >= 0) {
+            const end = rows.indexOf(row);
+            if (!event.ctrlKey && !event.metaKey) this.selection.clear();
+            for (const item of rows.slice(Math.min(anchor, end), Math.max(anchor, end) + 1)) {
+                this.selection.set(item.dataset.itempath, item.dataset.type);
+            }
+        } else {
+            const remove = (event.ctrlKey || event.metaKey) && this.selection.has(path);
+            if (!event.ctrlKey && !event.metaKey) this.selection.clear();
+            if (remove) this.selection.delete(path);
+            else this.selection.set(path, row.dataset.type);
+            this.selectionAnchor = path;
+        }
+        this.updateSelection();
+    }
+
+    clearSelection() {
+        this.selection.clear();
+        this.selectionAnchor = null;
+        this.updateSelection();
+    }
+
+    updateSelection() {
+        const rows = this.visibleRows();
+        let visibleSelected = 0;
+        for (const row of rows) {
+            const selected = this.selection.has(row.dataset.itempath);
+            row.classList.toggle('fb-selected', selected);
+            row.querySelector('.fb-select').checked = selected;
+            if (selected) visibleSelected++;
+        }
+        const all = document.getElementById(`fb-select-all-${this.taskId}`);
+        if (all) {
+            all.checked = rows.length > 0 && visibleSelected === rows.length;
+            all.indeterminate = visibleSelected > 0 && visibleSelected < rows.length;
+            all.disabled = !this.directoryLoaded || !rows.length;
+        }
+        const count = document.getElementById(`fb-selection-count-${this.taskId}`);
+        if (count) count.textContent = this.downloadBusy ? t('files.preparingArchive') : t('files.selectionCount', { count: this.selection.size });
+        const download = document.getElementById(`fb-download-selection-${this.taskId}`);
+        if (download) download.disabled = this.downloadBusy || !this.directoryLoaded || !this.selection.size;
+        const folder = document.getElementById(`fb-download-folder-${this.taskId}`);
+        if (folder) folder.disabled = this.downloadBusy || !this.directoryLoaded;
+        const clear = document.getElementById(`fb-clear-selection-${this.taskId}`);
+        if (clear) clear.hidden = !this.selection.size;
+    }
+
     textFormat(path) {
         const slash = path.lastIndexOf('/');
         const parent = slash < 0 ? '' : path.slice(0, slash);
@@ -439,9 +569,17 @@ class FileBrowser {
             ? (this.currentPath ? `${this.currentPath}/${nameOrPath}` : nameOrPath)
             : nameOrPath;
         const name = nameOrPath.includes('/') ? nameOrPath.split('/').pop() : nameOrPath;
+        if (!this.selection.has(fullPath)) {
+            this.selection.clear();
+            this.selection.set(fullPath, type);
+            this.selectionAnchor = fullPath;
+            this.updateSelection();
+        }
 
         let html = '<div class="fb-ctx-menu">';
-        if (type === 'file') {
+        if (this.selection.size > 1) {
+            html += `<div class="fb-ctx-item" data-action="download-selection">${t('files.downloadSelection')}</div>`;
+        } else if (type === 'file') {
             if (this.textFormat(fullPath) || (typeof isOnlyOfficeEditable === 'function' && isOnlyOfficeEditable(name, this.onlyOfficeConfigured))) {
                 html += `<div class="fb-ctx-item" data-action="edit" data-path="${escapeAttr(fullPath)}">${t('files.openInEditor')}</div>`;
             }
@@ -454,8 +592,9 @@ class FileBrowser {
             }
         } else {
             html += `<div class="fb-ctx-item" data-action="open" data-path="${escapeAttr(fullPath)}">${t('files.open')}</div>`;
+            html += `<div class="fb-ctx-item" data-action="archive" data-path="${escapeAttr(fullPath)}">${t('files.downloadFolder')}</div>`;
         }
-        if (this.canWrite) {
+        if (this.canWrite && this.selection.size === 1) {
             html += `<div class="fb-ctx-sep"></div>`;
             html += `<div class="fb-ctx-item" data-action="rename" data-path="${escapeAttr(fullPath)}" data-name="${escapeAttr(name)}">${t('files.rename')}</div>`;
             html += `<div class="fb-ctx-item fb-ctx-danger" data-action="delete" data-path="${escapeAttr(fullPath)}" data-type="${escapeAttr(type)}">${t('files.delete')}</div>`;
@@ -485,6 +624,12 @@ class FileBrowser {
                     break;
                 case 'download':
                     this.downloadFile(path);
+                    break;
+                case 'archive':
+                    this.downloadArchive([path]);
+                    break;
+                case 'download-selection':
+                    this.downloadSelection();
                     break;
                 case 'nextcloud':
                     window.open(item.dataset.url, '_blank');
@@ -540,10 +685,55 @@ class FileBrowser {
         const url = `/api/tasks/${this.taskId}/files/download?path=${encodeURIComponent(path)}`;
         const a = document.createElement('a');
         a.href = url;
-        a.download = '';
+        a.download = path.split('/').pop();
         document.body.appendChild(a);
         a.click();
         a.remove();
+    }
+
+    downloadSelection() {
+        if (this.downloadBusy || !this.selection.size) return;
+        const entries = [...this.selection];
+        if (entries.length === 1 && entries[0][1] === 'file') this.downloadFile(entries[0][0]);
+        else this.downloadArchive(entries.map(([path]) => path));
+    }
+
+    async downloadArchive(paths) {
+        if (this.downloadBusy) return;
+        if (!paths.length || paths.length > 500) {
+            showNotification(t('files.archiveSelectionRequired'), 'error');
+            return;
+        }
+        this.downloadBusy = true;
+        this.updateSelection();
+        try {
+            const response = await fetch(`/api/tasks/${this.taskId}/files/archive`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths }),
+            });
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(this._errorMessage(error.detail, 'files.downloadFailed'));
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            try {
+                const link = document.createElement('a');
+                link.href = url;
+                const filename = response.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i);
+                link.download = filename ? decodeURIComponent(filename[1]) : `task-${this.taskId}-files.zip`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            } finally {
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+            }
+        } catch (error) {
+            showNotification(error.message || t('files.downloadFailed'), 'error');
+        } finally {
+            this.downloadBusy = false;
+            this.updateSelection();
+        }
     }
 
     onUploadClick() {
