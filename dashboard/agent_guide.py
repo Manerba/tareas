@@ -140,8 +140,9 @@ def build_agent_metadata(request: Request | None = None, *, mcp_base_url: str | 
             "Project assignees can read notes and handoffs on all subtasks and write their own, without individual subtask assignments. For subtasks, task_id is the project ID and subtask_id is the subtask ID.",
             "handoff.add creates a separate history item; handoff.delete removes a handoff by handoff_id.",
             "handoff_id is typed, e.g. task:123 or subtask:456; never pass a bare numeric entry id.",
-            "file.list/read/write/mkdir/move/delete access the configured local or WebDAV project storage with current permissions. Paths are relative to that project's storage root; task_id is the project ID.",
-            "file.read returns UTF-8 or Base64 (see encoding). file.write replaces the entire file. Read/write are limited to 1 MiB per file; larger files use the REST file API or web UI. File contents are not recorded in the audit log.",
+            "file.list/read/search/write/mkdir/move/delete access the configured local or WebDAV project storage with current permissions. Paths are relative to that project's storage root; task_id is the project ID.",
+            "file.read without range parameters returns the whole file as UTF-8 or Base64, max 1 MiB. Prefer file.read(start_line=1, line_count=200) for text excerpts, default max_chars=12000, maximum 32000; continue with both next_line and next_column until eof. UTF-8 or BOM-marked UTF-16, BOM removed and newlines normalized to LF. file.write still replaces the entire file, max 1 MiB. File contents are not recorded in the audit log.",
+            "file.search searches one file for a literal query, case-insensitive by default, first hit per line, with bounded context. Follow next_line as start_line until complete. Text range reads and file.search scan at most 64 MiB from the file start and 30 seconds per call, including skipped content. Positions are 1-based Unicode characters; files are read live, without a cross-call snapshot. No PDF/Office extraction.",
             "The same MCP Bearer token authenticates REST file list/download/upload/mkdir/move/delete at /api/tasks/{task_id}/files. Writes also require X-Requested-With: XMLHttpRequest. Uploads use multipart field file, maximum 500 MiB. Current task permissions, token revocation and the global MCP switch apply. Other REST endpoints require a browser session.",
             "Use get_project/list_subtasks(include_description=false) and get_project_status for efficient reads. update_project/update_subtask return only an ok=true acknowledgement; they have no compact parameter. Read the current state only when needed.",
             "Description writes should send description_revision; get_project_status includes project.description_revision with project read access, without description texts. patch_description requires revision and supports exact append or unique old_text replacement. Conflicts require rereading and merging.",
@@ -217,14 +218,19 @@ Arbeitsregeln:
 - Zuweisungen, Loeschen von Aufgaben/Teilaufgaben und Freigaben verwalten nur Ersteller und Admins.
   Das gilt auch fuer `assign_self`. Bei fremden Aufgaben muss der Ersteller
   oder ein Admin die Session zuweisen oder freigeben.
-- `file.list`, `file.read`, `file.write`, `file.mkdir`, `file.move` und
+- `file.list`, `file.read`, `file.search`, `file.write`, `file.mkdir`, `file.move` und
   `file.delete` nutzen die konfigurierte lokale oder WebDAV-Projektablage.
   `task_id` ist die Projekt-ID, Pfade sind relativ zu dessen Ablage.
   Lesen braucht Leserechte, Dateiaenderungen brauchen Bearbeitungsrechte.
-- `file.read` liefert UTF-8 oder Base64 (Feld `encoding`). `file.write`
-  ersetzt die gesamte Datei, daher vorher lesen. Maximal 1 MiB je Datei beim
-  Lesen/Schreiben, groessere Dateien ueber die REST-Datei-API oder Web-UI. `file.list` liefert
-  bei weiteren Eintraegen `next_offset`. `file.delete` loescht Ordner samt Inhalt.
+- `file.read` ohne Bereichsparameter liefert die ganze Datei (UTF-8/Base64, max. 1 MiB).
+  Fuer Text gezielt `start_line`/`line_count` nutzen, Standard 12000 Zeichen,
+  mit `next_line` UND `next_column` als `start_line`/`start_column` weiterlesen.
+  `file.search` liefert woertliche Treffer mit begrenztem Kontext; `next_line`
+  als `start_line` wiederholen, bis `complete=true`. Auch Dateien ueber 1 MiB,
+  maximal 64 MiB ab Dateianfang und 30 Sekunden je Aufruf. UTF-8/UTF-16 mit BOM,
+  keine PDF-/Office-Extraktion. Zwischen Aufrufen koennen sich Dateien aendern.
+  `file.write` ersetzt weiterhin die ganze Datei bis 1 MiB, daher vorher lesen.
+  `file.list` liefert `next_offset`. `file.delete` loescht Ordner samt Inhalt.
 - Die REST-Dateiablage unter `/api/tasks/{{task_id}}/files` akzeptiert denselben
   MCP-Token als `Authorization: Bearer <token>`. Schreibzugriffe brauchen
   zusaetzlich `X-Requested-With: XMLHttpRequest`. Uploads laufen als Multipart
@@ -327,6 +333,7 @@ mcp__tareas__handoff.update
 mcp__tareas__handoff.delete
 mcp__tareas__file.list
 mcp__tareas__file.read
+mcp__tareas__file.search
 mcp__tareas__file.write
 mcp__tareas__file.append
 mcp__tareas__file.mkdir
@@ -496,6 +503,58 @@ Admins koennen weiterhin ohne Zeitgrenze korrigieren; fuer alte Adminclients
 ist `revision` optional, sollte fuer Konfliktschutz mitgesendet werden.
 Autor, ID, Erstellungszeit und Chronologie bleiben erhalten, der wirkliche
 Bearbeiter wird protokolliert. Fremde Inhalte/Rechteentzug bleiben geschuetzt.
+
+## Dateien gezielt lesen und durchsuchen
+
+Dateiinhalte muessen nicht vollstaendig in den Modellkontext. Tareas liest und
+filtert die konfigurierte lokale oder WebDAV-Datei serverseitig; normale
+Remote-MCP-Clients brauchen dafuer weder Shell noch Datei-Upload-Unterstuetzung.
+Die Dateiablage und aktuelle Leserechte muessen vorhanden sein.
+
+```text
+file.read(task_id=75, path="Unterlagen/Plan.md", start_line=100, line_count=50)
+file.read(task_id=75, path="Protokoll.log", start_line=1, max_chars=8000)
+file.search(task_id=75, path="Protokoll.log", query="Fehler", context_lines=2, limit=10)
+```
+
+Bei `file.read` aktiviert mindestens einer der Parameter `start_line`,
+`line_count`, `start_column`, `max_chars` den Textbereichsmodus. Ohne diese
+Parameter bleibt die bisherige Volltext-/Base64-Antwort bis 1 MiB unveraendert.
+Im Bereichsmodus gelten standardmaessig Zeile/Spalte 1, 200 Zeilen und 12000
+Zeichen; maximal 1000 Zeilen und 32000 Zeichen je Antwort. Die Antwort enthaelt
+`content`, `start_line`, `start_column`, `end_line`, `returned_chars`,
+`source_encoding`, `next_line`, `next_column` und `eof`.
+Zeilen/Spalten zaehlen ab 1 und beziehen sich auf Unicode-Zeichen, nicht Bytes.
+Zum Weiterlesen **beide** Werte `next_line`/`next_column` als
+`start_line`/`start_column` uebernehmen; so gehen auch in sehr langen
+Einzelzeilen keine Zeichen verloren. `eof=true` beendet das Lesen, beide
+Fortsetzungswerte sind dann null. Leere Dateien oder Startzeilen hinter dem
+Dateiende liefern leeren Inhalt mit `eof=true`.
+
+`file.search` sucht woertlich in genau einer Datei, ohne Regex oder FTS-Syntax.
+`query` hat 1 bis 256 Zeichen ohne Zeilenumbruch. Gross-/Kleinschreibung wird
+standardmaessig ignoriert; `case_sensitive=true` schaltet auf exakten Vergleich.
+Je passender Zeile erscheint der erste Treffer mit `line`, `column` und
+exklusivem `end_column`. `context_lines` (0..5, Standard 2) liefert Zeilen davor
+und danach, `limit` (1..50, Standard 20) begrenzt die Zahl passender Zeilen.
+Jede Kontextzeile enthaelt bis 640 Zeichen, `start_column` und Markierungen
+`truncated_start`/`truncated_end`; der Trefferausschnitt umfasst den Suchtext.
+Insgesamt werden hoechstens 16000 Vorschauzeichen zurueckgegeben. Weitere
+Treffer mit `next_line` als `start_line` abrufen, bis `complete=true`; eine
+abschliessende leere Seite ist moeglich. Einzelne Treffer mit `file.read`
+gezielt nachlesen. Die allgemeine `search` bleibt fuer Aufgaben/Notizen/Handoffs.
+
+Beide Textzugriffe unterstuetzen UTF-8 mit optionalem BOM und UTF-16 mit BOM.
+Der BOM wird entfernt, CRLF/CR werden als LF ausgegeben; die Datei bleibt
+unveraendert. `encoding=base64` ist im Bereichsmodus ungueltig; fuer UTF-16
+`encoding=auto` verwenden. PDF-/Office-Textextraktion ist nicht enthalten.
+Es werden blockweise maximal 64 MiB ab Dateianfang (einschliesslich
+uebersprungener Zeilen) und 30 Sekunden je Aufruf verarbeitet; zu grosse Scans
+liefern `file_scan_limit`, Zeitueberschreitungen `file_scan_timeout`, ungeeignete
+Inhalte `unsupported_text_file`. Streams werden auch bei Abbruch geschlossen.
+Leserechte werden vor und nach dem Zugriff geprueft. Jeder Aufruf liest den
+aktuellen Dateistand, ohne Snapshot zwischen Aufrufen; nach Dateiaenderungen
+Positionen durch erneutes Lesen/Suchen bestimmen.
 
 ## Dateien exakt ergaenzen
 

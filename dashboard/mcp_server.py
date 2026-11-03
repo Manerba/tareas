@@ -46,6 +46,7 @@ from dashboard.project_links import (
     SUBTASK_LINK_SELECT, ensure_manual_progress, refresh_parent_progress, set_parent_subtask,
 )
 from dashboard.file_storage import get_task_storage, safe_rel_path, storage_type
+from dashboard.file_text_access import read_text_range, search_text_file
 from dashboard.mcp_errors import MCPToolError, StructuredToolErrors, tool_error_from_http
 
 logger = logging.getLogger(__name__)
@@ -179,7 +180,9 @@ mcp = FastMCP(
         "Abhaengigkeiten. Felder: description = Spec/Anforderung, notes = "
         "aktuelle User-Notiz, handoffs = chronologischer Verlauf/Findings. "
         "file.* greift auf die konfigurierte Projektablage zu (lokal oder WebDAV), "
-        "mit relativen Pfaden und den aktuellen Projektrechten."
+        "mit relativen Pfaden und den aktuellen Projektrechten. "
+        "Textdateien gezielt mit file.read(start_line=..., line_count=...) lesen "
+        "oder file.search nutzen, um nur benoetigte Ausschnitte zu erhalten."
     ),
 )
 
@@ -1376,16 +1379,40 @@ def file_list(task_id: int, path: str = "", offset: int = 0, limit: int = 200) -
 
 
 @mcp.tool(name="file.read", annotations={"readOnlyHint": True})
-def file_read(task_id: int, path: str, encoding: Literal["auto", "utf-8", "base64"] = "auto") -> dict:
-    """Datei lesen (Leserechte, max. 1 MiB). Pfad relativ zur Projektablage.
+def file_read(
+    task_id: int, path: str, encoding: Literal["auto", "utf-8", "base64"] = "auto",
+    start_line: Annotated[int, Field(strict=True, ge=1, le=10**9)] | None = None,
+    line_count: Annotated[int, Field(strict=True, ge=1, le=1000)] | None = None,
+    start_column: Annotated[int, Field(strict=True, ge=1, le=10**9)] | None = None,
+    max_chars: Annotated[int, Field(strict=True, ge=1, le=32000)] | None = None,
+) -> dict:
+    """Datei vollstaendig oder als begrenzten Textausschnitt lesen. Leserechte erforderlich.
 
-    auto liefert UTF-8-Text, bei binaeren/nicht-UTF-8-Inhalten Base64.
-    encoding im Ergebnis gibt das Format von content an. base64 erzwingt die
-    verlustfreie binaere Uebertragung. Groessere Dateien ueber die Web-UI abrufen.
+    Ohne Bereichsparameter unveraendert ganze Datei bis 1 MiB: auto liefert
+    UTF-8 oder Base64, base64 erzwingt binaere Uebertragung.
+    Mindestens ein Bereichsparameter aktiviert Textmodus, auch ueber 1 MiB:
+    start_line/start_column zaehlen ab 1, Standard 200 Zeilen und 12000 Zeichen,
+    maximal 1000 Zeilen/32000 Zeichen. Mit next_line UND next_column weiterlesen,
+    bis eof=true; lange Einzelzeilen werden ohne Textverlust aufgeteilt.
+    UTF-8 (optional BOM) oder UTF-16 mit BOM (encoding=auto); BOM entfernt,
+    Zeilenenden als LF. Keine PDF-/Office-Textextraktion, kein base64 im Textmodus.
+    Maximal 64 MiB ab Dateianfang und 30 Sekunden pro Aufruf, kein Snapshot
+    zwischen Aufrufen. path ist relativ zur Projektablage. Fuer Treffer file.search.
     """
-    _, storage, path = _file_context(task_id, path)
+    user, storage, path = _file_context(task_id, path)
     if encoding not in ("auto", "utf-8", "base64"):
         raise MCPToolError("invalid_encoding", "encoding muss auto, utf-8 oder base64 sein", field="encoding")
+    if any(value is not None for value in (start_line, line_count, start_column, max_chars)):
+        if encoding == "base64":
+            raise MCPToolError("invalid_encoding", "Textbereiche unterstuetzen auto oder utf-8, kein base64", field="encoding")
+        result = _file_operation(read_text_range, storage, path,
+                                 start_line=1 if start_line is None else start_line,
+                                 line_count=200 if line_count is None else line_count,
+                                 start_column=1 if start_column is None else start_column,
+                                 max_chars=12000 if max_chars is None else max_chars,
+                                 utf8_only=encoding == "utf-8")
+        _access(get_task_storage, task_id, user)  # Rechte auch nach laengerem Lesen pruefen.
+        return {"task_id": task_id, "path": path, "storage_type": storage.kind, **result}
     raw, content_type = _file_operation(storage.get_file, path, max_bytes=MCP_FILE_MAX_BYTES)
     text = None
     if encoding != "base64":
@@ -1399,6 +1426,34 @@ def file_read(task_id: int, path: str, encoding: Literal["auto", "utf-8", "base6
     return {"task_id": task_id, "path": path, "storage_type": storage.kind,
             "content": text if text is not None else base64.b64encode(raw).decode("ascii"),
             "encoding": "utf-8" if text is not None else "base64", "content_type": content_type, "size": len(raw)}
+
+
+@mcp.tool(name="file.search", annotations={"readOnlyHint": True})
+def file_search(
+    task_id: int, path: str, query: Annotated[str, Field(strict=True, min_length=1, max_length=256)],
+    start_line: Annotated[int, Field(strict=True, ge=1, le=10**9)] = 1,
+    limit: Annotated[int, Field(strict=True, ge=1, le=50)] = 20,
+    context_lines: Annotated[int, Field(strict=True, ge=0, le=5)] = 2,
+    case_sensitive: Annotated[bool, Field(strict=True)] = False,
+) -> dict:
+    """Eine Textdatei woertlich durchsuchen, keine Regex. Pfad relativ zur Projektablage.
+
+    UTF-8/UTF-16 mit BOM, auch ueber 1 MiB; Leserechte, lokal und WebDAV.
+    query: 1..256 Zeichen ohne Zeilenumbruch, standardmaessig Gross-/Kleinschreibung
+    ignorieren. Erster Treffer je Zeile, Zeilen/Spalten ab 1, end_column exklusiv.
+    Bis 50 Treffer, 0..5 Kontextzeilen davor/danach (Standard 2). Vorschauen bis
+    640 Zeichen je Zeile und insgesamt 16000 Zeichen. Gekuerzte Zeilen sind markiert;
+    file.read kann sie vollstaendig in Abschnitten lesen.
+    Mit next_line als start_line fortsetzen, bis complete=true (ggf. leere letzte Seite).
+    Maximal 64 MiB ab Dateianfang und 30 Sekunden je Aufruf, kein Snapshot zwischen
+    Aufrufen. Keine PDF-/Office-Textextraktion. Die allgemeine search durchsucht
+    Aufgaben/Notizen/Handoffs, dieses Werkzeug dagegen genau eine Datei.
+    """
+    user, storage, path = _file_context(task_id, path)
+    result = _file_operation(search_text_file, storage, path, query, start_line=start_line,
+                             limit=limit, context_lines=context_lines, case_sensitive=case_sensitive)
+    _access(get_task_storage, task_id, user)
+    return {"task_id": task_id, "path": path, "storage_type": storage.kind, **result}
 
 
 @mcp.tool(name="file.write", annotations={"readOnlyHint": False, "destructiveHint": True})

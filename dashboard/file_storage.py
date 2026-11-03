@@ -177,7 +177,7 @@ class TaskStorage:
                                    code="file_too_large", field="path")
 
     def iter_file(self, path: str):
-        """Dateien fuer Archive blockweise lesen und Streams auch bei Fehlern schliessen."""
+        """Dateien blockweise lesen; Aufrufer muessen bei vorzeitigem Ende close() nutzen."""
         target = self._path(path)
         if self.kind == "webdav":
             response, client, _, _ = webdav.get_file_stream(target)

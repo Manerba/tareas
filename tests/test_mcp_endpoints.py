@@ -140,6 +140,29 @@ class MCPEndpointTests(unittest.TestCase):
         self.assertTrue(logs)
         self.assertTrue(all(row['actor_type'] == 'mcp' and row['actor_user_id'] == self.users['owner'] for row in logs))
 
+    def test_file_ranges_search_and_current_read_permissions_on_both_ports(self):
+        file_storage.local_path(self.project, 'large.txt').write_text('x' * (1024 * 1024 + 10) + '\nTreffer\nEnde')
+        for app, port in ((legacy_app, 8504), (dedicated_app, 8506)):
+            with self.subTest(port=port), TestClient(app, base_url=f'http://tareas.test:{port}') as client:
+                with closing(database.get_db()) as db, db:
+                    db.execute('INSERT OR IGNORE INTO project_members(project_id,user_id,can_read) VALUES (?,?,1)',
+                               (self.project, self.users['reader']))
+                reader = self.initialize(client, 'reader')
+                base = {'task_id': self.project, 'path': 'large.txt'}
+                result = self.call(client, reader, 'file.read', {**base, 'start_line': 2, 'line_count': 1})
+                self.assertEqual(result['content'], 'Treffer\n')
+                self.assertEqual((result['next_line'], result['next_column']), (3, 1))
+                result = self.call(client, reader, 'file.search', {**base, 'query': 'treffer', 'context_lines': 0})
+                self.assertEqual(result['matches'][0]['line'], 2)
+                self.assertTrue(result['complete'])
+                self.assertIn('file.search', client.get('/agent-guide.md').text)
+                with closing(database.get_db()) as db, db:
+                    db.execute('DELETE FROM project_members WHERE project_id=? AND user_id=?',
+                               (self.project, self.users['reader']))
+                for tool, args in (('file.read', {'start_line': 2}), ('file.search', {'query': 'treffer'})):
+                    denied = self.call(client, reader, tool, {**base, **args}, error=True)
+                    self.assertEqual(denied['structuredContent']['code'], 'permission_denied')
+
     def test_feedback_features_work_together_on_both_endpoints(self):
         for app, port in ((legacy_app, 8504), (dedicated_app, 8506)):
             with self.subTest(port=port), TestClient(app, base_url=f'http://tareas.test:{port}') as client:

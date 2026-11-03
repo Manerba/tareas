@@ -256,7 +256,7 @@ handle codes such as `invalid_status`, `invalid_progress`, `dependency_cycle`,
 and `storage_not_configured` without parsing a localized message. REST clients
 keep their existing error response format.
 
-Agents access configured local or WebDAV storage through `file.list`, `file.read`,
+Agents access configured local or WebDAV storage through `file.list`, `file.read`, `file.search`,
 `file.write`, `file.mkdir`, `file.move`, and `file.delete`. Pass the project ID as
 `task_id` and paths relative to its storage root. Read access allows listing and
 reading, edit access allows file changes. Permissions are checked on every call.
@@ -271,12 +271,47 @@ or an explicit edit share); an assignment alone is insufficient. Reading files
 requires read access, while file changes require edit access. MCP file tools
 never configure storage automatically.
 
-`file.read` returns text as UTF-8 or binary data as Base64, identified by `encoding`.
+`file.read` without range parameters returns text as UTF-8 or binary data as Base64,
+identified by `encoding`.
 `file.write` accepts either encoding and replaces the entire file. Parent folders
-must exist. MCP reads/writes are limited to 1 MiB per file; use the REST file API or
+must exist. Whole-file MCP reads/writes are limited to 1 MiB per file; use the REST file API or
 web UI for larger files. Moves never overwrite existing destinations. Deleting a
 folder deletes its contents too; the storage root cannot be deleted through these
 tools. Audit entries record the acting user and file operation, without file contents.
+
+For text files, including files larger than 1 MiB, request only the relevant text:
+
+```text
+file.read(task_id=75, path="notes.md", start_line=100, line_count=50)
+file.search(task_id=75, path="app.log", query="error", context_lines=2, limit=10)
+```
+
+Any of `start_line`, `line_count`, `start_column`, or `max_chars` activates range
+mode. Defaults are line/column 1, 200 lines and 12,000 characters; limits are
+1,000 lines and 32,000 characters per response. Continue with **both** `next_line`
+and `next_column` as `start_line` and `start_column` until `eof=true`. This also
+preserves text across pages of very long lines. Positions count Unicode characters
+from 1. The response includes `source_encoding`, `end_line` and `returned_chars`.
+
+`file.search` performs literal, case-insensitive matching in one file (set
+`case_sensitive=true` for exact case), returning the first match on each line.
+Queries are 1–256 characters without newlines. Up to 50 matching lines (default
+20) include 0–5 context lines before and after (default 2). Each preview line is
+limited to 640 characters with its starting column and truncation flags; all
+preview text together is limited to 16,000 characters. Follow `next_line` as
+`start_line` until `complete=true`; the final page may be empty. Match columns
+start at 1 and `end_column` is exclusive. The general `search` tool continues to
+search tasks, notes and handoffs.
+
+Both text operations support UTF-8 (optional BOM) and UTF-16 with BOM, strip the
+BOM and normalize CRLF/CR to LF without modifying the file. No Base64 in range
+mode and no PDF/Office text extraction. They stream at most 64 MiB from the file
+start, including skipped content, with a 30-second scan budget per call.
+Errors use `file_scan_limit`, `file_scan_timeout`, or `unsupported_text_file`.
+Read access is checked before and after the operation, and streams are closed
+on early completion and errors. Each call reads the current file; there is no
+cross-call snapshot, so refresh positions after file changes. All filtering
+runs on the server, without requiring a shell or file-upload support in the MCP client.
 
 The same MCP token also authenticates the REST file API without a browser session.
 Send `Authorization: Bearer <token>` on each request. Writes additionally require

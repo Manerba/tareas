@@ -203,6 +203,8 @@ class MCPFileTests(unittest.TestCase):
                 for tool, args in (
                     ("file.list", {}),
                     ("file.read", {"path": "missing.txt"}),
+                    ("file.read", {"path": "missing.txt", "start_line": 1}),
+                    ("file.search", {"path": "missing.txt", "query": "needle"}),
                     ("file.write", {"path": "new.txt", "content": "do not write"}),
                     ("file.mkdir", {"path": "new"}),
                     ("file.move", {"source": "missing.txt", "destination": "new.txt"}),
