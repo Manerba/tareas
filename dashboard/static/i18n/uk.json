@@ -116,6 +116,7 @@
   "subtask.deleteConfirm": "Дійсно видалити це підзавдання?",
   "subtask.col.pos": "Поз.",
   "subtask.col.id": "ID",
+  "subtask.col.child": "Дочірній",
   "subtask.col.name": "Назва",
   "subtask.col.predecessor": "Попередник",
   "subtask.col.area": "Область",

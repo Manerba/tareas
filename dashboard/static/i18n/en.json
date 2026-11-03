@@ -116,6 +116,7 @@
   "subtask.deleteConfirm": "Really delete this subtask?",
   "subtask.col.pos": "Pos.",
   "subtask.col.id": "ID",
+  "subtask.col.child": "Child",
   "subtask.col.name": "Name",
   "subtask.col.predecessor": "Predecessor",
   "subtask.col.area": "Area",

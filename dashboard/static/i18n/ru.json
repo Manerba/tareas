@@ -116,6 +116,7 @@
   "subtask.deleteConfirm": "Действительно удалить эту подзадачу?",
   "subtask.col.pos": "Поз.",
   "subtask.col.id": "ID",
+  "subtask.col.child": "Дочерний",
   "subtask.col.name": "Название",
   "subtask.col.predecessor": "Предшественник",
   "subtask.col.area": "Область",

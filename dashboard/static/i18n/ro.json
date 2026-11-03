@@ -116,6 +116,7 @@
   "subtask.deleteConfirm": "Stergeti aceasta subsarcina?",
   "subtask.col.pos": "Poz.",
   "subtask.col.id": "ID",
+  "subtask.col.child": "Copil",
   "subtask.col.name": "Nume",
   "subtask.col.predecessor": "Predecesor",
   "subtask.col.area": "Domeniu",

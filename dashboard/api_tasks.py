@@ -1180,7 +1180,7 @@ async def get_tasks_config():
                 renderer="taskId", align="center", i18n_key="tasks.col.id",
             ),
             Column("Name", "name", width=0, sortable=True, i18n_key="tasks.col.name"),
-            Column("PID", "parent_subtask_id", width=60, sortable=True, renderer="parentId",
+            Column("PID", "parent_subtask_id", width=110, sortable=True, renderer="parentId",
                    align="center", i18n_key="tasks.col.pid"),
             Column("Typ", "task_type", width=90, sortable=True, renderer="badge", i18n_key="tasks.col.type"),
             Column("Status", "status", width=120, sortable=True, renderer="badge", i18n_key="tasks.col.status"),

@@ -116,6 +116,7 @@
   "subtask.deleteConfirm": "Eliminar esta subtarea realmente?",
   "subtask.col.pos": "Pos.",
   "subtask.col.id": "ID",
+  "subtask.col.child": "Hijo",
   "subtask.col.name": "Nombre",
   "subtask.col.predecessor": "Predecesor",
   "subtask.col.area": "Area",

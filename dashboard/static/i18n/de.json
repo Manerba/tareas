@@ -116,6 +116,7 @@
   "subtask.deleteConfirm": "Teilaufgabe wirklich loeschen?",
   "subtask.col.pos": "Pos.",
   "subtask.col.id": "ID",
+  "subtask.col.child": "Child",
   "subtask.col.name": "Name",
   "subtask.col.predecessor": "Vorgaenger",
   "subtask.col.area": "Bereich",

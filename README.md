@@ -108,7 +108,9 @@ or create a child project. Each subtask can have one child project. Its progress
 is the percentage of fully completed subtasks in that child project, rounded
 down (an empty project gives 0%). Changes propagate through nested projects.
 The parent's progress is read-only in the UI, REST and MCP while linked.
-The **PID** column contains the parent **subtask ID** and opens that subtask.
+The **PID** column shows `<parent project ID>,<parent subtask ID>` and opens
+that subtask. The subtask table's **Child** column links to the child project
+by its project ID; an en dash indicates that no child project is linked.
 Linking or unlinking requires edit access to both sides and does not grant any
 additional access. Cycles are rejected. Unlinking or deleting a child project
 keeps the parent's last progress and restores manual editing. Deleting a parent

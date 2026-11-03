@@ -1,8 +1,14 @@
 /** Projekte an Teilaufgaben haengen; Fortschritt bleibt serverseitig berechnet. */
 function renderParentId(value, col, row) {
     if (!value) return '–';
-    return `<button class="project-link-button" title="${escapeAttr(t('projectLink.parent'))}"
-        onclick="event.stopPropagation(); openLinkedProject(${row.parent_project_id}, ${value})">${value}</button>`;
+    return `<button class="project-link-button project-id-link" title="${escapeAttr(t('projectLink.parent'))}"
+        onclick="event.stopPropagation(); openLinkedProject(${row.parent_project_id}, ${value})">${row.parent_project_id},${value}</button>`;
+}
+
+function renderChildProjectId(value) {
+    if (!value) return '–';
+    return `<button class="project-link-button project-id-link" title="${escapeAttr(t('projectLink.child'))}"
+        onclick="event.stopPropagation(); openLinkedProject(${value})">${value}</button>`;
 }
 
 function renderChildProjectLink(projectId, subtask, canEdit) {

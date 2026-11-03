@@ -676,6 +676,12 @@
     white-space: nowrap;
 }
 
+.subtask-table .subtask-child-cell {
+    width: 64px;
+    text-align: center;
+    white-space: nowrap;
+}
+
 .task-id-cell {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 11px;
@@ -1675,6 +1681,9 @@
 .project-link-hint {
     color: var(--text-secondary);
     font-size: 0.85rem;
+}
+.project-id-link {
+    white-space: nowrap;
 }
 #childProjectNameField[hidden] {
     display: none;

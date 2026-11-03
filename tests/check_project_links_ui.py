@@ -76,6 +76,9 @@ def run(user):
         page.goto('http://tareas.test/aufgaben')
         expect(page.locator('.table-header')).to_contain_text('PID')
         page.locator(f'[data-row-id="{parent}"] > .table-row > .expand-icon').click()
+        expect(page.locator(f'#subtaskContainer_{parent} th.subtask-child-cell')).to_have_text('Child')
+        child_cell = page.locator(f'[data-subtask-id="{subtask}"] .subtask-child-cell')
+        expect(child_cell).to_have_text('–')
         page.locator(f'[data-subtask-id="{subtask}"] .subtask-expand-icon').click()
         detail = page.locator(f'[data-subtask-detail-id="{subtask}"]')
         detail.locator('.project-link-bar .control-btn').click()
@@ -83,6 +86,8 @@ def run(user):
         expect(page.locator('#childProjectNameField')).to_be_hidden()
         page.locator('#projectLinkSave').click()
         expect(detail.locator('.project-link-bar')).to_contain_text(f'#{child}')
+        expect(child_cell.locator('.project-link-button')).to_have_text(str(child))
+        expect(detail.locator(':scope > td')).to_have_attribute('colspan', '13')
         expect(page.locator(f'#stEditStatus_{subtask}')).to_have_count(0)
         expect(page.locator(f'[data-subtask-id="{subtask}"]')).to_contain_text('50%')
         page.locator(f'#stEditName_{subtask}').fill('Renamed parent subtask')
@@ -93,13 +98,13 @@ def run(user):
         assert mcp.get_subtask(subtask)['name'] == 'Renamed parent subtask'
 
         # Child edits update both the parent's percentage and its project status.
-        detail.locator('.project-link-button').click()
+        child_cell.locator('.project-link-button').click()
         page.locator(f'[data-subtask-id="{leaf}"] .subtask-expand-icon').click()
         page.locator(f'#stEditStatus_{leaf}').fill('100')
         page.locator(f'#stEditStatus_{leaf}').press('Tab')
         page.wait_for_function('(pid) => aufgabenTable.data.find(t => t.id === pid).status === "erledigt"', arg=parent)
         pid = page.locator(f'[data-row-id="{child}"] > .table-row .project-link-button')
-        expect(pid).to_have_text(str(subtask))
+        expect(pid).to_have_text(f'{parent},{subtask}')
         pid.click()
         expect(page.locator(f'[data-subtask-id="{subtask}"]')).to_contain_text('100%')
         expect(page.locator(f'#stEditStatus_{subtask}')).to_have_count(0)
@@ -108,6 +113,7 @@ def run(user):
         detail.locator('.project-link-bar .control-btn').click()
         page.locator('#projectLinkSave').click()
         expect(page.locator(f'#stEditStatus_{subtask}')).to_have_value('100')
+        expect(child_cell).to_have_text('–')
         assert mcp.get_project(child)['parent_subtask_id'] is None
 
         # New-project path works at narrow width and immediately takes ownership of progress.
@@ -119,6 +125,7 @@ def run(user):
         expect(page.locator(f'[data-subtask-id="{subtask}"]')).to_contain_text('0%')
         new_child = mcp.get_subtask(subtask)['child_project_id']
         assert mcp.get_project(new_child)['name'] == 'New child from scope'
+        expect(child_cell.locator('.project-link-button')).to_have_text(str(new_child))
 
         # Assigned-subtask pseudo rows must obey the same lock, including full edit saves.
         with closing(database.get_db()) as db, db:

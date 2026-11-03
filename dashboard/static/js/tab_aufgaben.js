@@ -1172,7 +1172,7 @@ function renderSubTasks(taskId, subtasks) {
     const parentPerm = parentRow ? getTaskPermissions(parentRow) : { isCreator: false, isLegacy: true, isAdmin: !!currentUser?.is_admin };
 
     const areasOptions = buildAreaOptions();
-    const colCount = 12;
+    const colCount = 13;
     const canAddDependency = createDependencyValidator(subtasks);
 
     let html = `<table class="subtask-table">
@@ -1180,6 +1180,7 @@ function renderSubTasks(taskId, subtasks) {
             <tr>
                 <th class="pos-cell">${t('subtask.col.pos')}</th>
                 <th class="subtask-id-cell">${t('subtask.col.id')}</th>
+                <th class="subtask-child-cell">${t('subtask.col.child')}</th>
                 <th>${t('subtask.col.name')}</th>
                 <th>${t('subtask.col.predecessor')}</th>
                 <th>${t('subtask.col.area')}</th>
@@ -1235,6 +1236,7 @@ function renderSubTasks(taskId, subtasks) {
         html += `<tr class="subtask-row" data-subtask-id="${st.id}" onpointerdown="ExpandableTable.trackRowPointerDown(event)" onclick="if (ExpandableTable.shouldToggleRow(event)) toggleSubTaskDetail(${taskId}, ${st.id})">
             <td class="pos-cell"><span class="subtask-expand-icon">&#9654;</span><span class="pos-number">${st.position_number || ''}</span><span class="pos-arrows st-cell-edit" ${parentPerm.canStructure ? '' : 'hidden'}><button class="pos-arrow up" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'up')" title="Nach oben">&#9650;</button><button class="pos-arrow down" onclick="event.stopPropagation(); moveSubTask(${taskId}, ${st.id}, 'down')" title="Nach unten">&#9660;</button></span></td>
             <td class="subtask-id-cell">${st.id}</td>
+            <td class="subtask-child-cell">${renderChildProjectId(st.child_project_id)}</td>
             ${!stNameRO ? `<td>
                 <span class="st-cell-text">${escapeHtml(st.name)}</span>
                 <span class="st-cell-edit"><input type="text" id="stEditName_${st.id}" value="${escapeAttr(st.name)}" class="subtask-name-input" onclick="event.stopPropagation()"></span>
