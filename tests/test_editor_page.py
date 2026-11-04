@@ -120,6 +120,23 @@ class EditorPageTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/tasks/1/subtasks/2/note-entries/3').status_code, 401)
         self.assertEqual(self.client.get('/api/tasks/1/note-entries/3').status_code, 401)
 
+    def test_description_window_authentication_csrf_and_strict_csp(self):
+        for query in ('taskId=1', 'taskId=1&subtaskId=2'):
+            response = self.client.get('/description?' + query)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("script-src 'self';", response.headers['content-security-policy'])
+            self.assertNotRegex(response.text, re.compile(r"<script\b(?![^>]*\bsrc=)[^>]*>", re.I))
+            self.assertIn('/static/js/description_editor.js', response.text)
+        endpoint = f'/api/tasks/{self.task}/description'
+        data = self.client.get(endpoint).json()
+        body = {'content': '# Beschreibung', 'revision': data['revision']}
+        self.assertEqual(self.client.put(endpoint, json=body).status_code, 403)
+        self.assertEqual(self.client.put(endpoint, json=body, headers={'X-Requested-With': 'XMLHttpRequest'}).status_code, 200)
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get('/description', follow_redirects=False).status_code, 302)
+        self.assertEqual(self.client.get(endpoint).status_code, 401)
+        self.assertEqual(self.client.get(f'/api/tasks/{self.task}/subtasks/2/description').status_code, 401)
+
 
 if __name__ == '__main__':
     unittest.main()

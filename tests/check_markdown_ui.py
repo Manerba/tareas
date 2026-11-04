@@ -69,7 +69,7 @@ def main():
         translations = json.loads((ROOT / 'dashboard/static/i18n/en.json').read_text())
         page.evaluate('(translations) => window.t = key => translations[key] || key', translations)
         for name in ['expandable_table.js', 'wysiwyg_editor.js', 'app_core.js',
-                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'text_file_editor.js', 'tab_aufgaben.js', 'project_links.js', 'task_settings.js']:
+                     'vendor/marked.umd.js', 'vendor/turndown.js', 'markdown_editor.js', 'text_file_editor.js', 'description_editor.js', 'tab_aufgaben.js', 'project_links.js', 'task_settings.js']:
             page.add_script_tag(content=(ROOT / 'dashboard/static/js' / name).read_text())
         for name in ['style.css', 'expandable_table.css', 'aufgaben.css', 'file_browser.css', 'markdown_editor.css', 'text_file_editor.css']:
             page.add_style_tag(content=(ROOT / 'dashboard/static/css' / name).read_text())
@@ -210,7 +210,9 @@ def main():
             row.created_by = 2; row.assigned_to = 1;
             await onTaskRowExpanded(1, document.querySelector('.table-row-detail'));
         }''')
-        expect(page.locator('.description-readonly h1')).to_have_text('Retry retained')
+        expect(editor.locator('.markdown-body h1')).to_have_text('Retry retained')
+        expect(editor.locator('[data-md-action="edit"]')).to_have_count(0)
+        expect(editor.locator('[data-md-expand]')).to_be_visible()
         expect(page.locator('#taskNoteEntries_1 [data-md-action="edit"]')).to_have_count(0)
         notes = page.locator('#notesEditor_1')
         expect(notes.locator('textarea')).to_be_hidden()
@@ -226,7 +228,9 @@ def main():
                 _subtask_id: 2, _project_id: 1, _project_name: 'Project', _status_percent: 42},
                 document.querySelector('.table-row-detail'));
         }''', subtask)
-        expect(page.locator('.description-readonly h3')).to_have_text('Edited subtask')
+        expect(page.locator('#stViewDescription_2 .markdown-body h3')).to_have_text('Edited subtask')
+        expect(page.locator('#stViewDescription_2 [data-md-action="edit"]')).to_have_count(0)
+        expect(page.locator('#stViewDescription_2 [data-md-expand]')).to_be_visible()
         assigned_notes = page.locator('#stViewNotes_2')
         assigned_notes.get_by_role('button', name='Edit', exact=True).click()
         assigned_notes.locator('textarea').fill('## Assigned subtask notes')

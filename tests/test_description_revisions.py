@@ -65,6 +65,87 @@ class DescriptionRevisionTests(unittest.TestCase):
         finally:
             mcp_server.current_mcp_user.reset(token)
 
+    def editor_url(self, subtask=False):
+        part = f'/subtasks/{self.subtask}' if subtask else ''
+        return f'/api/tasks/{self.task}{part}/description'
+
+    def test_window_reads_current_rights_and_scopes_subtasks(self):
+        for role in ('owner', 'editor', 'reader', 'assignee', 'outsider'):
+            self.user = self.users[role]
+            for subtask in (False, True):
+                response = self.client.get(self.editor_url(subtask))
+                self.assertEqual(response.status_code, 403 if role == 'outsider' else 200, response.text)
+                if role != 'outsider':
+                    self.assertEqual(response.json(), {
+                        'task_id': self.task, 'subtask_id': self.subtask if subtask else None,
+                        'name': 'Subtask' if subtask else 'Project', 'content': SOURCE, 'format': 'markdown',
+                        'revision': description_revision(SOURCE, 'markdown'), 'can_write': role in ('owner', 'editor'),
+                    })
+        self.user = self.admin
+        wrong_scope = f'/api/tasks/{self.task + 100}/subtasks/{self.subtask}/description'
+        self.assertEqual(self.client.get(wrong_scope).status_code, 404)
+        self.assertEqual(self.client.put(wrong_scope, json={'content': 'no', 'revision': description_revision(SOURCE, 'markdown')}).status_code, 404)
+
+    def test_window_writes_require_edit_rights_and_revision(self):
+        revision = description_revision(SOURCE, 'markdown')
+        for role in ('reader', 'assignee', 'outsider'):
+            self.user = self.users[role]
+            for subtask in (False, True):
+                result = self.client.put(self.editor_url(subtask), json={'content': 'no', 'revision': revision})
+                self.assertEqual(result.status_code, 403, result.text)
+        self.user = self.users['editor']
+        for subtask in (False, True):
+            url = self.editor_url(subtask)
+            for body in ({'content': 'no'}, {'content': 'no', 'revision': 'invalid'}, {'revision': revision}):
+                self.assertEqual(self.client.put(url, json=body).status_code, 422)
+            result = self.client.put(url, json={'content': '', 'revision': revision})
+            self.assertEqual(result.status_code, 200, result.text)
+            self.assertEqual(result.json(), {'revision': description_revision('', 'markdown')})
+            self.assertEqual(self.client.get(url).json()['content'], '')
+            conflict = self.client.put(url, json={'content': 'stale', 'revision': revision})
+            self.assertEqual(conflict.status_code, 409)
+            self.assertEqual(conflict.json()['detail'], 'description.conflict')
+        with closing(database.get_db()) as db, db:
+            db.execute('UPDATE project_members SET can_edit=0 WHERE user_id=?', (self.user['id'],))
+        for subtask in (False, True):
+            data = self.client.get(self.editor_url(subtask)).json()
+            self.assertIs(data['can_write'], False)
+            result = self.client.put(self.editor_url(subtask), json={'content': 'no', 'revision': data['revision']})
+            self.assertEqual(result.status_code, 403)
+
+    def test_window_assigned_subtask_without_project_read_and_legacy_format(self):
+        self.user = self.users['outsider']
+        with closing(database.get_db()) as db, db:
+            db.execute("UPDATE sub_tasks SET assigned_to=?, description='<p>Old</p>', description_format='legacy' WHERE id=?",
+                       (self.user['id'], self.subtask))
+        self.assertEqual(self.client.get(self.editor_url()).status_code, 403)
+        data = self.client.get(self.editor_url(True)).json()
+        self.assertIs(data['can_write'], True)
+        self.assertEqual(data['format'], 'legacy')
+        result = self.client.put(self.editor_url(True), json={'content': '**New** ✓', 'revision': data['revision']})
+        self.assertEqual(result.status_code, 200, result.text)
+        current = self.client.get(self.editor_url(True)).json()
+        self.assertEqual((current['content'], current['format']), ('**New** ✓', 'markdown'))
+        with closing(database.get_db()) as db:
+            audit = db.execute('SELECT * FROM audit_log ORDER BY id DESC LIMIT 1').fetchone()
+            self.assertEqual(audit['actor_user_id'], self.user['id'])
+            self.assertNotIn('**New**', str(dict(audit)))
+
+    def test_window_and_inline_competing_writers_have_one_winner(self):
+        for subtask in (False, True):
+            revision = description_revision(SOURCE, 'markdown')
+            barrier = threading.Barrier(2)
+            def window():
+                barrier.wait()
+                return self.client.put(self.editor_url(subtask), json={'content': 'Window', 'revision': revision}).status_code
+            def inline():
+                barrier.wait()
+                return self.client.put(self.url(subtask), json={'description': 'Inline', 'description_revision': revision}).status_code
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                a, b = pool.submit(window), pool.submit(inline)
+                self.assertEqual(sorted([a.result(), b.result()]), [200, 409])
+            self.assertIn(self.client.get(self.editor_url(subtask)).json()['content'], ('Window', 'Inline'))
+
     def test_rest_revisions_full_update_legacy_and_independent_status(self):
         for subtask in (False, True):
             revision = self.row(subtask)['description_revision']

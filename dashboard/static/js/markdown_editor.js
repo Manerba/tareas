@@ -70,6 +70,7 @@ class MarkdownEditor {
                         </span>
                     </span>
                 `}
+                ${this.options.onExpand ? `<button type="button" class="control-btn" data-md-expand>${t('textFile.expand')}</button>` : ''}
             </div>
             <div class="markdown-body" data-md-preview></div>
             <textarea class="markdown-source" aria-label="${escapeAttr(t(this.options.plainText ? 'textFile.source' : 'markdown.source'))}" spellcheck="false" hidden></textarea>
@@ -99,6 +100,7 @@ class MarkdownEditor {
             this.updateView();
         });
         this.container.querySelector('[data-md-action="save"]')?.addEventListener('click', () => this.save());
+        this.container.querySelector('[data-md-expand]')?.addEventListener('click', () => this.options.onExpand(this));
         this.updateView();
     }
 
@@ -118,13 +120,15 @@ class MarkdownEditor {
         this.container.querySelector('.markdown-hint').hidden = !this.editing;
         for (const button of this.container.querySelectorAll('[data-md-action]')) {
             button.hidden = button.dataset.mdAction === 'edit' ? this.editing : !this.editing;
-            button.disabled = this.saving;
+            button.disabled = this.saving || this.transferring;
         }
-        this.input.disabled = this.saving;
+        this.input.disabled = this.saving || this.transferring;
+        const expandButton = this.container.querySelector('[data-md-expand]');
+        if (expandButton) expandButton.disabled = this.saving || this.transferring;
     }
 
     async save() {
-        if (this.saving || this.options.readOnly || MarkdownEditor.pendingSaves.has(this.containerId)) return;
+        if (this.saving || this.transferring || this.options.readOnly || MarkdownEditor.pendingSaves.has(this.containerId)) return;
         const source = this.input.value;
         const pending = { editor: this, source, revision: this.revision };
         MarkdownEditor.pendingSaves.set(this.containerId, pending);
@@ -159,6 +163,7 @@ class MarkdownEditor {
             if (!editor.editing && editor.input.isConnected) {
                 editor.container.querySelector('[data-md-action="edit"]')?.focus();
             }
+            editor.options.onSaveSettled?.();
         }
     }
 }

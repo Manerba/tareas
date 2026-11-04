@@ -521,11 +521,13 @@ function buildUserOptions(selectedId) {
 
 function createMarkdownField(containerId, content, options) {
     const field = options.field || 'description';
-    return new MarkdownEditor(containerId, content, {
+    const editor = new MarkdownEditor(containerId, content, {
         format: options.model?.[`${field}_format`] || 'markdown',
         revision: field === 'description' ? options.model?.description_revision : undefined,
         label: options.label,
         readOnly: options.readOnly,
+        onExpand: field === 'description' && options.description
+            ? instance => expandDescription(instance, options.description) : null,
         saveErrorMessage: error => error.message,
         onSave: async (source, revision) => {
             const body = { [field]: source };
@@ -549,6 +551,10 @@ function createMarkdownField(containerId, content, options) {
             options.onSaved?.(source);
         },
     });
+    if (editor.container && field === 'description' && options.description) {
+        registerDescriptionEditor(editor, options.description, options.model);
+    }
+    return editor;
 }
 
 async function onTaskRowExpanded(rowId, detailElement) {
@@ -596,27 +602,18 @@ async function onTaskRowExpanded(rowId, detailElement) {
     html += `<div class="project-detail-columns${hasStorage ? ' has-file-storage' : ''}" id="pdColumns_${row.id}">`;
     html += `<div class="project-detail-left" id="pdDescription_${row.id}">`;
 
-    // Beschreibung: Markdown-Ansicht, Bearbeiten nach bestehenden Berechtigungen
+    // Beschreibung auch mit reinem Leserecht im gemeinsamen ausklappbaren Editor.
+    html += `<div id="wysiwygEditor_${row.id}"></div>`;
     if (!perm.canEdit && perm.isAssignee) {
-        html += `<div class="notes-section">
-            <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
-            <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
-        </div>`;
         html += `<div class="notes-section">
             <h5>${t('detail.myNotes')}</h5>
             <div id="notesEditor_${row.id}"></div>
         </div>`;
     } else if (!perm.canEdit && perm.isCreator && perm.isAssigned && !perm.isOwnTask) {
-        html += `<div class="notes-section">
-            <h5>${t('detail.description')}</h5>
-            <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
-        </div>`;
         html += `<div class="notes-section" id="assigneeNotes_${row.id}">
             <h5>${t('detail.notesFrom', { name: escapeHtml(row.assigned_to_name || 'Zugewiesenem') })}</h5>
             <div class="description-readonly markdown-body" id="assigneeNotesContent_${row.id}"><em>${t('common.loading')}</em></div>
         </div>`;
-    } else {
-        html += `<div id="wysiwygEditor_${row.id}"></div>`;
     }
 
     html += `</div>`; // project-detail-left
@@ -670,6 +667,12 @@ async function onTaskRowExpanded(rowId, detailElement) {
     detailElement.innerHTML = html;
 
     // Editoren initialisieren
+    createMarkdownField(`wysiwygEditor_${row.id}`, row.description || '', {
+        url: `/api/tasks/${row.id}`, model: row, readOnly: !perm.canEdit,
+        description: { taskId: row.id, subtaskId: null },
+        label: !perm.canEdit && perm.isAssignee
+            ? t('detail.descriptionFrom', { name: row.created_by_name || 'Ersteller' }) : t('detail.description'),
+    });
     if (!perm.canEdit && perm.isAssignee) {
         // Notizen-Editor fuer Zugewiesenen: Notiz laden und Editor initialisieren
         try {
@@ -700,12 +703,6 @@ async function onTaskRowExpanded(rowId, detailElement) {
             const contentEl = document.getElementById(`assigneeNotesContent_${row.id}`);
             if (contentEl) contentEl.innerHTML = `<em>${t('detail.loadError')}</em>`;
         }
-    } else {
-        // Markdown startet in der formatierten Ansicht
-        createMarkdownField(`wysiwygEditor_${row.id}`, row.description || '', {
-            url: `/api/tasks/${row.id}`, model: row,
-            readOnly: !perm.canEdit,
-        });
     }
 
     loadTaskNotes(`/api/tasks/${row.id}/notes`, `taskAllNotes_${row.id}`,
@@ -968,10 +965,7 @@ async function onSubtaskViewExpanded(row, detailElement) {
 
     html += renderChildProjectLink(projectId, {...row, id: stId}, canEdit);
 
-    const description = canEdit ? `<div id="stViewDescription_${stId}"></div>` : `<div class="notes-section">
-        <h5>${t('detail.descriptionFrom', { name: escapeHtml(row.created_by_name || 'Ersteller') })}</h5>
-        <div class="description-readonly markdown-body">${renderMarkdown(row.description, row.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>
-    </div>`;
+    const description = `<div id="stViewDescription_${stId}"></div>`;
     html += renderSubtaskDetailColumns(stId, description, `stViewNoteEntries_${stId}`, 'stView');
 
     // Eigene Notizen (Markdown)
@@ -992,10 +986,11 @@ async function onSubtaskViewExpanded(row, detailElement) {
 
     initColumnResize(stId, 'stView', subtaskDetailSizes);
 
+    createMarkdownField(`stViewDescription_${stId}`, row.description || '', {
+        url: `/api/subtasks/${stId}`, model: row, readOnly: !canEdit,
+        description: { taskId: projectId, subtaskId: stId },
+    });
     if (canEdit) {
-        createMarkdownField(`stViewDescription_${stId}`, row.description || '', {
-            url: `/api/subtasks/${stId}`, model: row,
-        });
         if (projectId) loadTaskNotes(`/api/tasks/${projectId}/subtasks/${stId}/notes`, `stViewAllNotes_${stId}`, currentUser.id);
     }
 
@@ -1301,8 +1296,7 @@ function renderSubTasks(taskId, subtasks) {
                 <div class="subtask-detail-reveal"><div class="subtask-detail-clip">
                     <div class="subtask-detail-content">`;
 
-        const description = canEdit ? `<div id="stWysiwyg_${st.id}"></div>`
-            : `<div class="description-readonly markdown-body">${renderMarkdown(st.description, st.description_format) || `<em>${t('detail.noDescription')}</em>`}</div>`;
+        const description = `<div id="stWysiwyg_${st.id}"></div>`;
         html += renderChildProjectLink(taskId, st, canEdit);
         html += renderSubtaskDetailColumns(st.id, description, `stNoteEntriesContent_${st.id}`);
 
@@ -1562,11 +1556,11 @@ async function toggleSubTaskDetail(taskId, subtaskId, animate = true) {
             const subtasks = container?._subtasksData || [];
             const st = subtasks.find(s => s.id === subtaskId);
             const stPerms = st?.permissions || { can_edit: true };
-            if (currentUser?.is_admin || stPerms.can_edit) {
-                createMarkdownField(`stWysiwyg_${subtaskId}`, st?.description || '', {
-                    url: `/api/subtasks/${subtaskId}`, model: st,
-                });
-            }
+            createMarkdownField(`stWysiwyg_${subtaskId}`, st?.description || '', {
+                url: `/api/subtasks/${subtaskId}`, model: st,
+                readOnly: !(currentUser?.is_admin || stPerms.can_edit),
+                description: { taskId, subtaskId },
+            });
             editorContainer._editorInit = true;
         }
     }

@@ -8,7 +8,7 @@ A self-hosted task and project management tool built with **FastAPI** and **Vani
 - **Cancellation** - Keep cancelled tasks and projects with their content, filter by status, and resume them when needed
 - **Interactive Network Diagram** - Visualize project dependencies as an interactive graph (vis-network)
 - **Sharing & Permissions** - Creators and administrators share tasks and projects through Settings → Permissions. Read or edit access is separate from assignment; projects also offer permission to create subtasks. Changes are saved together or discarded with Cancel. Admins can edit all projects, tasks, notes and handoffs regardless of ownership.
-- **Markdown Descriptions & Notes** - Formatted reading view with source editing, lists, tables, and code blocks
+- **Markdown Descriptions & Notes** - Formatted reading view with source editing, lists, tables, and code blocks. Project and subtask descriptions can pop out into a separate window with unsaved edits retained.
 - **Handoffs** - Add Markdown handoffs to tasks, projects and subtasks directly in the UI or through MCP. Contributors see an Add handoff button in the history; saved entries appear immediately with their author and timestamp. Authors can correct their own handoffs for five minutes.
 - **File Storage** - Dedicated local storage per task/project or a Nextcloud/WebDAV directory, with tree view, drag & drop upload and context menus
 - **Text File Editor** - Preview and edit Markdown, text and scripts in a dialog, with a pop-out window that retains unsaved edits
@@ -133,6 +133,16 @@ unsaved edits. Authors with contribution rights can correct their own handoffs f
 after creation; administrators can edit without that time limit. Revision checks
 protect concurrent saves, and saving preserves the original author and timestamp. Description panels retain their size when
 switching between reading and editing.
+
+The **Ausklappen** button on project and subtask descriptions opens the same
+Markdown editor in a separate window, including the assigned subtask view and
+read-only descriptions. Unsaved edits, cursor selection and the draft's original
+revision transfer to the window. The inline draft is released only after the
+window confirms receipt; blocked pop-ups and load failures leave it in place.
+Saving refreshes the original description without discarding another open draft.
+Current permissions and revision checks apply on every save, so concurrent edits
+produce a conflict and retain the draft. Draft text stays out of URLs and browser
+storage.
 
 Dependencies must belong to the same project and cannot form cycles or redundant
 direct links. If C depends on B and B depends on A, C only needs B as a direct

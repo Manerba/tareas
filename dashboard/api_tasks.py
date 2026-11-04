@@ -20,7 +20,9 @@ from dashboard.auth import get_current_user
 from dashboard.components import Column, Filter, ExpandableTable
 from dashboard.mail_service import notify_event
 from dashboard.note_service import create_handoff, update_note_as_admin, handoff_revision, handoff_can_write
-from dashboard.description_service import description_revision, check_description_revision, patch_description
+from dashboard.description_service import (
+    description_revision, check_description_revision, patch_description, read_description, replace_description,
+)
 from dashboard.permissions import require_task_access, require_subtask_access, task_permissions, subtask_permissions, task_visibility_sql
 from dashboard.file_storage import ensure_local_directory, remove_local_directory, safe_rel_path, storage_type
 from dashboard.dependency_service import add_subtask_dependency, set_subtask_predecessors
@@ -88,6 +90,11 @@ class DescriptionPatch(BaseModel):
     operation: Literal["append", "replace"]
     text: str
     old_text: str | None = None
+    revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class DescriptionContent(BaseModel):
+    content: str
     revision: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
@@ -743,6 +750,26 @@ async def update_subtask(subtask_id: int, subtask: SubTaskUpdate, user=Depends(g
     if subtask.description is not None:
         result["description_revision"] = description_revision(subtask.description, "markdown")
     return result
+
+
+@router.get("/api/tasks/{task_id}/description")
+async def get_task_description(task_id: int, user=Depends(get_current_user)):
+    return read_description(task_id, user)
+
+
+@router.put("/api/tasks/{task_id}/description")
+async def put_task_description(task_id: int, body: DescriptionContent, user=Depends(get_current_user)):
+    return replace_description(task_id, user, **body.model_dump())
+
+
+@router.get("/api/tasks/{task_id}/subtasks/{subtask_id}/description")
+async def get_subtask_description(task_id: int, subtask_id: int, user=Depends(get_current_user)):
+    return read_description(task_id, user, subtask_id=subtask_id)
+
+
+@router.put("/api/tasks/{task_id}/subtasks/{subtask_id}/description")
+async def put_subtask_description(task_id: int, subtask_id: int, body: DescriptionContent, user=Depends(get_current_user)):
+    return replace_description(task_id, user, subtask_id=subtask_id, **body.model_dump())
 
 
 @router.patch("/api/tasks/{task_id}/description")

@@ -9,7 +9,7 @@ import hashlib
 import re
 
 from dashboard.audit_log import log_change
-from dashboard.db_utils import db_transaction
+from dashboard.db_utils import db_query, db_transaction
 from dashboard.errors import ApplicationError
 from dashboard.permissions import require_task_access, require_subtask_access
 
@@ -31,6 +31,37 @@ def check_description_revision(existing, revision: str | None, *, required: bool
     if revision != description_revision(existing["description"], existing["description_format"]):
         raise ApplicationError(409, "description.conflict", code="revision_conflict",
                                field="description_revision")
+
+
+def read_description(task_id: int, user: dict, *, subtask_id: int | None = None) -> dict:
+    with db_query() as db:
+        if subtask_id is None:
+            row, rights = require_task_access(db, task_id, user, "read")
+        else:
+            row, rights = require_subtask_access(db, subtask_id, user, "read", task_id=task_id)
+        return {"task_id": task_id, "subtask_id": subtask_id, "name": row["name"],
+                "content": row["description"] or "", "format": row["description_format"],
+                "revision": description_revision(row["description"], row["description_format"]),
+                "can_write": rights["can_edit"]}
+
+
+def replace_description(task_id: int, user: dict, content: str, revision: str, *,
+                        subtask_id: int | None = None) -> dict:
+    """Separater Editor: Volltext immer mit aktuellen Bearbeitungsrechten und Revision."""
+    with db_transaction() as db:
+        db.execute("BEGIN IMMEDIATE")
+        if subtask_id is None:
+            row, _ = require_task_access(db, task_id, user, "edit")
+        else:
+            row, _ = require_subtask_access(db, subtask_id, user, "edit", task_id=task_id)
+        check_description_revision(row, revision, required=True)
+        statement = ("UPDATE tasks SET description = ?, description_format = 'markdown' WHERE id = ?"
+                     if subtask_id is None else
+                     "UPDATE sub_tasks SET description = ?, description_format = 'markdown' WHERE id = ?")
+        db.execute(statement, (content, row["id"]))
+    log_change(user, "task" if subtask_id is None else "sub_task", row["id"], "update",
+               {"description_len": len(content)})
+    return {"revision": description_revision(content, "markdown")}
 
 
 def patch_description(task_id: int, user: dict, *, revision: str, operation: str,
