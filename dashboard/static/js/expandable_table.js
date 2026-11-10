@@ -39,6 +39,7 @@ class ExpandableTable {
         this.stanceCounts = {};
         this.v2StanceCounts = {};
         this.filterDebounceTimer = null;  // Debounce für Input-Filter
+        this.filterMatchers = {};  // Optionale lokale Filter, analog zur Renderer-Registry
 
         // Pagination State
         this.pagination = {
@@ -413,7 +414,9 @@ class ExpandableTable {
             const value = this.filterValues[filter.id];
             if (!value) return;
 
-            if (filter.wildcard) {
+            if (this.filterMatchers[filter.id]) {
+                filtered = filtered.filter(row => this.filterMatchers[filter.id](row, value, filter));
+            } else if (filter.wildcard) {
                 const searchTerm = value.toLowerCase();
                 const fields = [filter.field, ...(filter.wildcardFields || [])];
                 filtered = filtered.filter(row => {

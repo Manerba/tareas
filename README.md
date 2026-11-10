@@ -98,6 +98,14 @@ header returns to the task list. The column headings stay visible below the
 header and filter bar while scrolling, including when the filters wrap onto
 multiple lines.
 
+Start the search field with **#**, for example **#123**, to find that exact task,
+subtask or handoff ID. Names, descriptions, note text and note IDs are excluded
+in this mode. Subtask and handoff matches appear as links on the containing
+project (or assigned subtask) and open the matching item directly. Only readable
+items appear; type, status and category filters still apply. A bare `#` or an
+invalid ID returns no matches. Without `#`, the usual name/description filter
+continues to apply.
+
 Expanding a project shows its row and details while hiding the other list rows
 and the main table header and filter bar. Collapsing it restores the list and
 filter bar with the current filters and sort order. The subtask table header

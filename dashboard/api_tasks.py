@@ -14,6 +14,7 @@ from dashboard.audit_log import log_change
 from dashboard.db_utils import db_query, db_transaction
 from dashboard.task_types import normalize_task_type
 from dashboard.task_status import TASK_STATUS_CTE
+from dashboard.search_service import search_ids
 from dashboard.task_validation import ProjectStatus, StatusPercent
 from dashboard.user_utils import get_display_name
 from dashboard.auth import get_current_user
@@ -362,6 +363,12 @@ async def get_tasks(user=Depends(get_current_user)):
             })
 
         return {"items": items, "total": len(items)}
+
+
+@router.get("/api/tasks/id-search")
+async def find_task_ids(query: str = "", user=Depends(get_current_user)):
+    with db_query() as db:
+        return {"items": search_ids(db, user, query)}
 
 
 @router.post("/api/tasks")

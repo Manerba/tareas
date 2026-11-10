@@ -1,4 +1,4 @@
-"""Permission-filtered FTS5 search shared by MCP and future search consumers.
+"""Permission-filtered FTS5 content search and exact ID lookup for the UI.
 
 The index uses one corpus and equal BM25 weights for every source type. Source
 rows remain authoritative: metadata and permissions are joined at query time.
@@ -31,6 +31,41 @@ _SOURCES = (
     ("task_note_entries", "task_handoff", "''", "content", "task_id", "NULL", "user_id", "created_at"),
     ("sub_task_note_entries", "sub_task_handoff", "''", "content", "NULL", "sub_task_id", "user_id", "created_at"),
 )
+
+
+def search_ids(db: sqlite3.Connection, user: dict, query: str) -> list[dict]:
+    """Exact #ID lookup for the UI; never search titles, content or note IDs.
+
+    At most four hits (one per ID namespace), with current visibility checked in
+    the same SELECT. Invalid/incomplete ID input stays empty, without FTS fallback.
+    """
+    if not isinstance(query, str) or len(query) > 1000:
+        return []
+    match = re.fullmatch(r"#\s*([0-9]+)", query.strip())
+    if not match:
+        return []
+    digits = match[1].lstrip("0")
+    if not digits or len(digits) > 19 or int(digits) > 9223372036854775807:
+        return []
+    entity_id = int(digits)
+    task_visible, task_params = task_visibility_sql(user)
+    subtask_visible, subtask_params = task_visibility_sql(user, subtask=True)
+    rows = db.execute(
+        "SELECT 'task' AS type, t.id, t.id AS task_id, NULL AS subtask_id "
+        f"FROM tasks t WHERE t.id = ? AND {task_visible} "
+        "UNION ALL SELECT 'sub_task', st.id, t.id, st.id "
+        "FROM sub_tasks st JOIN tasks t ON t.id = st.project_id "
+        f"WHERE st.id = ? AND {subtask_visible} "
+        "UNION ALL SELECT 'task_handoff', h.id, t.id, NULL "
+        "FROM task_note_entries h JOIN tasks t ON t.id = h.task_id "
+        f"WHERE h.id = ? AND {task_visible} "
+        "UNION ALL SELECT 'sub_task_handoff', h.id, t.id, st.id "
+        "FROM sub_task_note_entries h JOIN sub_tasks st ON st.id = h.sub_task_id "
+        f"JOIN tasks t ON t.id = st.project_id WHERE h.id = ? AND {subtask_visible}",
+        [entity_id, *task_params, entity_id, *subtask_params,
+         entity_id, *task_params, entity_id, *subtask_params],
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _raise_if_fts_missing(exc: sqlite3.OperationalError) -> None:

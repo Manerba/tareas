@@ -61,7 +61,11 @@ async function initAufgabenTab() {
         aufgabenTable = new ExpandableTable(aufgabenConfig, 'aufgabenTableContainer', {
             onRowExpanded: onTaskRowExpanded,
             onRowCollapsed: onTaskRowCollapsed,
-            onDataLoaded: () => buildCategoryButtons(),
+            onDataLoaded: () => {
+                buildCategoryButtons();
+                const query = aufgabenTable.filterValues.searchFilter || '';
+                if (query.trim().startsWith('#')) applySearchFilter(query);
+            },
             onRendered: updateExpandAllButton,
         });
 
@@ -71,6 +75,10 @@ async function initAufgabenTab() {
         aufgabenTable.renderers['taskId'] = renderTaskId;
         aufgabenTable.renderers['parentId'] = renderParentId;
         aufgabenTable.renderers['deleteAction'] = renderDeleteAction;
+        aufgabenTable.renderers['taskName'] = renderTaskSearchName;
+        const nameCol = aufgabenConfig.columns.find(c => c.field === 'name');
+        if (nameCol) nameCol.renderer = 'taskName';
+        aufgabenTable.filterMatchers.searchFilter = matchTaskSearch;
 
         // Prioritaet-Spalte Renderer zuweisen
         const prioCol = aufgabenConfig.columns.find(c => c.field === 'priority');
@@ -119,7 +127,9 @@ function buildControlBar() {
             </div>
             <span class="spacer"></span>
             <input type="text" class="control-search" id="searchFilterInput"
-                   placeholder="${t('common.search')}" oninput="applySearchFilter(this.value)">
+                   placeholder="${escapeAttr(t('tasks.searchPlaceholder'))}"
+                   title="${escapeAttr(t('tasks.idSearchHint'))}" aria-label="${escapeAttr(t('tasks.idSearchHint'))}"
+                   oninput="applySearchFilter(this.value)">
         </div>
     `;
 }
@@ -134,7 +144,68 @@ function applyControlFilter() {
 
 function applySearchFilter(value) {
     if (!aufgabenTable) return;
-    aufgabenTable.setFilter('searchFilter', value);
+    const table = aufgabenTable;
+    clearTimeout(table.idSearchTimer);
+    table.idSearchController?.abort();
+    table.idSearchMatches = [];
+    table.setFilter('searchFilter', value);
+    document.getElementById(table.containerId)?.setAttribute('aria-busy', 'false');
+    const query = value.trim();
+    if (query.length > 1000 || !/^#\s*[0-9]+$/.test(query)) return;
+    // Do not let an older response replace the results of a newer input.
+    const controller = new AbortController();
+    table.idSearchController = controller;
+    const current = () => !controller.signal.aborted && table === aufgabenTable
+        && table.filterValues.searchFilter?.trim() === query;
+    document.getElementById(table.containerId)?.setAttribute('aria-busy', 'true');
+    table.idSearchTimer = setTimeout(async () => {
+        try {
+            const response = await fetch(`/api/tasks/id-search?${new URLSearchParams({query})}`, {signal: controller.signal});
+            if (!response.ok) throw new Error(t('common.loadError'));
+            const result = await response.json();
+            if (!current()) return;
+            table.idSearchMatches = result.items || [];
+            table.applyFiltersAndRender();
+        } catch (error) {
+            if (current()) showNotification(error.message || t('common.loadError'), 'error');
+        } finally {
+            if (table === aufgabenTable && table.idSearchController === controller) {
+                document.getElementById(table.containerId)?.setAttribute('aria-busy', 'false');
+            }
+        }
+    }, 200);
+}
+
+function taskIdMatches(row) {
+    if (!aufgabenTable?.filterValues.searchFilter?.trim().startsWith('#')) return [];
+    return (aufgabenTable.idSearchMatches || []).filter(hit => row._type === 'assigned_subtask'
+        ? hit.task_id === row._project_id && hit.subtask_id === row._subtask_id
+        : hit.task_id === row.id);
+}
+
+function matchTaskSearch(row, value) {
+    if (value.trim().startsWith('#')) return taskIdMatches(row).length > 0;
+    const term = value.toLowerCase();
+    return [row.name, row.description].some(text => (text || '').toLowerCase().includes(term));
+}
+
+function renderTaskSearchName(value, col, row) {
+    const links = taskIdMatches(row).map(hit => {
+        const label = hit.type === 'task' ? `${t('type.' + row.task_type)} #${hit.id}`
+            : t({sub_task: 'tasks.idSearchSubtask', task_handoff: 'tasks.idSearchTaskHandoff',
+                sub_task_handoff: 'tasks.idSearchSubtaskHandoff'}[hit.type], {id: hit.id, subtaskId: hit.subtask_id});
+        return `<button type="button" class="project-link-button task-id-search-link"
+            onclick="event.stopPropagation(); openTaskIdSearchMatch(${row.id}, '${hit.type}', ${hit.task_id}, ${hit.subtask_id}, ${hit.id})">${escapeHtml(label)}</button>`;
+    }).join('');
+    return escapeHtml(value || '') + (links ? `<span class="task-id-search-matches">${links}</span>` : '');
+}
+
+function openTaskIdSearchMatch(rowId, type, taskId, subtaskId, id) {
+    if (type === 'task_handoff' || type === 'sub_task_handoff') {
+        openHandoffEditor(taskId, subtaskId, id);
+    } else {
+        openLinkedProject(rowId, rowId > 0 ? subtaskId : null);
+    }
 }
 
 function toggleAllExpand() {

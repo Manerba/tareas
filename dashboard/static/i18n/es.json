@@ -1,4 +1,9 @@
 {
+  "tasks.searchPlaceholder": "Buscar o #ID...",
+  "tasks.idSearchHint": "Usa #123 para buscar solo IDs de tareas, subtareas y traspasos.",
+  "tasks.idSearchSubtask": "Subtarea #{id}",
+  "tasks.idSearchTaskHandoff": "Traspaso #{id}",
+  "tasks.idSearchSubtaskHandoff": "Traspaso #{id} · Subtarea #{subtaskId}",
   "common.save": "Guardar",
   "common.cancel": "Cancelar",
   "common.delete": "Eliminar",

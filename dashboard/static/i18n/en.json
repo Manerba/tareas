@@ -1,4 +1,9 @@
 {
+  "tasks.searchPlaceholder": "Search or #ID...",
+  "tasks.idSearchHint": "Use #123 to search only task, subtask and handoff IDs.",
+  "tasks.idSearchSubtask": "Subtask #{id}",
+  "tasks.idSearchTaskHandoff": "Handoff #{id}",
+  "tasks.idSearchSubtaskHandoff": "Handoff #{id} · Subtask #{subtaskId}",
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.delete": "Delete",

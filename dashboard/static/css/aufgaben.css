@@ -1678,6 +1678,18 @@
     cursor: pointer;
     font: inherit;
 }
+
+.task-id-search-matches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 4px;
+    white-space: normal;
+}
+.task-id-search-matches .task-id-search-link {
+    font-size: 12px;
+    text-align: left;
+}
 .project-link-hint {
     color: var(--text-secondary);
     font-size: 0.85rem;

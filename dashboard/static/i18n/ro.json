@@ -1,4 +1,9 @@
 {
+  "tasks.searchPlaceholder": "Caută sau #ID...",
+  "tasks.idSearchHint": "Folosește #123 pentru a căuta doar ID-uri de sarcini, subsarcini și predări.",
+  "tasks.idSearchSubtask": "Subsarcină #{id}",
+  "tasks.idSearchTaskHandoff": "Predare #{id}",
+  "tasks.idSearchSubtaskHandoff": "Predare #{id} · Subsarcină #{subtaskId}",
   "common.save": "Salvare",
   "common.cancel": "Anulare",
   "common.delete": "Stergere",

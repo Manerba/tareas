@@ -1,4 +1,9 @@
 {
+  "tasks.searchPlaceholder": "Поиск или #ID...",
+  "tasks.idSearchHint": "Введите #123 для поиска только по ID задач, подзадач и передач.",
+  "tasks.idSearchSubtask": "Подзадача #{id}",
+  "tasks.idSearchTaskHandoff": "Передача #{id}",
+  "tasks.idSearchSubtaskHandoff": "Передача #{id} · Подзадача #{subtaskId}",
   "common.save": "Сохранить",
   "common.cancel": "Отмена",
   "common.delete": "Удалить",

@@ -1,4 +1,9 @@
 {
+  "tasks.searchPlaceholder": "Rechercher ou #ID...",
+  "tasks.idSearchHint": "Utilisez #123 pour rechercher uniquement les identifiants des tâches, sous-tâches et transmissions.",
+  "tasks.idSearchSubtask": "Sous-tâche #{id}",
+  "tasks.idSearchTaskHandoff": "Transmission #{id}",
+  "tasks.idSearchSubtaskHandoff": "Transmission #{id} · Sous-tâche #{subtaskId}",
   "common.save": "Enregistrer",
   "common.cancel": "Annuler",
   "common.delete": "Supprimer",
